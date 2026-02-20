@@ -1,0 +1,33 @@
+# ============================
+# CORE
+# ============================
+Django>=4.2,<5.0
+djangorestframework>=3.14.0
+djangorestframework-simplejwt>=5.3.0
+django-filter>=23.5
+django-cors-headers>=4.3.1
+
+# ============================
+# DATABASE
+# ============================
+psycopg2-binary>=2.9.9
+
+# ============================
+# REDIS / CACHE
+# ============================
+redis>=5.0.1
+django-redis>=5.4.0
+
+# ============================
+# CELERY (ASYNC)
+# ============================
+celery>=5.3.6
+django-celery-beat>=2.5.0
+django-celery-results>=2.5.1
+
+# ============================
+# UTILITIES
+# ============================
+django-environ>=0.11.2
+python-dateutil>=2.8.2
+pytz>=2023.3
