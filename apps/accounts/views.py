@@ -13,6 +13,8 @@ from .serializers import (
 from .models.user import User
 from rest_framework import viewsets, permissions
 from .services.auth_service import AuthService
+from apps.common.permissions import IsSuperAdmin
+
 
 
 class LoginView(APIView):
@@ -35,7 +37,9 @@ class LoginView(APIView):
         return Response({
             "refresh": str(refresh),
             "access": str(refresh.access_token),
+            "user": UserSerializer(user).data
         })
+
 
 
 class RequestOTPView(APIView):
@@ -70,12 +74,13 @@ class VerifyOTPView(APIView):
 
 
 class UserViewSet(viewsets.ModelViewSet):
+
     """
     CRUD for Users.
-    Only Admins can see list and create/delete.
-    Users can update their own profile? (Extend permissions as needed)
+    Only Super Admins can see list and create/delete.
     """
     queryset = User.objects.all().order_by("-created_at")
     serializer_class = UserSerializer
-    permission_classes = [permissions.IsAuthenticated, permissions.IsAdminUser]
+    permission_classes = [permissions.IsAuthenticated, IsSuperAdmin]
+
 

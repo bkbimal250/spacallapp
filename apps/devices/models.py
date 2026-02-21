@@ -18,11 +18,13 @@ class Device(BaseModel, TimeStampedModel, SoftDeleteModel):
         blank=True,
     )
 
-    device_id = models.CharField(max_length=255, unique=True)
+    device_id = models.CharField(max_length=255, unique=True, null=True, blank=True)
+    secret_key = models.CharField(max_length=64, editable=False, null=True, blank=True)
 
-    secret_key = models.CharField(max_length=64, editable=False)
+    registration_token = models.CharField(max_length=32, unique=True, null=True, blank=True)
+    is_registered = models.BooleanField(default=False)
 
-    sim_1_number = models.CharField(max_length=20)
+    sim_1_number = models.CharField(max_length=20, blank=True, null=True)
     sim_2_number = models.CharField(max_length=20, blank=True, null=True)
 
     last_sync = models.DateTimeField(null=True, blank=True)
@@ -37,14 +39,19 @@ class Device(BaseModel, TimeStampedModel, SoftDeleteModel):
             models.Index(fields=["device_id"]),
             models.Index(fields=["branch"]),
             models.Index(fields=["is_active"]),
+            models.Index(fields=["registration_token"]),
         ]
 
     def save(self, *args, **kwargs):
-        if not self.secret_key:
-            self.secret_key = secrets.token_hex(32)
+        if not self.registration_token and not self.is_registered:
+            # Generate a clean 12-character token for easier manual entry if needed, 
+            # or use secrets.token_hex for higher security.
+            self.registration_token = secrets.token_hex(6).upper()
+        
         super().save(*args, **kwargs)
 
     def __str__(self):
-        # Handle potential None for branch or spa_name during incomplete saves or tests
         spa_name = self.branch.spa_name if self.branch else "Unknown Branch"
-        return f"{self.device_id} - {spa_name}"
+        identifier = self.device_id or f"Unregistered ({self.registration_token})"
+        return f"{identifier} - {spa_name}"
+

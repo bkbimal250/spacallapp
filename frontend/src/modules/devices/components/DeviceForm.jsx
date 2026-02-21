@@ -69,75 +69,79 @@ const DeviceForm = ({ isOpen, onClose, onSubmit, initialData }) => {
     return (
         <Modal isOpen={isOpen} onClose={onClose} title={initialData ? 'Edit Device' : 'Register Device'}>
             <form onSubmit={handleSubmit} className="space-y-4">
+                {!initialData && (
+                    <div className="bg-indigo-50/50 p-4 rounded-xl border border-indigo-100 mb-6">
+                        <h4 className="text-xs font-black text-indigo-700 uppercase tracking-widest mb-1 flex items-center">
+                            <span className="h-2 w-2 bg-indigo-500 rounded-full mr-2 animate-pulse"></span>
+                            Smart Registration Mode
+                        </h4>
+                        <p className="text-[11px] text-indigo-600 leading-relaxed font-medium">
+                            Creating this device will automatically generate a <b>Registration Token</b>.
+                            Provide this token to the installer to securely link the Android device.
+                        </p>
+                    </div>
+                )}
+
                 <Input
-                    label="Device ID"
+                    label="Device ID (Auto-generated after registration)"
                     name="device_id"
                     value={formData.device_id}
                     onChange={handleChange}
-                    required
-                    disabled={!!initialData}
+                    placeholder="Pending activation..."
+                    disabled={true} // Now always disabled as it's auto-generated via claim
                 />
 
-                <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Assigned Branch</label>
-                    <select
-                        name="branch"
-                        value={formData.branch}
-                        onChange={handleChange}
-                        className="w-full border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 px-3 py-2 border text-sm"
-                    >
-                        <option value="">Select a branch</option>
-                        {branches.map(b => (
-                            <option key={b.id} value={b.id}>{b.spa_name} ({b.code})</option>
-                        ))}
-                    </select>
+                <div className="grid grid-cols-2 gap-4">
+                    <div>
+                        <label className="block text-[11px] font-black text-gray-400 uppercase tracking-wider mb-1.5 ml-1">Assigned Branch</label>
+                        <select
+                            name="branch"
+                            value={formData.branch}
+                            onChange={handleChange}
+                            className="w-full bg-gray-50 border-gray-100 rounded-xl focus:border-indigo-500 focus:ring-indigo-500 px-4 py-2.5 border text-sm font-semibold transition-all"
+                        >
+                            <option value="">Select a branch</option>
+                            {branches.map(b => (
+                                <option key={b.id} value={b.id}>{b.spa_name} ({b.code})</option>
+                            ))}
+                        </select>
+                    </div>
+                    <div className="flex flex-col justify-end">
+                        <div className="flex space-x-4 pb-2 ml-1">
+                            <div className="flex items-center">
+                                <input
+                                    type="checkbox"
+                                    id="is_active"
+                                    name="is_active"
+                                    checked={formData.is_active}
+                                    onChange={handleChange}
+                                    className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded-lg cursor-pointer transition-all"
+                                />
+                                <label htmlFor="is_active" className="ml-2 block text-xs font-bold text-gray-700 cursor-pointer">
+                                    Enabled
+                                </label>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
                     <Input
-                        label="SIM 1 Number"
+                        label="SIM 1 Number (Optional)"
                         name="sim_1_number"
                         value={formData.sim_1_number}
                         onChange={handleChange}
-                        required
+                        placeholder="+91..."
                     />
                     <Input
-                        label="SIM 2 Number"
+                        label="SIM 2 Number (Optional)"
                         name="sim_2_number"
                         value={formData.sim_2_number}
                         onChange={handleChange}
+                        placeholder="+91..."
                     />
                 </div>
 
-                <div className="flex space-x-6 pt-2">
-                    <div className="flex items-center">
-                        <input
-                            type="checkbox"
-                            id="is_active"
-                            name="is_active"
-                            checked={formData.is_active}
-                            onChange={handleChange}
-                            className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                        />
-                        <label htmlFor="is_active" className="ml-2 block text-sm text-gray-900">
-                            Is Active
-                        </label>
-                    </div>
-
-                    <div className="flex items-center">
-                        <input
-                            type="checkbox"
-                            id="is_blocked"
-                            name="is_blocked"
-                            checked={formData.is_blocked}
-                            onChange={handleChange}
-                            className="h-4 w-4 text-red-600 focus:ring-red-500 border-gray-300 rounded"
-                        />
-                        <label htmlFor="is_blocked" className="ml-2 block text-sm text-gray-900">
-                            Is Blocked
-                        </label>
-                    </div>
-                </div>
 
                 <div className="flex justify-end space-x-2 mt-6">
                     <Button variant="secondary" onClick={onClose} type="button">

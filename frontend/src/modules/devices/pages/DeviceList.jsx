@@ -69,16 +69,42 @@ const DeviceList = () => {
             header: 'Device ID',
             render: (row) => (
                 <div className="flex items-center">
-                    <Smartphone size={16} className="mr-2 text-gray-400" />
-                    <span className="font-medium text-gray-900">{row.device_id}</span>
+                    <Smartphone size={16} className={`mr-2 ${row.is_registered ? 'text-indigo-500' : 'text-amber-400'}`} />
+                    <span className={`font-mono text-xs ${row.is_registered ? 'text-gray-900' : 'text-amber-600 italic font-bold'}`}>
+                        {row.device_id || 'PENDING REGISTRATION'}
+                    </span>
+                </div>
+            )
+        },
+        {
+            header: 'Reg. Token',
+            render: (row) => row.is_registered ? (
+                <span className="text-gray-300 text-[10px]">—</span>
+            ) : (
+                <div className="flex items-center group">
+                    <code className="bg-indigo-50 text-indigo-700 px-2 py-1 rounded border border-indigo-100 font-black text-xs tracking-wider">
+                        {row.registration_token}
+                    </code>
+                    <button
+                        onClick={() => {
+                            navigator.clipboard.writeText(row.registration_token);
+                            alert('Token copied!');
+                        }}
+                        className="ml-2 p-1 text-gray-400 hover:text-indigo-600 opacity-0 group-hover:opacity-100 transition-opacity"
+                        title="Copy Token"
+                    >
+                        <svg size={12} fill="none" viewBox="0 0 24 24" stroke="currentColor" className="w-3 h-3"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7v8a2 2 0 002 2h6M8 7V5a2 2 0 012-2h4.586a1 1 0 01.707.293l4.414 4.414a1 1 0 01.293.707V15a2 2 0 01-2 2h-2M8 7H6a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2v-2" /></svg>
+                    </button>
                 </div>
             )
         },
         { header: 'Branch', accessor: 'branch_name' },
-        { header: 'SIM 1', accessor: 'sim_1_number' },
-        { header: 'SIM 2', accessor: 'sim_2_number' },
-        { header: 'Status', render: (row) => <DeviceStatusBadge isActive={row.is_active} isBlocked={row.is_blocked} /> },
+        {
+            header: 'Status',
+            render: (row) => <DeviceStatusBadge isActive={row.is_active} isBlocked={row.is_blocked} isRegistered={row.is_registered} />
+        },
         { header: 'Last Sync', render: (row) => formatDate(row.last_sync) },
+
         {
             header: 'Actions',
             render: (row) => (

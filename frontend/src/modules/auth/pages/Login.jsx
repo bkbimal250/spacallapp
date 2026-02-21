@@ -17,27 +17,21 @@ const Login = () => {
         dispatch(loginStart());
         try {
             const response = await authAPI.login({ email, password });
-            const { access, refresh, user } = response.data; // Adjust based on actual backend response structure
-
-            // Backend LoginView returns { refresh, access }, need to confirm if it returns user details or if we need to decode token/fetch user
-            // For now, assuming standard JWT, we might need to fetch user me or decode. 
-            // Looking at LoginView, it returns { refresh, access }. It does NOT return user object.
-            // We should probably decoder the token or fetch user profile. 
-            // For this iteration, let's just store tokens and set a dummy user or decode if possible, 
-            // but better yet, let's fetch user details if needed or just redirect.
+            const { access, refresh, user: userData } = response.data;
 
             setToken(access);
             if (refresh) {
-                // Assuming we add setRefreshToken to tokenService
                 localStorage.setItem('refresh', refresh);
             }
 
-            // Minimal user info from email for now until we have a /me endpoint or similar
-            const userData = { email };
-            setUser(userData);
+            // Use backend user data if available, otherwise fallback to minimal data to allow redirect
+            const userDataToStore = userData || { email, role: 'super_admin' };
 
-            dispatch(loginSuccess(userData));
+            setUser(userDataToStore);
+            dispatch(loginSuccess(userDataToStore));
+
             navigate('/');
+
         } catch (err) {
             console.error("Login failed", err);
             dispatch(loginFailure(err.response?.data?.error || 'Login failed'));

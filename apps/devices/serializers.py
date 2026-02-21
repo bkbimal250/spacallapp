@@ -7,3 +7,7 @@ class DeviceSerializer(serializers.ModelSerializer):
     class Meta:
         model = Device
         fields = '__all__'
+
+class ClaimRegistrationSerializer(serializers.Serializer):
+    token = serializers.CharField(max_length=32, required=True)
+
