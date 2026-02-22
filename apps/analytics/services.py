@@ -9,11 +9,12 @@ class AnalyticsService:
         """
         Identify peak calling hours
         """
+        queryset = CallLog.objects.filter(call_time__range=(date_start, date_end))
+        if branch_id:
+            queryset = queryset.filter(branch_id=branch_id)
+            
         return (
-            CallLog.objects.filter(
-                branch_id=branch_id,
-                call_time__range=(date_start, date_end)
-            )
+            queryset
             .annotate(hour=ExtractHour("call_time"))
             .values("hour")
             .annotate(count=Count("id"))
@@ -25,10 +26,11 @@ class AnalyticsService:
         """
         Calculate missed call ratio and conversion rate proxy (calls > 60s)
         """
-        stats = CallLog.objects.filter(
-            branch_id=branch_id,
-            call_time__range=(date_start, date_end)
-        ).aggregate(
+        queryset = CallLog.objects.filter(call_time__range=(date_start, date_end))
+        if branch_id:
+            queryset = queryset.filter(branch_id=branch_id)
+
+        stats = queryset.aggregate(
             total_calls=Count("id"),
             missed_calls=Count("id", filter=Q(call_type="missed") | Q(call_type="rejected")),
             converted_calls=Count("id", filter=Q(duration__gte=60, call_type="incoming")),

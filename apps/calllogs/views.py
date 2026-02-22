@@ -4,6 +4,7 @@ from .serializers import CallLogSerializer
 from core.authentication import DeviceAuthentication
 from core.permissions import IsDevice
 from django.utils import timezone
+from django.db.models import Count, Q, Sum, Avg
 
 class DeviceSyncView(views.APIView):
     authentication_classes = [DeviceAuthentication]
@@ -40,30 +41,58 @@ class DeviceSyncView(views.APIView):
 
         return response.Response({"status": "success", "synced_count": len(logs_to_create)}, status=status.HTTP_201_CREATED)
 
+from apps.common.permissions import IsSuperAdmin
+
+from rest_framework.decorators import action
+
 class CallLogViewSet(viewsets.ModelViewSet):
     serializer_class = CallLogSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    
+    def get_permissions(self):
+        if self.action in ['destroy', 'bulk_delete']:
+            return [permissions.IsAuthenticated(), IsSuperAdmin()]
+        return [permissions.IsAuthenticated()]
 
-    def get_queryset(self):
-        queryset = CallLog.objects.all().order_by('-call_time')
+    @action(detail=False, methods=['post'])
+    def bulk_delete(self, request):
+        ids = request.data.get('ids', [])
+        if not ids:
+            return response.Response({"error": "No IDs provided"}, status=status.HTTP_400_BAD_REQUEST)
         
+        deleted_count, _ = CallLog.objects.filter(id__in=ids).delete()
+        return response.Response({
+            "status": "success", 
+            "message": f"Successfully deleted {deleted_count} records"
+        }, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=['get'])
+    def stats(self, request):
+        queryset = self.apply_filters(self.get_queryset())
+        stats = queryset.aggregate(
+            total=Count('id'),
+            incoming=Count('id', filter=Q(call_type='incoming')),
+            outgoing=Count('id', filter=Q(call_type='outgoing')),
+            missed=Count('id', filter=Q(call_type='missed')),
+            rejected=Count('id', filter=Q(call_type='rejected')),
+            total_duration=Sum('duration'),
+            avg_duration=Avg('duration')
+        )
+        return response.Response(stats)
+
+    def apply_filters(self, queryset):
         search = self.request.query_params.get('search', None)
         start_date = self.request.query_params.get('start_date', None)
         end_date = self.request.query_params.get('end_date', None)
-        
-        # Original simple filtersets
         call_type = self.request.query_params.get('call_type', None)
+        branch = self.request.query_params.get('branch', None)
+        device = self.request.query_params.get('device', None)
+
         if call_type:
             queryset = queryset.filter(call_type=call_type)
-            
-        branch = self.request.query_params.get('branch', None)
-        if branch:
+        if branch and branch.strip() and branch != 'null' and branch != 'undefined':
             queryset = queryset.filter(branch_id=branch)
-            
-        device = self.request.query_params.get('device', None)
-        if device:
+        if device and device.strip() and device != 'null' and device != 'undefined':
             queryset = queryset.filter(device_id=device)
-
         if search:
             queryset = queryset.filter(phone_number__icontains=search)
         if start_date:
@@ -71,4 +100,10 @@ class CallLogViewSet(viewsets.ModelViewSet):
         if end_date:
             queryset = queryset.filter(call_time__date__lte=end_date)
             
+        return queryset
+
+    def get_queryset(self):
+        queryset = CallLog.objects.all().order_by('-call_time')
+        if self.action != 'stats':
+            queryset = self.apply_filters(queryset)
         return queryset

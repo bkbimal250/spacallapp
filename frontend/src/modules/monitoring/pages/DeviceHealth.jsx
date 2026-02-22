@@ -1,10 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { monitoringAPI } from '../api';
 import OfflineDeviceCard from '../components/OfflineDeviceCard';
-import StatsCard from '../../dashboard/components/StatsCard'; // Reusing StatsCard
+import StatsCard from '../../dashboard/components/StatsCard';
 import Table from '../../../shared/components/Table';
 import Badge from '../../../shared/components/Badge';
+import Pagination from '../../../shared/components/Pagination';
 import { formatDate } from '../../../shared/utils/formatDate';
+import { RefreshCcw } from 'lucide-react';
 
 const DeviceHealth = () => {
     const [stats, setStats] = useState({
@@ -15,32 +17,58 @@ const DeviceHealth = () => {
     });
     const [alerts, setAlerts] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [page, setPage] = useState(1);
+    const [totalCount, setTotalCount] = useState(0);
+    const pageSize = 20;
+
+    const fetchData = async () => {
+        setLoading(true);
+        try {
+            const statsResponse = await monitoringAPI.getDeviceHealth();
+            setStats(statsResponse.data);
+            await fetchAlerts(1);
+        } catch (error) {
+            console.error("Failed to fetch monitoring data", error);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const fetchAlerts = async (currentPage) => {
+        try {
+            const alertsResponse = await monitoringAPI.getAlerts({ page: currentPage });
+            setAlerts(alertsResponse.data.results || alertsResponse.data);
+            setTotalCount(alertsResponse.data.count || (alertsResponse.data.results ? 0 : alertsResponse.data.length));
+        } catch (error) {
+            console.error("Failed to fetch alerts", error);
+        }
+    };
 
     useEffect(() => {
-        const fetchData = async () => {
-            setLoading(true);
-            try {
-                // Fetch stats
-                const statsResponse = await monitoringAPI.getDeviceHealth();
-                setStats(statsResponse.data);
-
-                // Fetch recent alerts
-                const alertsResponse = await monitoringAPI.getAlerts();
-                setAlerts(alertsResponse.data.results || alertsResponse.data);
-            } catch (error) {
-                console.error("Failed to fetch monitoring data", error);
-            } finally {
-                setLoading(false);
-            }
-        };
-
         fetchData();
     }, []);
+
+    useEffect(() => {
+        if (page > 1) {
+            fetchAlerts(page);
+        }
+    }, [page]);
+
+    const handlePageChange = (newPage) => {
+        setPage(newPage);
+    };
 
     const columns = [
         { header: 'Device', accessor: 'device_uid' },
         { header: 'Branch', accessor: 'branch_name' },
-        { header: 'Event', render: (row) => <Badge variant="red">{row.event_type}</Badge> },
+        {
+            header: 'Event',
+            render: (row) => (
+                <Badge variant={row.event_type === 'offline' ? 'red' : 'amber'}>
+                    {row.event_type}
+                </Badge>
+            )
+        },
         { header: 'Description', accessor: 'description' },
         { header: 'Time', render: (row) => formatDate(row.created_at) },
         {
@@ -53,11 +81,18 @@ const DeviceHealth = () => {
         },
     ];
 
-    if (loading) return <div>Loading Monitoring Dashboard...</div>;
-
     return (
         <div className="space-y-6">
-            <h1 className="text-2xl font-semibold text-gray-900">Device Health & Monitoring</h1>
+            <div className="flex justify-between items-center">
+                <h1 className="text-2xl font-semibold text-gray-900">Device Health & Monitoring</h1>
+                <button
+                    onClick={fetchData}
+                    className="p-2 text-gray-500 hover:text-sky-600 rounded-full hover:bg-sky-50 transition-all"
+                    title="Refresh Data"
+                >
+                    <RefreshCcw size={20} className={loading ? "animate-spin" : ""} />
+                </button>
+            </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                 <StatsCard title="Total Devices" value={stats.total_devices} />
@@ -67,27 +102,44 @@ const DeviceHealth = () => {
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                <div className="lg:col-span-2 bg-white shadow rounded-lg overflow-hidden">
-                    <div className="p-4 border-b border-gray-200">
-                        <h3 className="text-lg font-medium text-gray-900">Recent Alerts</h3>
+                <div className="lg:col-span-2 flex flex-col space-y-4">
+                    <div className="bg-white shadow rounded-lg overflow-hidden flex flex-col">
+                        <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
+                            <h3 className="text-lg font-medium text-gray-900">Recent Alerts</h3>
+                        </div>
+                        <div className="overflow-x-auto text-sm">
+                            <Table columns={columns} data={alerts} />
+                        </div>
+                        {!loading && totalCount > pageSize && (
+                            <Pagination
+                                currentPage={page}
+                                totalPages={Math.ceil(totalCount / pageSize)}
+                                onPageChange={handlePageChange}
+                            />
+                        )}
                     </div>
-                    <Table columns={columns} data={alerts} />
                 </div>
 
                 <div className="space-y-4">
-                    <h3 className="text-lg font-medium text-gray-900">Critical Issues</h3>
-                    {/* Placeholder for critical offline devices if we want to show cards */}
-                    {alerts.filter(a => !a.resolved && a.event_type === 'offline').slice(0, 3).map(alert => (
-                        <OfflineDeviceCard
-                            key={alert.id}
-                            deviceName={alert.device_uid}
-                            location={alert.branch_name}
-                            lastSeen={alert.created_at}
-                        />
-                    ))}
-                    {alerts.filter(a => !a.resolved && a.event_type === 'offline').length === 0 && (
-                        <p className="text-gray-500">No critical offline devices reported.</p>
-                    )}
+                    <div className="flex items-center justify-between">
+                        <h3 className="text-lg font-medium text-gray-900">Critical Issues</h3>
+                        <span className="px-2 py-0.5 bg-red-100 text-red-600 rounded text-xs font-bold uppercase tracking-wider">Live</span>
+                    </div>
+                    <div className="space-y-4">
+                        {alerts.filter(a => !a.resolved && a.event_type === 'offline').slice(0, 5).map(alert => (
+                            <OfflineDeviceCard
+                                key={alert.id}
+                                deviceName={alert.device_uid}
+                                location={alert.branch_name}
+                                lastSeen={alert.created_at}
+                            />
+                        ))}
+                        {alerts.filter(a => !a.resolved && a.event_type === 'offline').length === 0 && (
+                            <div className="bg-white p-8 border border-dashed border-gray-200 rounded-lg text-center opacity-60">
+                                <p className="text-gray-500 text-sm">No critical offline devices reported.</p>
+                            </div>
+                        )}
+                    </div>
                 </div>
             </div>
         </div>

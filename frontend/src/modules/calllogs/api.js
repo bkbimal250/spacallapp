@@ -2,6 +2,7 @@ import axiosInstance from '../../shared/services/axiosInstance';
 
 export const callLogsAPI = {
     getCallLogs: (params) => axiosInstance.get('/calllogs/', { params }),
-    // Call logs are usually read-only or created via device sync, but if needed:
-    // createCallLog: (data) => axiosInstance.post('/calllogs/', data),
+    getCallLogStats: (params) => axiosInstance.get('/calllogs/stats/', { params }),
+    deleteCallLog: (id) => axiosInstance.delete(`/calllogs/${id}/`),
+    bulkDeleteCallLogs: (ids) => axiosInstance.post('/calllogs/bulk_delete/', { ids }),
 };

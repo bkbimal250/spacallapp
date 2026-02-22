@@ -5,10 +5,33 @@ from rest_framework.response import Response
 from .models import Device
 from .serializers import DeviceSerializer, ClaimRegistrationSerializer
 
+from django.db import models
+
 class DeviceViewSet(viewsets.ModelViewSet):
-    queryset = Device.objects.all().order_by('-created_at')
     serializer_class = DeviceSerializer
     permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        queryset = Device.objects.all().order_by('-created_at')
+        
+        search = self.request.query_params.get('search', None)
+        branch = self.request.query_params.get('branch', None)
+        is_registered = self.request.query_params.get('is_registered', None)
+
+        if search:
+            queryset = queryset.filter(
+                models.Q(device_id__icontains=search) | 
+                models.Q(registration_token__icontains=search)
+            )
+        
+        if branch:
+            queryset = queryset.filter(branch_id=branch)
+            
+        if is_registered is not None:
+            is_reg = is_registered.lower() == 'true'
+            queryset = queryset.filter(is_registered=is_reg)
+
+        return queryset
 
 class ClaimRegistrationView(APIView):
     permission_classes = [permissions.AllowAny]

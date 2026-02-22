@@ -40,7 +40,11 @@ class AnalyticsOverviewView(APIView):
 
     def get(self, request):
         start_date, end_date = get_date_range(request)
+        branch_id = request.query_params.get('branch')
+        
         base_qs = CallLog.objects.filter(call_time__gte=start_date, call_time__lte=end_date)
+        if branch_id and branch_id.strip() and branch_id != 'null' and branch_id != 'undefined':
+            base_qs = base_qs.filter(branch_id=branch_id)
 
         # Calculate conversion data
         stats = base_qs.aggregate(
@@ -58,7 +62,6 @@ class AnalyticsOverviewView(APIView):
             {"name": "Rejected", "value": stats['rejected'] or 0},
         ]
 
-        # In the future add other top-of-page UI stats to this payload
         return Response({
             "conversion_rates": conversion_data,
         })
@@ -68,9 +71,14 @@ class PeakHoursView(APIView):
 
     def get(self, request):
         start_date, end_date = get_date_range(request)
+        branch_id = request.query_params.get('branch')
 
         # Aggregate Peak Hours
-        hourly_data = CallLog.objects.filter(call_time__gte=start_date, call_time__lte=end_date)\
+        queryset = CallLog.objects.filter(call_time__gte=start_date, call_time__lte=end_date)
+        if branch_id and branch_id.strip() and branch_id != 'null' and branch_id != 'undefined':
+            queryset = queryset.filter(branch_id=branch_id)
+            
+        hourly_data = queryset\
             .annotate(hour=TruncHour('call_time'))\
             .values('hour')\
             .annotate(calls=Count('id'))\
@@ -78,10 +86,31 @@ class PeakHoursView(APIView):
 
         mock_data = []
         for h in hourly_data:
+            dt = h['hour']
+            if dt:
+                # Platform independent way to format hour without leading zero
+                hour_str = dt.strftime('%I%p').lstrip('0')
+            else:
+                hour_str = "00:00"
+                
             mock_data.append({
-                "hour": h['hour'].strftime('%-I%p') if h['hour'] else "00:00",
+                "hour": hour_str,
                 "calls": h['calls']
             })
 
         return Response(mock_data)
+
+from .services import AnalyticsService
+
+class AnalyticsStatsView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        start_date, end_date = get_date_range(request)
+        branch_id = request.query_params.get('branch')
+        if not (branch_id and branch_id.strip() and branch_id != 'null' and branch_id != 'undefined'):
+            branch_id = None
+            
+        metrics = AnalyticsService.get_metrics(branch_id, start_date, end_date)
+        return Response(metrics)
 

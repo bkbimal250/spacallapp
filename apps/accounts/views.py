@@ -73,14 +73,37 @@ class VerifyOTPView(APIView):
         })
 
 
+from django.db import models
+
 class UserViewSet(viewsets.ModelViewSet):
 
     """
     CRUD for Users.
     Only Super Admins can see list and create/delete.
     """
-    queryset = User.objects.all().order_by("-created_at")
     serializer_class = UserSerializer
     permission_classes = [permissions.IsAuthenticated, IsSuperAdmin]
+
+    def get_queryset(self):
+        queryset = User.objects.all().order_by("-created_at")
+        
+        search = self.request.query_params.get('search', None)
+        role = self.request.query_params.get('role', None)
+        branch = self.request.query_params.get('branch', None)
+
+        if search:
+            queryset = queryset.filter(
+                models.Q(email__icontains=search) | 
+                models.Q(first_name__icontains=search) |
+                models.Q(last_name__icontains=search)
+            )
+        
+        if role:
+            queryset = queryset.filter(role=role)
+            
+        if branch:
+            queryset = queryset.filter(branch_id=branch)
+
+        return queryset
 
 

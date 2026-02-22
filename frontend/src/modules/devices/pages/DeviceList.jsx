@@ -3,7 +3,9 @@ import { devicesAPI } from '../api';
 import Table from '../../../shared/components/Table';
 import Button from '../../../shared/components/Button';
 import DeviceStatusBadge from '../components/DeviceStatusBadge';
-import DeviceForm from '../components/DeviceForm'; // Assuming you have this or will create it
+import DeviceForm from '../components/DeviceForm';
+import DeviceFilter from '../components/DeviceFilter';
+import Pagination from '../../../shared/components/Pagination';
 import { Edit, Trash2, Plus, Smartphone } from 'lucide-react';
 import { formatDate } from '../../../shared/utils/formatDate';
 
@@ -12,12 +14,22 @@ const DeviceList = () => {
     const [loading, setLoading] = useState(true);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingDevice, setEditingDevice] = useState(null);
+    const [filters, setFilters] = useState({});
+    const [page, setPage] = useState(1);
+    const [totalCount, setTotalCount] = useState(0);
+    const pageSize = 20;
 
-    const fetchDevices = async () => {
+    const fetchDevices = async (currentFilters = {}, currentPage = 1) => {
         setLoading(true);
         try {
-            const response = await devicesAPI.getDevices();
-            setDevices(response.data?.results || response.data || []);
+            const response = await devicesAPI.getDevices({ ...currentFilters, page: currentPage });
+            if (response.data.results) {
+                setDevices(response.data.results);
+                setTotalCount(response.data.count);
+            } else {
+                setDevices(response.data);
+                setTotalCount(response.data.length);
+            }
         } catch (error) {
             console.error("Failed to fetch devices", error);
         } finally {
@@ -26,8 +38,17 @@ const DeviceList = () => {
     };
 
     useEffect(() => {
-        fetchDevices();
-    }, []);
+        fetchDevices(filters, page);
+    }, [filters, page]);
+
+    const handleFilter = (newFilters) => {
+        setFilters(newFilters);
+        setPage(1);
+    };
+
+    const handlePageChange = (newPage) => {
+        setPage(newPage);
+    };
 
     const handleCreate = () => {
         setEditingDevice(null);
@@ -43,7 +64,7 @@ const DeviceList = () => {
         if (window.confirm("Are you sure you want to delete this device?")) {
             try {
                 await devicesAPI.deleteDevice(id);
-                fetchDevices();
+                fetchDevices(filters, page);
             } catch (error) {
                 console.error("Failed to delete device", error);
             }
@@ -58,7 +79,7 @@ const DeviceList = () => {
                 await devicesAPI.createDevice(data);
             }
             setIsModalOpen(false);
-            fetchDevices();
+            fetchDevices(filters, page);
         } catch (error) {
             console.error("Failed to save device", error);
         }
@@ -109,18 +130,16 @@ const DeviceList = () => {
             header: 'Actions',
             render: (row) => (
                 <div className="flex space-x-2">
-                    <button onClick={() => handleEdit(row)} className="text-blue-600 hover:text-blue-800">
+                    <button onClick={() => handleEdit(row)} className="text-blue-600 hover:text-blue-800 p-1 hover:bg-blue-50 rounded transition-colors" title="Edit">
                         <Edit size={16} />
                     </button>
-                    <button onClick={() => handleDelete(row.id)} className="text-red-600 hover:text-red-800">
+                    <button onClick={() => handleDelete(row.id)} className="text-red-600 hover:text-red-800 p-1 hover:bg-red-50 rounded transition-colors" title="Delete">
                         <Trash2 size={16} />
                     </button>
                 </div>
             ),
         },
     ];
-
-    if (loading) return <div>Loading...</div>;
 
     return (
         <div className="space-y-6">
@@ -132,16 +151,36 @@ const DeviceList = () => {
                 </Button>
             </div>
 
-            <div className="bg-white shadow rounded-lg overflow-hidden">
-                <Table
-                    columns={columns}
-                    data={devices}
-                />
+            <div className="bg-white shadow rounded-lg p-6">
+                <DeviceFilter onFilter={handleFilter} />
             </div>
 
-            {/* Reusing the DeviceForm component created earlier or ensuring it handles the props correctly */}
+            <div className="bg-white shadow rounded-lg overflow-hidden flex flex-col">
+                <div className="overflow-x-auto">
+                    {loading ? (
+                        <div className="p-12 text-center text-gray-500">
+                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-sky-500 mx-auto mb-4"></div>
+                            Loading devices...
+                        </div>
+                    ) : (
+                        <Table
+                            columns={columns}
+                            data={devices}
+                        />
+                    )}
+                </div>
+
+                {!loading && totalCount > 0 && Math.ceil(totalCount / pageSize) > 1 && (
+                    <Pagination
+                        currentPage={page}
+                        totalPages={Math.ceil(totalCount / pageSize)}
+                        onPageChange={handlePageChange}
+                    />
+                )}
+            </div>
+
             <DeviceForm
-                isOpen={isModalOpen} // Ensure DeviceForm supports 'isOpen' for modal behavior or wrap it
+                isOpen={isModalOpen}
                 onClose={() => setIsModalOpen(false)}
                 onSubmit={handleSubmit}
                 initialData={editingDevice}

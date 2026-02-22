@@ -1,7 +1,7 @@
 import axiosInstance from '../../shared/services/axiosInstance';
 
 export const devicesAPI = {
-    getDevices: () => axiosInstance.get('/devices/'),
+    getDevices: (params) => axiosInstance.get('/devices/', { params }),
     getDevice: (id) => axiosInstance.get(`/devices/${id}/`),
     createDevice: (data) => axiosInstance.post('/devices/', data),
     updateDevice: (id, data) => axiosInstance.put(`/devices/${id}/`, data),
