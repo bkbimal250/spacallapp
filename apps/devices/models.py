@@ -43,6 +43,9 @@ class Device(BaseModel, TimeStampedModel, SoftDeleteModel):
         ]
 
     def save(self, *args, **kwargs):
+        if self.device_id == "":
+            self.device_id = None
+            
         if not self.registration_token and not self.is_registered:
             # Generate a clean 12-character token for easier manual entry if needed, 
             # or use secrets.token_hex for higher security.
