@@ -7,7 +7,7 @@ import Pagination from '../../../shared/components/Pagination';
 import Button from '../../../shared/components/Button';
 import { formatDate } from '../../../shared/utils/formatDate';
 import { useAuth } from '../../../shared/hooks/useAuth';
-import { PhoneIncoming, PhoneOutgoing, PhoneMissed, PhoneForwarded, Trash2 } from 'lucide-react';
+import { PhoneIncoming, PhoneOutgoing, PhoneMissed, PhoneForwarded, Trash2, FileDown } from 'lucide-react';
 
 const CallLogList = () => {
     const { user } = useAuth();
@@ -19,6 +19,7 @@ const CallLogList = () => {
     const [page, setPage] = useState(1);
     const [totalCount, setTotalCount] = useState(0);
     const [selectedLogs, setSelectedLogs] = useState([]);
+    const [exporting, setExporting] = useState(false);
     const pageSize = 20;
 
     const isSuperAdmin = user?.role === 'super_admin';
@@ -92,6 +93,27 @@ const CallLogList = () => {
         }
     };
 
+    const handleExport = async () => {
+        setExporting(true);
+        try {
+            const response = await callLogsAPI.exportExcel(filters);
+            const url = window.URL.createObjectURL(new Blob([response.data]));
+            const link = document.createElement('a');
+            link.href = url;
+            const timestamp = new Date().toISOString().slice(0, 10);
+            link.setAttribute('download', `call_logs_${timestamp}.xlsx`);
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            window.URL.revokeObjectURL(url);
+        } catch (error) {
+            console.error("Export failed", error);
+            alert("Failed to export call logs. Please try again.");
+        } finally {
+            setExporting(false);
+        }
+    };
+
     const getCallIcon = (type) => {
         switch (type) {
             case 'incoming': return <PhoneIncoming size={16} className="text-green-500" />;
@@ -118,18 +140,23 @@ const CallLogList = () => {
             render: (row) => `${row.duration}s`
         },
         {
-            header: 'SIM',
+            header: 'SIM / Received On',
             render: (row) => (
-                <span className="px-2 py-1 bg-gray-100 rounded text-xs font-medium text-gray-600">
-                    SIM {row.sim_slot}
-                </span>
+                <div className="flex flex-col">
+                    <span className="px-1.5 py-0.5 bg-indigo-50 text-indigo-700 rounded text-[10px] font-black uppercase w-fit mb-0.5">
+                        Slot {row.sim_slot}
+                    </span>
+                    <span className="text-[11px] font-bold text-gray-400 tracking-tight">
+                        {row.receiver_number || 'Unknown'}
+                    </span>
+                </div>
             )
         },
         { header: 'Branch', accessor: 'branch_name' },
         { header: 'Device', accessor: 'device_uid' },
         {
             header: 'Time',
-            render: (row) => formatDate(row.call_time)
+            render: (row) => formatDate(row.call_time, 'MMM dd, yyyy HH:mm:ss')
         },
         {
             header: 'Status',
@@ -160,16 +187,27 @@ const CallLogList = () => {
         <div className="space-y-6">
             <div className="flex justify-between items-center">
                 <h1 className="text-2xl font-semibold text-gray-900">Call Logs</h1>
-                {isSuperAdmin && selectedLogs.length > 0 && (
+                <div className="flex items-center space-x-3">
                     <Button
-                        variant="red"
-                        onClick={handleBulkDelete}
-                        className="flex items-center space-x-2"
+                        variant="white"
+                        onClick={handleExport}
+                        disabled={exporting || loading}
+                        className="flex items-center space-x-2 border border-gray-200"
                     >
-                        <Trash2 size={16} />
-                        <span>Delete Selected ({selectedLogs.length})</span>
+                        <FileDown size={16} className={exporting ? 'animate-bounce' : ''} />
+                        <span>{exporting ? 'Exporting...' : 'Export Excel'}</span>
                     </Button>
-                )}
+                    {isSuperAdmin && selectedLogs.length > 0 && (
+                        <Button
+                            variant="red"
+                            onClick={handleBulkDelete}
+                            className="flex items-center space-x-2"
+                        >
+                            <Trash2 size={16} />
+                            <span>Delete Selected ({selectedLogs.length})</span>
+                        </Button>
+                    )}
+                </div>
             </div>
 
             {/* Stats Summary Bar */}

@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Search, ChevronDown, X } from 'lucide-react';
 
-const SearchableSelect = ({ options, value, onChange, placeholder = "Select option...", label }) => {
+const SearchableSelect = ({ options, value, onChange, placeholder = "Select option...", label, className }) => {
     const [isOpen, setIsOpen] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
     const wrapperRef = useRef(null);
@@ -35,37 +35,37 @@ const SearchableSelect = ({ options, value, onChange, placeholder = "Select opti
     };
 
     return (
-        <div className="relative" ref={wrapperRef}>
-            {label && <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>}
+        <div className={`relative ${className}`} ref={wrapperRef}>
+            {label && <label className="block text-[11px] font-black text-gray-400 uppercase tracking-wider mb-1.5 ml-1">{label}</label>}
             <div
-                className={`relative w-full cursor-default rounded-md bg-white py-2 pl-3 pr-10 text-left border shadow-sm focus:outline-none focus:ring-1 focus:ring-sky-500 focus:border-sky-500 sm:text-sm ${isOpen ? 'border-sky-500 ring-1 ring-sky-500' : 'border-gray-300'
+                className={`relative w-full cursor-pointer bg-gray-50 border-gray-100 rounded-xl py-2.5 pl-4 pr-10 text-left border transition-all duration-200 focus:outline-none ${isOpen ? 'border-indigo-500 ring-2 ring-indigo-500/20 bg-white shadow-sm' : 'hover:border-gray-200 shadow-none'
                     }`}
                 onClick={() => setIsOpen(!isOpen)}
             >
-                <span className={`block truncate ${!selectedOption ? 'text-gray-400' : 'text-gray-900'}`}>
+                <span className={`block truncate text-sm font-semibold ${!selectedOption ? 'text-gray-400' : 'text-gray-700'}`}>
                     {selectedOption ? selectedOption.label : placeholder}
                 </span>
-                <span className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2">
-                    <ChevronDown className="h-4 w-4 text-gray-400" aria-hidden="true" />
+                <span className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3">
+                    <ChevronDown className={`h-4 w-4 text-gray-400 transition-transform duration-200 ${isOpen ? 'rotate-180 text-indigo-500' : ''}`} aria-hidden="true" />
                 </span>
                 {value && (
                     <button
                         onClick={clearSelection}
-                        className="absolute inset-y-0 right-7 flex items-center"
+                        className="absolute inset-y-0 right-8 flex items-center group"
                     >
-                        <X className="h-4 w-4 text-gray-400 hover:text-gray-600" />
+                        <X className="h-4 w-4 text-gray-400 group-hover:text-red-500 transition-colors" />
                     </button>
                 )}
             </div>
 
             {isOpen && (
-                <div className="absolute z-10 mt-1 max-h-60 w-full overflow-auto rounded-md bg-white py-1 text-base shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none sm:text-sm">
-                    <div className="sticky top-0 z-10 bg-white px-2 py-1">
-                        <div className="relative">
-                            <Search className="absolute left-2 top-2.5 h-4 w-4 text-gray-400" />
+                <div className="absolute z-20 mt-2 max-h-60 w-full overflow-hidden rounded-xl bg-white text-base shadow-xl ring-1 ring-black ring-opacity-5 focus:outline-none sm:text-sm animate-in fade-in zoom-in duration-200">
+                    <div className="sticky top-0 z-10 bg-gray-50/80 backdrop-blur-md px-3 py-2 border-b border-gray-100">
+                        <div className="relative group">
+                            <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-gray-400 group-focus-within:text-indigo-500 transition-colors" />
                             <input
                                 type="text"
-                                className="w-full rounded-md border-gray-300 pl-8 pr-3 py-2 text-sm focus:border-sky-500 focus:ring-sky-500 border"
+                                className="w-full rounded-lg border-gray-200 bg-white pl-8 pr-3 py-1.5 text-xs font-medium focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 border transition-all placeholder:text-gray-400"
                                 placeholder="Search..."
                                 value={searchTerm}
                                 onChange={(e) => setSearchTerm(e.target.value)}
@@ -74,28 +74,34 @@ const SearchableSelect = ({ options, value, onChange, placeholder = "Select opti
                             />
                         </div>
                     </div>
-                    <div className="mt-1">
+                    <div className="overflow-auto max-h-[220px] custom-scrollbar">
                         <div
-                            className="relative cursor-default select-none py-2 pl-3 pr-9 text-gray-900 hover:bg-sky-50 hover:text-sky-900"
+                            className="relative cursor-pointer select-none py-2.5 pl-4 pr-9 text-gray-500 hover:bg-indigo-50 hover:text-indigo-700 text-xs font-bold uppercase tracking-tight transition-colors border-b border-gray-50"
                             onClick={() => handleSelect({ value: '', label: '' })}
                         >
-                            <span className="block truncate font-normal text-gray-500">None / All</span>
+                            <span className="block truncate">None / All</span>
                         </div>
                         {filteredOptions.length === 0 ? (
-                            <div className="relative cursor-default select-none py-2 px-3 text-gray-500 italic">
-                                No results found
+                            <div className="relative cursor-default select-none py-8 px-4 text-gray-400 italic text-center text-xs">
+                                <div className="mb-2 text-2xl font-normal">🔍</div>
+                                No branches found matching "{searchTerm}"
                             </div>
                         ) : (
                             filteredOptions.map((option) => (
                                 <div
                                     key={option.value}
-                                    className={`relative cursor-default select-none py-2 pl-3 pr-9 transition-colors ${value === option.value ? 'bg-sky-600 text-white' : 'text-gray-900 hover:bg-sky-50 hover:text-sky-900'
+                                    className={`relative cursor-pointer select-none py-2.5 pl-4 pr-9 transition-all ${value === option.value ? 'bg-indigo-600 text-white' : 'text-gray-700 hover:bg-indigo-50 hover:text-indigo-700'
                                         }`}
                                     onClick={() => handleSelect(option)}
                                 >
-                                    <span className={`block truncate ${value === option.value ? 'font-semibold' : 'font-normal'}`}>
+                                    <span className={`block truncate ${value === option.value ? 'font-bold' : 'font-semibold text-sm'}`}>
                                         {option.label}
                                     </span>
+                                    {value === option.value && (
+                                        <span className="absolute inset-y-0 right-0 flex items-center pr-3">
+                                            <div className="h-1.5 w-1.5 rounded-full bg-white shadow-sm shadow-indigo-200"></div>
+                                        </span>
+                                    )}
                                 </div>
                             ))
                         )}
@@ -107,3 +113,4 @@ const SearchableSelect = ({ options, value, onChange, placeholder = "Select opti
 };
 
 export default SearchableSelect;
+

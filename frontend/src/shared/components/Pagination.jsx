@@ -6,7 +6,7 @@ const Pagination = ({ currentPage, totalPages, onPageChange }) => {
 
     const getPageNumbers = () => {
         const pages = [];
-        const maxVisiblePages = 5;
+        const maxVisiblePages = 10;
         let start = Math.max(1, currentPage - Math.floor(maxVisiblePages / 2));
         let end = Math.min(totalPages, start + maxVisiblePages - 1);
 

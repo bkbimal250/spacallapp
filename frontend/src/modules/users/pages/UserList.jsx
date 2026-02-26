@@ -87,7 +87,7 @@ const UserList = () => {
     };
 
     const columns = [
-        { header: 'Name', accessor: (row) => `${row.first_name || ''} ${row.last_name || ''}` },
+        { header: 'Name', accessor: 'full_name' },
         { header: 'Email', accessor: 'email' },
         {
             header: 'Role',

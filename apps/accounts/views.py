@@ -70,6 +70,7 @@ class VerifyOTPView(APIView):
         return Response({
             "refresh": str(refresh),
             "access": str(refresh.access_token),
+            "user": UserSerializer(user).data
         })
 
 
@@ -94,8 +95,7 @@ class UserViewSet(viewsets.ModelViewSet):
         if search:
             queryset = queryset.filter(
                 models.Q(email__icontains=search) | 
-                models.Q(first_name__icontains=search) |
-                models.Q(last_name__icontains=search)
+                models.Q(full_name__icontains=search)
             )
         
         if role:

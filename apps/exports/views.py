@@ -1,6 +1,12 @@
 from rest_framework import viewsets, permissions, views, response, status
 from .models import ExportJob
 from .serializers import ExportJobSerializer
+from apps.calllogs.models import CallLog
+from django.http import HttpResponse
+from django.utils import timezone
+import openpyxl
+from openpyxl.styles import Font
+import io
 
 class ExportViewSet(viewsets.ModelViewSet):
     queryset = ExportJob.objects.all().order_by('-created_at')
@@ -11,20 +17,141 @@ class GenerateExportView(views.APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):
-        export_type = request.data.get('type')
-        # Logic to trigger export task (Celery)
-        # For now, just create a record
+        export_type = request.data.get('type', 'call_logs')
+        
+        # Create the job record
+        # Store filters in error_message or a JSON field (simplified for now by just using query parameters in re-generation)
         job = ExportJob.objects.create(
             user=request.user,
             export_type=export_type,
-            status='pending',
-            # file_name='pending.csv'
+            status='processing',
+            # We use error_message as a temporary storage for filters as JSON string to avoid migration
+            error_message=str({
+                'branch': request.data.get('branch'),
+                'start_date': request.data.get('start_date'),
+                'end_date': request.data.get('end_date'),
+            })
         )
-        return response.Response(ExportJobSerializer(job).data, status=status.HTTP_201_CREATED)
+        
+        try:
+            if export_type == 'call_logs':
+                # Generate Excel synchronously for now as requested
+                queryset = CallLog.objects.all().select_related('branch', 'device').order_by('-call_time')
+                
+                # Apply filters
+                branch = request.data.get('branch')
+                start_date = request.data.get('start_date')
+                end_date = request.data.get('end_date')
+                
+                if branch:
+                    queryset = queryset.filter(branch_id=branch)
+                if start_date:
+                    queryset = queryset.filter(call_time__date__gte=start_date)
+                if end_date:
+                    queryset = queryset.filter(call_time__date__lte=end_date)
+                
+                workbook = openpyxl.Workbook()
+                worksheet = workbook.active
+                worksheet.title = "Call Logs"
+                
+                headers = ['Type', 'Number', 'Duration (s)', 'SIM Slot', 'Branch', 'Device ID', 'Time']
+                header_font = Font(bold=True)
+                for col_num, header_title in enumerate(headers, 1):
+                    cell = worksheet.cell(row=1, column=col_num)
+                    cell.value = header_title
+                    cell.font = header_font
+                
+                for row_num, log in enumerate(queryset, 2):
+                    worksheet.cell(row=row_num, column=1).value = log.call_type
+                    worksheet.cell(row=row_num, column=2).value = log.phone_number
+                    worksheet.cell(row=row_num, column=3).value = log.duration
+                    worksheet.cell(row=row_num, column=4).value = log.sim_slot
+                    worksheet.cell(row=row_num, column=5).value = log.branch.spa_name if log.branch else "N/A"
+                    worksheet.cell(row=row_num, column=6).value = log.device.device_id if log.device else "N/A"
+                    if log.call_time:
+                        worksheet.cell(row=row_num, column=7).value = log.call_time.strftime("%Y-%m-%d %H:%M:%S")
+                
+                # We could save this to a file or storage, but for "direct" we can store in memory 
+                # or just mark as completed. Since we need a later download, let's actually 
+                # for now just mark all existing and new as completed and generate on the fly 
+                # in the download view to avoid complex storage setup if not needed.
+                
+                job.status = 'completed'
+                job.file_name = f"call_logs_{timezone.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+                job.save()
+                
+                return response.Response(ExportJobSerializer(job).data, status=status.HTTP_201_CREATED)
+            else:
+                job.status = 'failed'
+                job.error_message = f"Unsupported export type: {export_type}"
+                job.save()
+                return response.Response({"error": "Unsupported type"}, status=status.HTTP_400_BAD_REQUEST)
+                
+        except Exception as e:
+            job.status = 'failed'
+            job.error_message = str(e)
+            job.save()
+            return response.Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class DownloadExportView(views.APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request, pk):
-        # Logic to serve the file
-        return response.Response({"message": "Download logic here"}, status=status.HTTP_200_OK)
+        try:
+            job = ExportJob.objects.get(pk=pk)
+            if job.status != 'completed':
+                return response.Response({"error": "Export not ready"}, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Re-generate the file for download (simplified version to avoid storage issues)
+            queryset = CallLog.objects.all().select_related('branch', 'device').order_by('-call_time')
+            
+            # Re-apply filters from stored data
+            try:
+                import ast
+                filters = ast.literal_eval(job.error_message) if job.error_message else {}
+                branch = filters.get('branch')
+                start_date = filters.get('start_date')
+                end_date = filters.get('end_date')
+                
+                if branch:
+                    queryset = queryset.filter(branch_id=branch)
+                if start_date:
+                    queryset = queryset.filter(call_time__date__gte=start_date)
+                if end_date:
+                    queryset = queryset.filter(call_time__date__lte=end_date)
+            except:
+                pass # Fallback to no filters if parsing fails
+            
+            workbook = openpyxl.Workbook()
+            worksheet = workbook.active
+            worksheet.title = "Call Logs"
+            
+            headers = ['Type', 'Number', 'Duration (s)', 'SIM Slot', 'Branch', 'Device ID', 'Time']
+            for col_num, header_title in enumerate(headers, 1):
+                worksheet.cell(row=1, column=col_num).value = header_title
+            
+            for row_num, log in enumerate(queryset, 2):
+                worksheet.cell(row=row_num, column=1).value = log.call_type
+                worksheet.cell(row=row_num, column=2).value = log.phone_number
+                worksheet.cell(row=row_num, column=3).value = log.duration
+                worksheet.cell(row=row_num, column=4).value = log.sim_slot
+                worksheet.cell(row=row_num, column=5).value = log.branch.spa_name if log.branch else "N/A"
+                worksheet.cell(row=row_num, column=6).value = log.device.device_id if log.device else "N/A"
+                if log.call_time:
+                    worksheet.cell(row=row_num, column=7).value = log.call_time.strftime("%Y-%m-%d %H:%M:%S")
+
+            output = io.BytesIO()
+            workbook.save(output)
+            output.seek(0)
+            
+            file_response = HttpResponse(
+                output.read(),
+                content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            )
+            file_response['Content-Disposition'] = f'attachment; filename="{job.file_name or "export.xlsx"}"'
+            return file_response
+            
+        except ExportJob.DoesNotExist:
+            return response.Response({"error": "Export job not found"}, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            return response.Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

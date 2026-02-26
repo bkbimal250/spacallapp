@@ -3,6 +3,7 @@ import Input from '../../../shared/components/Input';
 import Button from '../../../shared/components/Button';
 import Modal from '../../../shared/components/Modal';
 import { branchesAPI } from '../../branches/api';
+import SearchableSelect from '../../../shared/components/SearchableSelect';
 
 const DeviceForm = ({ isOpen, onClose, onSubmit, initialData }) => {
     const [branches, setBranches] = useState([]);
@@ -92,20 +93,22 @@ const DeviceForm = ({ isOpen, onClose, onSubmit, initialData }) => {
                 />
 
                 <div className="grid grid-cols-2 gap-4">
-                    <div>
-                        <label className="block text-[11px] font-black text-gray-400 uppercase tracking-wider mb-1.5 ml-1">Assigned Branch</label>
-                        <select
-                            name="branch"
+
+
+                    <div className="col-span-1">
+                        <SearchableSelect
+                            label="Assigned Branch"
+                            options={branches.map(b => ({
+                                value: b.id,
+                                label: `${b.spa_name} (${b.code})`
+                            }))}
                             value={formData.branch}
-                            onChange={handleChange}
-                            className="w-full bg-gray-50 border-gray-100 rounded-xl focus:border-indigo-500 focus:ring-indigo-500 px-4 py-2.5 border text-sm font-semibold transition-all"
-                        >
-                            <option value="">Select a branch</option>
-                            {branches.map(b => (
-                                <option key={b.id} value={b.id}>{b.spa_name} ({b.code})</option>
-                            ))}
-                        </select>
+                            onChange={(value) => setFormData(prev => ({ ...prev, branch: value }))}
+                            placeholder="Search & select branch..."
+                        />
                     </div>
+
+
                     <div className="flex flex-col justify-end">
                         <div className="flex space-x-4 pb-2 ml-1">
                             <div className="flex items-center">

@@ -124,7 +124,7 @@ const DeviceList = () => {
             header: 'Status',
             render: (row) => <DeviceStatusBadge isActive={row.is_active} isBlocked={row.is_blocked} isRegistered={row.is_registered} />
         },
-        { header: 'Last Sync', render: (row) => formatDate(row.last_sync) },
+        { header: 'Last Sync', render: (row) => formatDate(row.last_sync, 'MMM dd, HH:mm') },
 
         {
             header: 'Actions',

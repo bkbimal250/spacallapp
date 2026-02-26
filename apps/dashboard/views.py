@@ -13,10 +13,11 @@ class DashboardStatsView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
+        from apps.monitoring.models import DeviceHealth
+        
         total_calls = CallLog.objects.count()
-        # Calculate active devices (online within last 5 minutes)
-        threshold = timezone.now() - timedelta(minutes=5)
-        active_devices = Device.objects.filter(last_heartbeat__gte=threshold).count()
+        # Calculate active devices based on health status flag
+        active_devices = DeviceHealth.objects.filter(is_online=True).count()
         missed_calls = CallLog.objects.filter(call_type='missed').count()
         
         # Calculate avg duration

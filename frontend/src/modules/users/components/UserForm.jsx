@@ -39,7 +39,11 @@ const UserForm = ({ isOpen, onClose, onSubmit, initialData }) => {
 
     const handleSubmit = (e) => {
         e.preventDefault();
-        onSubmit(formData);
+        const data = { ...formData };
+        if (initialData && !data.password) {
+            delete data.password;
+        }
+        onSubmit(data);
     };
 
     return (

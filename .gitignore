@@ -74,3 +74,13 @@ connect_api_android.md
 connect_api_android.md/
 frontend_structure.md/
 frontend_structure.md
+# Vite / Build tool artifacts
+.vite/
+.eslintcache
+android_web_connect.md/
+android_web_connect.md
+connect_api_android.md
+connect_api_android.md/
+android_web_connect.md/
+api_end_points.md/
+api_end_points.md

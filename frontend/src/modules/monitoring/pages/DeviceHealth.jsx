@@ -12,6 +12,7 @@ const DeviceHealth = () => {
     const [stats, setStats] = useState({
         total_devices: 0,
         active_devices: 0,
+        online_devices: 0,
         offline_alerts: 0,
         sim_change_alerts: 0,
     });
@@ -96,7 +97,7 @@ const DeviceHealth = () => {
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                 <StatsCard title="Total Devices" value={stats.total_devices} />
-                <StatsCard title="Online Devices" value={stats.active_devices} />
+                <StatsCard title="Online Devices" value={stats.online_devices !== undefined ? stats.online_devices : stats.active_devices} />
                 <StatsCard title="Offline Alerts" value={stats.offline_alerts} isNegative />
                 <StatsCard title="SIM Changes" value={stats.sim_change_alerts} isNegative />
             </div>
