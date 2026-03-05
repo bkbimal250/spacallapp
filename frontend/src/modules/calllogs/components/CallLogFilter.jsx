@@ -1,18 +1,25 @@
 import React, { useEffect, useState } from 'react';
+import { useSelector } from 'react-redux';
 import Input from '../../../shared/components/Input';
 import Button from '../../../shared/components/Button';
 import SearchableSelect from '../../../shared/components/SearchableSelect';
 import { branchesAPI } from '../../branches/api';
 
-const CallLogFilter = ({ onFilter }) => {
+const CallLogFilter = ({ onFilter, initialBranch = '' }) => {
+    const { user } = useSelector(state => state.auth);
     const [search, setSearch] = useState('');
     const [dateRange, setDateRange] = useState({ startDate: '', endDate: '' });
     const [branches, setBranches] = useState([]);
-    const [selectedBranch, setSelectedBranch] = useState('');
+    const [selectedBranch, setSelectedBranch] = useState(initialBranch);
     const [selectedCallType, setSelectedCallType] = useState('');
+
+    const isRestrictedManager = user?.role === 'branch_manager' || user?.role === 'regional_manager';
 
     useEffect(() => {
         const fetchBranches = async () => {
+            // No need to fetch all branches for restricted managers
+            if (isRestrictedManager) return;
+
             try {
                 const response = await branchesAPI.getBranches();
                 const branchData = response.data.results || response.data;
@@ -25,14 +32,14 @@ const CallLogFilter = ({ onFilter }) => {
             }
         };
         fetchBranches();
-    }, []);
+    }, [isRestrictedManager]);
 
     const handleFilter = () => {
         const filters = {};
         if (search) filters.search = search;
         if (dateRange.startDate) filters.start_date = dateRange.startDate;
         if (dateRange.endDate) filters.end_date = dateRange.endDate;
-        if (selectedBranch) filters.branch = selectedBranch;
+        if (selectedBranch && !isRestrictedManager) filters.branch = selectedBranch;
         if (selectedCallType) filters.call_type = selectedCallType;
         onFilter(filters);
     };
@@ -56,15 +63,17 @@ const CallLogFilter = ({ onFilter }) => {
                 />
             </div>
 
-            <div>
-                <SearchableSelect
-                    label="Branch"
-                    placeholder="All Branches"
-                    options={branches}
-                    value={selectedBranch}
-                    onChange={setSelectedBranch}
-                />
-            </div>
+            {!isRestrictedManager && (
+                <div>
+                    <SearchableSelect
+                        label="Branch"
+                        placeholder="All Branches"
+                        options={branches}
+                        value={selectedBranch}
+                        onChange={setSelectedBranch}
+                    />
+                </div>
+            )}
 
             <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Call Type</label>
@@ -101,7 +110,7 @@ const CallLogFilter = ({ onFilter }) => {
                 />
             </div>
 
-            <div className="lg:col-span-1 border-t md:border-t-0 pt-4 md:pt-0">
+            <div className={`border-t md:border-t-0 pt-4 md:pt-0 ${isRestrictedManager ? 'lg:col-span-1' : 'lg:col-span-1'}`}>
                 <div className="flex justify-end space-x-2">
                     <Button variant="secondary" onClick={handleClear}>Clear</Button>
                     <Button onClick={handleFilter}>Apply Filters</Button>
@@ -112,3 +121,4 @@ const CallLogFilter = ({ onFilter }) => {
 };
 
 export default CallLogFilter;
+

@@ -21,7 +21,7 @@ const AnalyticsDashboard = () => {
         avg_duration: 0,
         performance_score: 0
     });
-    const [timeFilter, setTimeFilter] = useState('last_7_days');
+    const [timeFilter, setTimeFilter] = useState('today');
     const [customDates, setCustomDates] = useState({ startDate: '', endDate: '' });
     const [selectedBranch, setSelectedBranch] = useState(branchFromUrl || '');
     const [branches, setBranches] = useState([]);
@@ -128,6 +128,7 @@ const AnalyticsDashboard = () => {
                             className="border-gray-300 rounded-md shadow-sm focus:border-sky-500 focus:ring-sky-500 px-3 py-2 border text-sm bg-white min-w-[140px]"
                         >
                             <option value="today">Today</option>
+                            <option value="yesterday">Yesterday</option>
                             <option value="last_7_days">Last 7 Days</option>
                             <option value="last_30_days">Last 30 Days</option>
                             <option value="this_month">This Month</option>

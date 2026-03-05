@@ -24,6 +24,14 @@ class CallLog(BaseModel, TimeStampedModel):
         related_name="call_logs",
     )
 
+    contact = models.ForeignKey(
+        "contacts.Contact",
+        on_delete=models.CASCADE,
+        related_name="call_logs",
+        null=True,
+        blank=True,
+    )
+
     phone_number = models.CharField(max_length=20)
 
     call_type = models.CharField(

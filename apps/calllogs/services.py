@@ -2,6 +2,7 @@ from core.utils import generate_hash
 from .models import CallLog
 from apps.branches.models import Branch
 from apps.devices.models import Device
+from apps.contacts.models import Contact
 
 
 class CallLogService:
@@ -11,6 +12,10 @@ class CallLogService:
 
         branch = Branch.objects.get(code=data["branch_code"])
         device = Device.objects.get(device_id=data["device_id"])
+
+        phone_numbers = {item["phone_number"] for item in data["call_logs"]}
+        contacts = Contact.objects.filter(phone_number__in=phone_numbers)
+        contact_map = {c.phone_number: c for c in contacts}
 
         objects = []
 
@@ -26,6 +31,7 @@ class CallLogService:
                 CallLog(
                     branch=branch,
                     device=device,
+                    contact=contact_map.get(item["phone_number"]),
                     phone_number=item["phone_number"],
                     call_type=item["call_type"],
                     duration=item["duration"],

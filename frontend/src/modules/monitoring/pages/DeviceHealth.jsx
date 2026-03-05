@@ -20,7 +20,7 @@ const DeviceHealth = () => {
     const [loading, setLoading] = useState(true);
     const [page, setPage] = useState(1);
     const [totalCount, setTotalCount] = useState(0);
-    const pageSize = 20;
+    const pageSize = 50;
 
     const fetchData = async () => {
         setLoading(true);

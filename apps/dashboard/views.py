@@ -13,15 +13,40 @@ class DashboardStatsView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
+        user = request.user
+        # Enforce branch restriction for branch manager/regional manager
+        assigned_branch_ids = []
+        if user.is_authenticated:
+            if user.role in ['super_admin', 'admin', 'viewer']:
+                if user.role == 'viewer' and user.branch:
+                    assigned_branch_ids = [str(user.branch.id)]
+                else:
+                    assigned_branch_ids = []
+            elif user.role == 'branch_manager' and user.branch:
+                assigned_branch_ids = [str(user.branch.id)]
+            elif user.role == 'regional_manager':
+                assigned_branch_ids = [str(b.id) for b in user.assigned_branches.all()]
+                if not assigned_branch_ids and user.branch:
+                    assigned_branch_ids = [str(user.branch.id)]
+        
         from apps.monitoring.models import DeviceHealth
         
-        total_calls = CallLog.objects.count()
+        calls_qs = CallLog.objects.all()
+        health_qs = DeviceHealth.objects.all()
+        branch_qs = Branch.objects.all()
+        
+        if assigned_branch_ids:
+            calls_qs = calls_qs.filter(branch_id__in=assigned_branch_ids)
+            health_qs = health_qs.filter(device__branch_id__in=assigned_branch_ids)
+            branch_qs = branch_qs.filter(id__in=assigned_branch_ids)
+
+        total_calls = calls_qs.count()
         # Calculate active devices based on health status flag
-        active_devices = DeviceHealth.objects.filter(is_online=True).count()
-        missed_calls = CallLog.objects.filter(call_type='missed').count()
+        active_devices = health_qs.filter(is_online=True).count()
+        missed_calls = calls_qs.filter(call_type='missed').count()
         
         # Calculate avg duration
-        avg_dur = CallLog.objects.aggregate(Avg('duration'))['duration__avg']
+        avg_dur = calls_qs.aggregate(Avg('duration'))['duration__avg']
         if avg_dur:
             minutes = int(avg_dur // 60)
             seconds = int(avg_dur % 60)
@@ -31,7 +56,7 @@ class DashboardStatsView(APIView):
 
         # Aggregate 7 days chart trends
         last_7_days = timezone.now() - timedelta(days=7)
-        daily_trends = CallLog.objects.filter(call_time__gte=last_7_days) \
+        daily_trends = calls_qs.filter(call_time__gte=last_7_days) \
             .annotate(date=TruncDate('call_time')) \
             .values('date') \
             .annotate(calls=Count('id')) \
@@ -45,13 +70,13 @@ class DashboardStatsView(APIView):
             })
             
         # Aggregate Branch Performance records
-        branches = Branch.objects.annotate(
+        performance_branches = branch_qs.annotate(
             total_calls=Count('call_logs'),
             completed_calls=Count('call_logs', filter=Q(call_logs__call_type='incoming') | Q(call_logs__call_type='outgoing'))
         )[:10]  # Just top 10 for dashboard preview
         
         branch_data = []
-        for b in branches:
+        for b in performance_branches:
             conv_rate = round((b.completed_calls / b.total_calls * 100) if b.total_calls > 0 else 0)
             branch_data.append({
                 "name": b.spa_name,
@@ -69,3 +94,4 @@ class DashboardStatsView(APIView):
             "branch_performance": branch_data
         }
         return Response(data)
+

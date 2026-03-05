@@ -50,8 +50,20 @@ class DeviceEventViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
+        user = self.request.user
         queryset = DeviceEvent.objects.all().order_by('-created_at')
         
+        # Restriction for branch/regional managers to their assigned branch(es)
+        if user.is_authenticated:
+            if user.role == 'branch_manager' and user.branch:
+                queryset = queryset.filter(device__branch=user.branch)
+            elif user.role == 'regional_manager':
+                assigned_branches = user.assigned_branches.all()
+                if assigned_branches.exists():
+                    queryset = queryset.filter(device__branch__in=assigned_branches)
+                elif user.branch:
+                    queryset = queryset.filter(device__branch=user.branch)
+
         event_type = self.request.query_params.get('event_type', None)
         branch = self.request.query_params.get('branch', None)
         resolved = self.request.query_params.get('resolved', None)
@@ -72,17 +84,43 @@ class DeviceStatusResultView(views.APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
-        total_devices = Device.objects.count()
+        user = request.user
+        branch_id = request.query_params.get('branch')
+        
+        # Enforce branch restriction for branch manager/regional manager
+        assigned_branch_ids = []
+        if user.is_authenticated:
+            if user.role == 'branch_manager' and user.branch:
+                assigned_branch_ids = [str(user.branch.id)]
+            elif user.role == 'regional_manager':
+                assigned_branch_ids = [str(b.id) for b in user.assigned_branches.all()]
+                if not assigned_branch_ids and user.branch:
+                    assigned_branch_ids = [str(user.branch.id)]
+
+        devices_qs = Device.objects.all()
+        health_qs = DeviceHealth.objects.all()
+        events_qs = DeviceEvent.objects.all()
+        
+        if assigned_branch_ids:
+            devices_qs = devices_qs.filter(branch_id__in=assigned_branch_ids)
+            health_qs = health_qs.filter(device__branch_id__in=assigned_branch_ids)
+            events_qs = events_qs.filter(device__branch_id__in=assigned_branch_ids)
+        elif branch_id:
+            devices_qs = devices_qs.filter(branch_id=branch_id)
+            health_qs = health_qs.filter(device__branch_id=branch_id)
+            events_qs = events_qs.filter(device__branch_id=branch_id)
+
+        total_devices = devices_qs.count()
         threshold = timezone.now() - timedelta(minutes=5)
         
         # Count based on recorded heartbeat time
-        active_devices = Device.objects.filter(last_heartbeat__gte=threshold).count()
+        active_devices = devices_qs.filter(last_heartbeat__gte=threshold).count()
         
         # Count based on health status flag
-        online_devices = DeviceHealth.objects.filter(is_online=True).count()
+        online_devices = health_qs.filter(is_online=True).count()
         
-        offline_alerts = DeviceEvent.objects.filter(event_type='offline', resolved=False).count()
-        sim_change_alerts = DeviceEvent.objects.filter(event_type='sim_change', resolved=False).count()
+        offline_alerts = events_qs.filter(event_type='offline', resolved=False).count()
+        sim_change_alerts = events_qs.filter(event_type='sim_change', resolved=False).count()
         
         return response.Response({
             "total_devices": total_devices,

@@ -12,9 +12,27 @@ class DeviceViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        queryset = Device.objects.all().order_by('-created_at')
+        user = self.request.user
+        queryset = Device.objects.select_related('branch').all().order_by('-created_at')
+
+        # Restriction for branch/regional managers to their assigned branch(es)
+        if user.is_authenticated:
+            if user.role in ['super_admin', 'admin', 'viewer']:
+                if user.role == 'viewer' and user.branch:
+                    queryset = queryset.filter(branch=user.branch)
+                else:
+                    pass # See all
+            elif user.role == 'branch_manager' and user.branch:
+                queryset = queryset.filter(branch=user.branch)
+            elif user.role == 'regional_manager':
+                assigned_branches = user.assigned_branches.all()
+                if assigned_branches.exists():
+                    queryset = queryset.filter(branch__in=assigned_branches)
+                elif user.branch:
+                    queryset = queryset.filter(branch=user.branch)
         
         search = self.request.query_params.get('search', None)
+
         branch = self.request.query_params.get('branch', None)
         is_registered = self.request.query_params.get('is_registered', None)
 

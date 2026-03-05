@@ -30,6 +30,8 @@ urlpatterns = [
     path("api/v1/exports/", include("apps.exports.urls")),
     path("api/v1/monitoring/", include("apps.monitoring.urls")),
     path("api/v1/dashboard/", include("apps.dashboard.urls")),
+    path("api/v1/contacts/", include("apps.contacts.urls")),
+    path("api/v1/leadmanagement/", include("apps.leadmanagement.urls")),
 ]
 
 if settings.DEBUG:

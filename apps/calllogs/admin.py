@@ -3,9 +3,9 @@ from .models import CallLog
 
 @admin.register(CallLog)
 class CallLogAdmin(admin.ModelAdmin):
-    list_display = ("call_time", "phone_number", "call_type", "duration", "branch", "device")
+    list_display = ("call_time", "contact", "phone_number", "call_type", "duration", "branch", "device")
     list_filter = ("call_type", "branch", "call_time")
-    search_fields = ("phone_number", "branch__name", "device__device_id")
+    search_fields = ("phone_number", "contact__name", "branch__name", "device__device_id")
     date_hierarchy = "call_time"
     readonly_fields = [field.name for field in CallLog._meta.fields]
     

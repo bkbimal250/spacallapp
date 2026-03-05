@@ -12,10 +12,14 @@ const DashboardHome = lazy(() => import('../modules/dashboard/pages/DashboardHom
 const UserList = lazy(() => import('../modules/users/pages/UserList'));
 const BranchList = lazy(() => import('../modules/branches/pages/BranchList'));
 const DeviceList = lazy(() => import('../modules/devices/pages/DeviceList'));
+const CallLogSummary = lazy(() => import('../modules/calllogs/pages/CallLogSummary'));
 const CallLogList = lazy(() => import('../modules/calllogs/pages/CallLogList'));
 const AnalyticsDashboard = lazy(() => import('../modules/analytics/pages/AnalyticsDashboard'));
 const ExportHistory = lazy(() => import('../modules/exports/pages/ExportHistory'));
 const DeviceHealth = lazy(() => import('../modules/monitoring/pages/DeviceHealth'));
+const ContactList = lazy(() => import('../modules/contacts/pages/ContactList'));
+const LeadManagementSummary = lazy(() => import('../modules/leadManagement/pages/LeadManagementSummary'));
+const LeadManagementList = lazy(() => import('../modules/leadManagement/pages/LeadManagementList'));
 
 
 
@@ -36,10 +40,14 @@ export const AppRoutes = () => {
                         <Route path={ROUTES.DASHBOARD} element={<DashboardHome />} />
                         <Route path={ROUTES.BRANCHES} element={<BranchList />} />
                         <Route path={ROUTES.DEVICES} element={<DeviceList />} />
-                        <Route path={ROUTES.CALLLOGS} element={<CallLogList />} />
+                        <Route path={ROUTES.CALLLOGS} element={<CallLogSummary />} />
+                        <Route path={ROUTES.CALLLOG_DETAILS} element={<CallLogList />} />
                         <Route path={ROUTES.ANALYTICS} element={<AnalyticsDashboard />} />
                         <Route path={ROUTES.EXPORTS} element={<ExportHistory />} />
                         <Route path={ROUTES.MONITORING} element={<DeviceHealth />} />
+                        <Route path={ROUTES.CONTACTS} element={<ContactList />} />
+                        <Route path={ROUTES.LEAD_MANAGEMENT} element={<LeadManagementSummary />} />
+                        <Route path={ROUTES.LEAD_MANAGEMENT_LIST} element={<LeadManagementList />} />
 
                         {/* Super Admin Only Routes */}
                         <Route element={<RoleRoute allowedRoles={['super_admin']} />}>

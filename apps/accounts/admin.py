@@ -6,13 +6,13 @@ from .models.otp import EmailOTP
 @admin.register(User)
 class UserAdmin(BaseUserAdmin):
     list_display = ("email", "full_name", "role", "branch", "is_active", "created_at")
-    list_filter = ("role", "is_active", "branch")
-    search_fields = ("email", "full_name", "branch__name")
+    list_filter = ("role", "is_active", "branch", "assigned_branches")
+    search_fields = ("email", "full_name", "branch__spa_name")
     ordering = ("-created_at",)
     
     fieldsets = (
         (None, {"fields": ("email", "password")}),
-        ("Personal Info", {"fields": ("full_name", "branch")}),
+        ("Personal Info", {"fields": ("full_name", "branch", "assigned_branches")}),
         ("Permissions", {"fields": ("role", "is_active", "is_staff", "is_superuser")}),
         ("Important dates", {"fields": ("last_login", "created_at")}),
     )
@@ -20,7 +20,7 @@ class UserAdmin(BaseUserAdmin):
     add_fieldsets = (
         (None, {
             "classes": ("wide",),
-            "fields": ("email", "full_name", "password", "role", "branch"),
+            "fields": ("email", "full_name", "password", "role", "branch", "assigned_branches"),
         }),
     )
 

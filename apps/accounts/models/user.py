@@ -12,6 +12,7 @@ class User(AbstractBaseUser, PermissionsMixin, TimeStampedModel):
 
     ROLE_CHOICES = (
         ("super_admin", "Super Admin"),
+        ("admin", "Admin"),
         ("regional_manager", "Regional Manager"),
         ("branch_manager", "Branch Manager"),
         ("viewer", "Viewer"),
@@ -29,7 +30,13 @@ class User(AbstractBaseUser, PermissionsMixin, TimeStampedModel):
         null=True,
         blank=True,
         on_delete=models.SET_NULL,
-        related_name="users",
+        related_name="branch_users", # Changed from users to avoid conflict
+    )
+
+    assigned_branches = models.ManyToManyField(
+        "branches.Branch",
+        blank=True,
+        related_name="assigned_managers",
     )
 
     is_active = models.BooleanField(default=True)

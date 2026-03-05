@@ -17,7 +17,7 @@ const DeviceList = () => {
     const [filters, setFilters] = useState({});
     const [page, setPage] = useState(1);
     const [totalCount, setTotalCount] = useState(0);
-    const pageSize = 20;
+    const pageSize = 50;
 
     const fetchDevices = async (currentFilters = {}, currentPage = 1) => {
         setLoading(true);

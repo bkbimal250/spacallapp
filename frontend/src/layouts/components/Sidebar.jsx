@@ -13,7 +13,9 @@ import {
     BarChart3,
     Download,
     Users,
-    LogOut
+    LogOut,
+    Contact,
+    Briefcase
 } from 'lucide-react';
 
 const Sidebar = () => {
@@ -36,6 +38,8 @@ const Sidebar = () => {
         { to: ROUTES.MONITORING, label: 'Monitoring', icon: Activity },
         { to: ROUTES.ANALYTICS, label: 'Analytics', icon: BarChart3 },
         { to: ROUTES.EXPORTS, label: 'Exports', icon: Download },
+        { to: ROUTES.CONTACTS, label: 'Contacts', icon: Contact },
+        { to: ROUTES.LEAD_MANAGEMENT, label: 'Lead Management', icon: Briefcase },
     ];
 
     return (
@@ -56,8 +60,8 @@ const Sidebar = () => {
                     </Link>
                 ))}
 
-                {/* Role Based Rendering: Only super_admin can see the Users Management tab */}
-                {user?.role === 'super_admin' && (
+                {/* Role Based Rendering: Admin and Super Admin can see the Users Management tab */}
+                {(user?.role === 'super_admin' || user?.role === 'admin') && (
                     <Link
                         to={ROUTES.USERS}
                         className="flex items-center space-x-3 py-2.5 px-4 rounded-lg transition duration-200 hover:bg-gray-800 hover:text-indigo-400 text-yellow-500"

@@ -11,7 +11,10 @@ class AnalyticsService:
         """
         queryset = CallLog.objects.filter(call_time__range=(date_start, date_end))
         if branch_id:
-            queryset = queryset.filter(branch_id=branch_id)
+            if branch_id == 'null':
+                queryset = queryset.filter(branch__isnull=True)
+            else:
+                queryset = queryset.filter(branch_id=branch_id)
             
         return (
             queryset
@@ -28,7 +31,10 @@ class AnalyticsService:
         """
         queryset = CallLog.objects.filter(call_time__range=(date_start, date_end))
         if branch_id:
-            queryset = queryset.filter(branch_id=branch_id)
+            if branch_id == 'null':
+                queryset = queryset.filter(branch__isnull=True)
+            else:
+                queryset = queryset.filter(branch_id=branch_id)
 
         stats = queryset.aggregate(
             total_calls=Count("id"),
@@ -42,6 +48,34 @@ class AnalyticsService:
         conversion_rate = (stats["converted_calls"] / total) * 100
         
         # Simple performance score: 100 - missed_ratio (penalty) + (conversion_rate / 2) (bonus)
+        performance_score = max(0, min(100, 100 - missed_ratio + (conversion_rate * 0.5)))
+
+        return {
+            "missed_call_ratio": round(missed_ratio, 2),
+            "conversion_rate": round(conversion_rate, 2),
+            "avg_duration": round(stats["avg_duration"] or 0, 2),
+            "performance_score": round(performance_score, 2),
+        }
+    @staticmethod
+    def get_metrics_multi(branch_ids, date_start, date_end):
+        """
+        Calculate metrics for multiple branches
+        """
+        queryset = CallLog.objects.filter(call_time__range=(date_start, date_end))
+        if branch_ids:
+            queryset = queryset.filter(branch_id__in=branch_ids)
+
+        stats = queryset.aggregate(
+            total_calls=Count("id"),
+            missed_calls=Count("id", filter=Q(call_type="missed") | Q(call_type="rejected")),
+            converted_calls=Count("id", filter=Q(duration__gte=60, call_type="incoming")),
+            avg_duration=Avg("duration")
+        )
+
+        total = stats["total_calls"] or 1
+        missed_ratio = (stats["missed_calls"] / total) * 100
+        conversion_rate = (stats["converted_calls"] / total) * 100
+        
         performance_score = max(0, min(100, 100 - missed_ratio + (conversion_rate * 0.5)))
 
         return {

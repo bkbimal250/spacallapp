@@ -76,14 +76,16 @@ class VerifyOTPView(APIView):
 
 from django.db import models
 
+from apps.common.permissions import IsSuperAdmin, IsAdminOrSuperAdmin
+
 class UserViewSet(viewsets.ModelViewSet):
 
     """
     CRUD for Users.
-    Only Super Admins can see list and create/delete.
+    Only Admins and Super Admins can see list and create/delete.
     """
     serializer_class = UserSerializer
-    permission_classes = [permissions.IsAuthenticated, IsSuperAdmin]
+    permission_classes = [permissions.IsAuthenticated, IsAdminOrSuperAdmin]
 
     def get_queryset(self):
         queryset = User.objects.all().order_by("-created_at")

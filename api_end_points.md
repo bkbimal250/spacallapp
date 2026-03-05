@@ -312,5 +312,55 @@ All API endpoints are prefixed with `/api/v1/`.
       "status": "Active"
     }
   ]
+  ]
+}
+```
+
+---
+
+## 9. Lead Management (`/leadmanagement/`)
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `https://api.spa.branch.call.workspa.in/api/v1/leadmanagement/` | List all leads. Branch Managers only see leads for their assigned branch. |
+| POST | `https://api.spa.branch.call.workspa.in/api/v1/leadmanagement/` | Create a new lead. Supply a `calllog` ID to automatically attach contact information. |
+| GET | `https://api.spa.branch.call.workspa.in/api/v1/leadmanagement/{id}/` | Retrieve lead details. |
+| PUT | `https://api.spa.branch.call.workspa.in/api/v1/leadmanagement/{id}/` | Fully update lead details (e.g., status, remarks, booking date). |
+| PATCH | `https://api.spa.branch.call.workspa.in/api/v1/leadmanagement/{id}/` | Partially update a lead (e.g., updating just the status). |
+| DELETE| `https://api.spa.branch.call.workspa.in/api/v1/leadmanagement/{id}/` | Delete a lead. |
+
+### Examples
+
+**Create Lead from Call Log:**
+```json
+{
+  "status": "interested",
+  "calllog": 105,
+  "remarks": "Customer wants to visit tomorrow."
+}
+```
+
+**Partial Update (Status Change):**
+```json
+{
+  "status": "coming",
+  "booking_date": "2024-02-25"
+}
+```
+
+**Lead Response:**
+```json
+{
+  "id": "c1f1f2e3-...",
+  "status": "interested",
+  "phone_number": "+919876543210",
+  "booking_date": null,
+  "remarks": "Customer wants to visit tomorrow.",
+  "branch": "a79201f1-...",
+  "branch_name": "Elegance Spa Center",
+  "calllog": 105,
+  "contact": 12,
+  "contact_name": "Bimal Vishwakarma",
+  "created_by_name": "Branch Manager 1",
+  "created_at": "2024-02-22T10:00:00Z"
 }
 ```

@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import { callLogsAPI } from '../api';
 import Table from '../../../shared/components/Table';
 import CallLogFilter from '../components/CallLogFilter';
@@ -7,20 +8,28 @@ import Pagination from '../../../shared/components/Pagination';
 import Button from '../../../shared/components/Button';
 import { formatDate } from '../../../shared/utils/formatDate';
 import { useAuth } from '../../../shared/hooks/useAuth';
-import { PhoneIncoming, PhoneOutgoing, PhoneMissed, PhoneForwarded, Trash2, FileDown } from 'lucide-react';
+import { leadManagementAPI } from '../../leadManagement/api';
+import LeadForm from '../../leadManagement/components/LeadForm';
+import { Edit, FileDown, PhoneIncoming, PhoneOutgoing, PhoneMissed, PhoneForwarded } from 'lucide-react';
 
 const CallLogList = () => {
     const { user } = useAuth();
+    const location = useLocation();
+    const queryParams = new URLSearchParams(location.search);
+    const initialBranch = queryParams.get('branch') || '';
+
     const [logs, setLogs] = useState([]);
     const [stats, setStats] = useState(null);
     const [loading, setLoading] = useState(true);
     const [statsLoading, setStatsLoading] = useState(true);
-    const [filters, setFilters] = useState({});
+    const [filters, setFilters] = useState({ branch: initialBranch });
     const [page, setPage] = useState(1);
     const [totalCount, setTotalCount] = useState(0);
     const [selectedLogs, setSelectedLogs] = useState([]);
     const [exporting, setExporting] = useState(false);
-    const pageSize = 20;
+    const [selectedLead, setSelectedLead] = useState(null);
+    const [isLeadFormOpen, setIsLeadFormOpen] = useState(false);
+    const pageSize = 50;
 
     const isSuperAdmin = user?.role === 'super_admin';
     const isAdmin = user?.role === 'admin' || isSuperAdmin;
@@ -114,6 +123,17 @@ const CallLogList = () => {
         }
     };
 
+    const getStatusColor = (status) => {
+        switch (status) {
+            case 'pending': return 'gray';
+            case 'calling': return 'blue';
+            case 'coming': return 'purple';
+            case 'interested': return 'green';
+            case 'not_interested': return 'red';
+            default: return 'gray';
+        }
+    };
+
     const getCallIcon = (type) => {
         switch (type) {
             case 'incoming': return <PhoneIncoming size={16} className="text-green-500" />;
@@ -134,7 +154,17 @@ const CallLogList = () => {
                 </div>
             )
         },
-        { header: 'Number', accessor: 'phone_number' },
+        {
+            header: 'Number / Contact',
+            render: (row) => (
+                <div className="flex flex-col">
+                    <span className="font-medium text-gray-900">{row.phone_number}</span>
+                    <span className="text-xs text-gray-500">
+                        {row.contact_name ? row.contact_name : 'Unknown'}
+                    </span>
+                </div>
+            )
+        },
         {
             header: 'Duration',
             render: (row) => `${row.duration}s`
@@ -166,7 +196,62 @@ const CallLogList = () => {
                 </Badge>
             )
         },
+        {
+            header: 'Lead Status',
+            render: (row) => (
+                <div className="flex items-center space-x-2">
+                    {row.lead_status ? (
+                        <Badge variant={getStatusColor(row.lead_status)}>
+                            {row.lead_status.replace('_', ' ').toUpperCase()}
+                        </Badge>
+                    ) : (
+                        <span className="text-xs text-gray-400 italic">No Lead</span>
+                    )}
+                    <button
+                        onClick={() => handleEditLead(row)}
+                        className="p-1 text-indigo-600 hover:bg-indigo-50 rounded"
+                        title="Update Lead"
+                    >
+                        <Edit size={14} />
+                    </button>
+                </div>
+            )
+        },
     ];
+
+    const handleEditLead = (row) => {
+        if (row.lead_id) {
+            setSelectedLead({
+                id: row.lead_id,
+                status: row.lead_status,
+                branch: row.branch,
+                // Add more if needed by LeadForm
+            });
+        } else {
+            // Should not happen with auto-leads, but just in case
+            setSelectedLead({
+                calllog: row.id,
+                branch: row.branch,
+                status: 'pending'
+            });
+        }
+        setIsLeadFormOpen(true);
+    };
+
+    const handleLeadSubmit = async (data) => {
+        try {
+            if (selectedLead?.id) {
+                await leadManagementAPI.updateLead(selectedLead.id, data);
+            } else {
+                await leadManagementAPI.createLead({ ...data, calllog: selectedLead.calllog });
+            }
+            setIsLeadFormOpen(false);
+            fetchLogs(filters, page);
+        } catch (error) {
+            console.error("Failed to update lead", error);
+            alert("Failed to update lead status.");
+        }
+    };
 
     if (isSuperAdmin) {
         columns.push({
@@ -261,7 +346,7 @@ const CallLogList = () => {
             </div>
 
             <div className="bg-white shadow rounded-lg p-6">
-                <CallLogFilter onFilter={handleFilter} />
+                <CallLogFilter onFilter={handleFilter} initialBranch={initialBranch} />
             </div>
 
             <div className="bg-white shadow rounded-lg overflow-hidden flex flex-col">
@@ -290,6 +375,12 @@ const CallLogList = () => {
                     />
                 )}
             </div>
+            <LeadForm
+                isOpen={isLeadFormOpen}
+                onClose={() => setIsLeadFormOpen(false)}
+                onSubmit={handleLeadSubmit}
+                initialData={selectedLead}
+            />
         </div>
     );
 };

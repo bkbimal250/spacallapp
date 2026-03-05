@@ -21,7 +21,14 @@ class OTPVerifySerializer(serializers.Serializer):
 class UserSerializer(serializers.ModelSerializer):
     first_name = serializers.CharField(write_only=True, required=False)
     last_name = serializers.CharField(write_only=True, required=False)
-    branch_name = serializers.CharField(source='branch.name', read_only=True)
+    branch_name = serializers.CharField(source='branch.spa_name', read_only=True)
+    assigned_branches_details = serializers.SerializerMethodField()
+
+    def get_assigned_branches_details(self, obj):
+        return [
+            {"id": b.id, "spa_name": b.spa_name, "city": b.city} 
+            for b in obj.assigned_branches.all()
+        ]
 
     class Meta:
         model = User
@@ -31,9 +38,10 @@ class UserSerializer(serializers.ModelSerializer):
             "first_name",
             "last_name",
             "full_name",
-            "role",
             "branch",
             "branch_name",
+            "assigned_branches",
+            "assigned_branches_details",
             "is_active",
             "created_at",
             "password",
