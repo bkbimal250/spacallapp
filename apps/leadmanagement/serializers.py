@@ -3,7 +3,7 @@ from .models import LeadManagement
 from apps.calllogs.serializers import CallLogSerializer
 
 class LeadManagementSerializer(serializers.ModelSerializer):
-    branch_name = serializers.CharField(source='calllog.branch.spa_name', read_only=True)
+    branch_name = serializers.CharField(source='branch.spa_name', read_only=True)
     contact_name = serializers.CharField(source='contact.name', read_only=True)
     created_by_name = serializers.CharField(source='created_by.full_name', read_only=True)
     updated_by_name = serializers.CharField(source='updated_by.full_name', read_only=True)

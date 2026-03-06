@@ -27,13 +27,32 @@ class ContactViewSet(viewsets.ModelViewSet):
         if user.role in ['super_admin', 'admin']:
             return queryset
             
-        # For others, maybe restrict or show all? 
-        # Usually contacts are shared across branches if they are customers.
-        # But if we want to follow the branch pattern:
-        if user.role in ['branch_manager', 'regional_manager']:
-            # We don't have branch on Contact model yet. 
-            # We could filter by contacts created by them or their team.
-            pass
+        from django.db.models import Q
+        # For others, restrict to contacts that have call logs in their assigned branch(es)
+        # OR were created by them/their branch members
+        if user.role == 'branch_manager' and user.branch:
+            queryset = queryset.filter(
+                Q(call_logs__branch=user.branch) | 
+                Q(created_by__branch=user.branch) |
+                Q(created_by=user)
+            ).distinct()
+        elif user.role == 'regional_manager':
+            assigned_branches = user.assigned_branches.all()
+            if assigned_branches.exists():
+                queryset = queryset.filter(
+                    Q(call_logs__branch__in=assigned_branches) |
+                    Q(created_by__branch__in=assigned_branches)
+                ).distinct()
+            elif user.branch:
+                queryset = queryset.filter(
+                    Q(call_logs__branch=user.branch) |
+                    Q(created_by__branch=user.branch)
+                ).distinct()
+        elif user.role == 'viewer' and user.branch:
+            queryset = queryset.filter(
+                Q(call_logs__branch=user.branch) |
+                Q(created_by__branch=user.branch)
+            ).distinct()
             
         return queryset
 

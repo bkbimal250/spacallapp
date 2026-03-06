@@ -38,6 +38,7 @@ class UserSerializer(serializers.ModelSerializer):
             "first_name",
             "last_name",
             "full_name",
+            "role",
             "branch",
             "branch_name",
             "assigned_branches",

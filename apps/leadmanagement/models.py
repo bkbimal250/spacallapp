@@ -33,6 +33,14 @@ class LeadManagement(BaseModel, TimeStampedModel):
         blank=True,
     )
 
+    branch = models.ForeignKey(
+        "branches.Branch",
+        on_delete=models.SET_NULL,
+        related_name="leads",
+        null=True,
+        blank=True,
+    )
+
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
@@ -70,6 +78,10 @@ class LeadManagement(BaseModel, TimeStampedModel):
                 self.remarks = None
 
     def save(self, *args, **kwargs):
+        if self.calllog and not self.branch:
+            self.branch = self.calllog.branch
+        if not self.branch and self.created_by and self.created_by.role in ['branch_manager', 'viewer']:
+            self.branch = self.created_by.branch
         self.clean()
         super().save(*args, **kwargs)
 

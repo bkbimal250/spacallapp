@@ -72,6 +72,7 @@ class DeviceSyncView(views.APIView):
         # After bulk create, we need to create LeadManagement records for these new logs.
         # Since all calls are leads now, we fetch the newly created logs by their hashes.
         # We only need 'id' and 'contact_id' for LeadManagement creation.
+        hashes = [log.call_hash for log in logs_to_create]
         new_logs_data = CallLog.objects.filter(call_hash__in=hashes).values_list('id', 'contact_id')
         
         from apps.leadmanagement.models import LeadManagement
@@ -79,6 +80,7 @@ class DeviceSyncView(views.APIView):
             LeadManagement(
                 calllog_id=log_id,
                 contact_id=contact_id,
+                branch_id=device.branch_id,
                 status='pending'
             )
             for log_id, contact_id in new_logs_data
@@ -277,17 +279,22 @@ class CallLogViewSet(viewsets.ModelViewSet):
         queryset = CallLog.objects.select_related('branch', 'device', 'contact').all().order_by('-call_time')
         
         # Super Admin and Admin can see everything
-        if user.role in ['super_admin', 'admin', 'viewer']:
-            if user.role == 'viewer' and user.branch:
+        if user.role in ['super_admin', 'admin']:
+            pass 
+        elif user.role == 'branch_manager':
+            assigned_branches = user.assigned_branches.all()
+            if assigned_branches.exists():
+                queryset = queryset.filter(branch__in=assigned_branches)
+            elif user.branch:
                 queryset = queryset.filter(branch=user.branch)
-        elif user.role == 'branch_manager' and user.branch:
-            queryset = queryset.filter(branch=user.branch)
         elif user.role == 'regional_manager':
             assigned_branches = user.assigned_branches.all()
             if assigned_branches.exists():
                 queryset = queryset.filter(branch__in=assigned_branches)
             elif user.branch:
                 queryset = queryset.filter(branch=user.branch)
+        elif user.role == 'viewer' and user.branch:
+            queryset = queryset.filter(branch=user.branch)
             
         if self.action not in ['stats', 'branch_summary']:
             queryset = self.apply_filters(queryset)

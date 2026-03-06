@@ -39,23 +39,23 @@ class LeadManagementViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        qs = LeadManagement.objects.select_related('calllog__branch', 'contact', 'calllog', 'created_by', 'updated_by').all()
+        qs = LeadManagement.objects.select_related('branch', 'contact', 'calllog', 'created_by', 'updated_by').all()
         
-        # Super Admin, Admin, and Viewer can see everything (unless viewer is branch-limited)
-        if user.role in ['super_admin', 'admin', 'viewer']:
-            if user.role == 'viewer' and user.branch:
-                return qs.filter(calllog__branch=user.branch)
+        # Super Admin, Admin can see everything
+        if user.role in ['super_admin', 'admin']:
             return qs
             
         # Restrict for branch/regional managers to their assigned branches
         if user.role == 'branch_manager' and user.branch:
-            qs = qs.filter(calllog__branch=user.branch)
+            qs = qs.filter(branch=user.branch)
         elif user.role == 'regional_manager':
             assigned_branches = user.assigned_branches.all()
             if assigned_branches.exists():
-                qs = qs.filter(calllog__branch__in=assigned_branches)
-            elif user.branch: # Fallback if branch is still used for regional manager
-                qs = qs.filter(calllog__branch=user.branch)
+                qs = qs.filter(branch__in=assigned_branches)
+            elif user.branch:
+                qs = qs.filter(branch=user.branch)
+        elif user.role == 'viewer' and user.branch:
+            qs = qs.filter(branch=user.branch)
             
         return qs
 
@@ -88,16 +88,7 @@ class LeadManagementViewSet(viewsets.ModelViewSet):
     def branch_summary(self, request):
         from django.db.models import Count, Q
         
-        user = self.request.user
-        qs = LeadManagement.objects.all()
-        if user.role == 'branch_manager' and user.branch:
-            qs = qs.filter(calllog__branch=user.branch)
-        elif user.role == 'regional_manager':
-            assigned_branches = user.assigned_branches.all()
-            if assigned_branches.exists():
-                qs = qs.filter(calllog__branch__in=assigned_branches)
-            elif user.branch:
-                qs = qs.filter(calllog__branch=user.branch)
+        qs = self.get_queryset()
             
         branch_search = request.query_params.get('branch_search', None)
         city = request.query_params.get('city', None)
@@ -113,10 +104,10 @@ class LeadManagementViewSet(viewsets.ModelViewSet):
             qs = qs.filter(calllog__branch__is_active=False)
 
         summary = qs.values(
-            'calllog__branch__id', 
-            'calllog__branch__spa_name',
-            'calllog__branch__city',
-            'calllog__branch__area'
+            'branch__id', 
+            'branch__spa_name',
+            'branch__city',
+            'branch__area'
         ).annotate(
             total_leads=Count('id'),
             total_pending=Count('id', filter=Q(status='pending')),
@@ -124,17 +115,17 @@ class LeadManagementViewSet(viewsets.ModelViewSet):
             total_coming=Count('id', filter=Q(status='coming')),
             total_interested=Count('id', filter=Q(status='interested')),
             total_not_interested=Count('id', filter=Q(status='not_interested')),
-        ).order_by('calllog__branch__spa_name')
+        ).order_by('branch__spa_name')
 
         page = self.paginate_queryset(summary)
         if page is not None:
             result = []
             for s in page:
                 result.append({
-                    'branch_id': s['calllog__branch__id'],
-                    'branch_name': s['calllog__branch__spa_name'] or 'Unknown Branch',
-                    'city': s['calllog__branch__city'] or 'N/A',
-                    'area': s['calllog__branch__area'] or 'N/A',
+                    'branch_id': s['branch__id'],
+                    'branch_name': s['branch__spa_name'] or 'Unknown Branch',
+                    'city': s['branch__city'] or 'N/A',
+                    'area': s['branch__area'] or 'N/A',
                     'total_leads': s['total_leads'],
                     'total_pending': s['total_pending'],
                     'total_ringing': s['total_ringing'],
@@ -147,10 +138,10 @@ class LeadManagementViewSet(viewsets.ModelViewSet):
         result = []
         for s in summary:
             result.append({
-                'branch_id': s['calllog__branch__id'],
-                'branch_name': s['calllog__branch__spa_name'] or 'Unknown Branch',
-                'city': s['calllog__branch__city'] or 'N/A',
-                'area': s['calllog__branch__area'] or 'N/A',
+                'branch_id': s['branch__id'],
+                'branch_name': s['branch__spa_name'] or 'Unknown Branch',
+                'city': s['branch__city'] or 'N/A',
+                'area': s['branch__area'] or 'N/A',
                 'total_leads': s['total_leads'],
                 'total_pending': s['total_pending'],
                 'total_ringing': s['total_ringing'],
@@ -218,6 +209,7 @@ class LeadsSyncView(viewsets.ViewSet):
                 contact = Contact.objects.filter(phone_number__endswith=last_10).first()
                 
                 LeadManagement.objects.create(
+                    branch=device.branch,
                     contact=contact,
                     status=item.get('status', 'pending'),
                     remarks=f"Manual from App: {item.get('remarks', '')}",

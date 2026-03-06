@@ -17,19 +17,22 @@ class DeviceViewSet(viewsets.ModelViewSet):
 
         # Restriction for branch/regional managers to their assigned branch(es)
         if user.is_authenticated:
-            if user.role in ['super_admin', 'admin', 'viewer']:
-                if user.role == 'viewer' and user.branch:
+            if user.role in ['super_admin', 'admin']:
+                pass 
+            elif user.role == 'branch_manager':
+                assigned_branches = user.assigned_branches.all()
+                if assigned_branches.exists():
+                    queryset = queryset.filter(branch__in=assigned_branches)
+                elif user.branch:
                     queryset = queryset.filter(branch=user.branch)
-                else:
-                    pass # See all
-            elif user.role == 'branch_manager' and user.branch:
-                queryset = queryset.filter(branch=user.branch)
             elif user.role == 'regional_manager':
                 assigned_branches = user.assigned_branches.all()
                 if assigned_branches.exists():
                     queryset = queryset.filter(branch__in=assigned_branches)
                 elif user.branch:
                     queryset = queryset.filter(branch=user.branch)
+            elif user.role == 'viewer' and user.branch:
+                queryset = queryset.filter(branch=user.branch)
         
         search = self.request.query_params.get('search', None)
 
