@@ -10,7 +10,7 @@ import { formatDate } from '../../../shared/utils/formatDate';
 import { useAuth } from '../../../shared/hooks/useAuth';
 import { leadManagementAPI } from '../../leadManagement/api';
 import LeadForm from '../../leadManagement/components/LeadForm';
-import { Edit, FileDown, PhoneIncoming, PhoneOutgoing, PhoneMissed, PhoneForwarded } from 'lucide-react';
+import { Edit, FileDown, PhoneIncoming, PhoneOutgoing, PhoneMissed, PhoneForwarded, Trash2 } from 'lucide-react';
 
 const CallLogList = () => {
     const { user } = useAuth();

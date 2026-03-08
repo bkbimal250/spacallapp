@@ -264,7 +264,7 @@ class CallLogViewSet(viewsets.ModelViewSet):
             if device == 'null':
                 queryset = queryset.filter(device__isnull=True)
             elif device.strip() and device != 'undefined':
-                queryset = queryset.filter(device_id=device)
+                queryset = queryset.filter(device__device_id=device)
         if search:
             queryset = queryset.filter(phone_number__icontains=search)
         if start_date:
