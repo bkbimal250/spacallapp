@@ -1,131 +1,206 @@
+"""
+Monitoring views for the CallLog SPA Management System.
+
+Provides device health monitoring and event tracking.
+
+Access Control:
+    super_admin / admin → See all device events and health data.
+    branch_manager      → See only devices in their assigned branch.
+"""
+
+from datetime import timedelta
+from django.utils import timezone
 from rest_framework import viewsets, permissions, views, response, status
+
 from .models import DeviceEvent, DeviceHealth
 from .serializers import DeviceEventSerializer, DeviceHealthSerializer
 from apps.devices.models import Device
-from django.utils import timezone
-from datetime import timedelta
+from apps.common.utils import get_branch_filter_ids
 from core.authentication import DeviceAuthentication
 from core.permissions import IsDevice
 
+
 class DeviceHeartbeatView(views.APIView):
+    """
+    Android device heartbeat endpoint.
+
+    Called periodically by the Android app to signal that a device
+    is still alive and operational.
+
+    Authenticated via DeviceAuthentication (device_id + HMAC).
+
+    Payload (all fields optional):
+        {
+          "battery_level": 85,
+          "signal_strength": -70,
+          "app_version": "1.0.3",
+          "storage_used_mb": 512.5
+        }
+    """
     authentication_classes = [DeviceAuthentication]
     permission_classes = [IsDevice]
 
     def post(self, request):
         device = request.auth
         now = timezone.now()
-        
-        # Update device last heartbeat
-        device.last_heartbeat = now
-        device.save(update_fields=['last_heartbeat'])
-
-        # Update or Create DeviceHealth
         health_data = request.data
-        health, created = DeviceHealth.objects.get_or_create(device=device)
-        
+
+        # Update device's last heartbeat timestamp
+        device.last_heartbeat = now
+        device.save(update_fields=["last_heartbeat"])
+
+        # Update or create device health record
+        health, _ = DeviceHealth.objects.get_or_create(device=device)
         health.is_online = True
         health.last_heartbeat = now
-        
-        if 'battery_level' in health_data:
-            health.battery_level = health_data.get('battery_level')
-        if 'signal_strength' in health_data:
-            health.signal_strength = health_data.get('signal_strength')
-        if 'app_version' in health_data:
-            health.app_version = health_data.get('app_version')
-        if 'storage_used_mb' in health_data:
-            health.storage_used_mb = health_data.get('storage_used_mb', 0.0)
-            
+
+        # Update health metrics if provided in payload
+        if "battery_level" in health_data:
+            health.battery_level = health_data["battery_level"]
+        if "signal_strength" in health_data:
+            health.signal_strength = health_data["signal_strength"]
+        if "app_version" in health_data:
+            health.app_version = health_data["app_version"]
+        if "storage_used_mb" in health_data:
+            health.storage_used_mb = health_data["storage_used_mb"]
+
         health.save()
-        
-        # If there's an active 'offline' event, resolve it
-        DeviceEvent.objects.filter(device=device, event_type='offline', resolved=False).update(
-            resolved=True,
-            resolved_at=now
+
+        # If this device had an active 'offline' alert, resolve it automatically
+        DeviceEvent.objects.filter(
+            device=device,
+            event_type="offline",
+            resolved=False,
+        ).update(resolved=True, resolved_at=now)
+
+        return response.Response(
+            {"status": "heartbeat acknowledged"},
+            status=status.HTTP_200_OK
         )
 
-        return response.Response({"status": "heartbeat acknowledged"}, status=status.HTTP_200_OK)
 
 class DeviceEventViewSet(viewsets.ModelViewSet):
+    """
+    Device Event log viewset (read/filter).
+
+    Events are logged automatically when devices go offline, change SIM cards,
+    or encounter errors. This viewset is read-only for branch managers.
+
+    Filters:
+        ?event_type=offline|sim_change|error
+        ?branch=<uuid>
+        ?resolved=true|false
+    """
     serializer_class = DeviceEventSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
         user = self.request.user
-        queryset = DeviceEvent.objects.all().order_by('-created_at')
-        
-        # Restriction for branch/regional managers to their assigned branch(es)
-        if user.is_authenticated:
-            if user.role == 'branch_manager' and user.branch:
-                queryset = queryset.filter(device__branch=user.branch)
-            elif user.role == 'regional_manager':
-                assigned_branches = user.assigned_branches.all()
-                if assigned_branches.exists():
-                    queryset = queryset.filter(device__branch__in=assigned_branches)
-                elif user.branch:
-                    queryset = queryset.filter(device__branch=user.branch)
+        queryset = DeviceEvent.objects.select_related("device", "device__branch").filter(
+            device__is_deleted=False
+        ).order_by("-created_at")
 
-        event_type = self.request.query_params.get('event_type', None)
-        branch = self.request.query_params.get('branch', None)
-        resolved = self.request.query_params.get('resolved', None)
+        # Apply role-based branch restriction
+        branch_ids = get_branch_filter_ids(user)
+        if branch_ids and branch_ids != ["NONE"]:
+            queryset = queryset.filter(device__branch_id__in=branch_ids)
+        elif branch_ids == ["NONE"]:
+            return queryset.none()
 
+        # ── Optional Filters ─────────────────────────────────────────────────
+        event_type = self.request.query_params.get("event_type", None)
         if event_type:
             queryset = queryset.filter(event_type=event_type)
-        
+
+        branch = self.request.query_params.get("branch", None)
         if branch:
             queryset = queryset.filter(device__branch_id=branch)
-            
+
+        resolved = self.request.query_params.get("resolved", None)
         if resolved is not None:
-            is_resolved = resolved.lower() == 'true'
-            queryset = queryset.filter(resolved=is_resolved)
+            queryset = queryset.filter(resolved=resolved.lower() == "true")
 
         return queryset
 
+
 class DeviceStatusResultView(views.APIView):
+    """
+    Returns device status summary counts for the monitoring dashboard.
+
+    Response:
+        - total_devices      : Count of devices in scope
+        - active_devices     : Devices with heartbeat in last 5 minutes
+        - online_devices     : Devices marked online in DeviceHealth
+        - offline_alerts     : Unresolved 'offline' events
+        - sim_change_alerts  : Unresolved 'sim_change' events
+
+    Access:
+        super_admin / admin → All devices (or filtered by ?branch=).
+        branch_manager      → Only their assigned branch's devices.
+    """
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
         user = request.user
-        branch_id = request.query_params.get('branch')
-        
-        # Enforce branch restriction for branch manager/regional manager
-        assigned_branch_ids = []
-        if user.is_authenticated:
-            if user.role == 'branch_manager' and user.branch:
-                assigned_branch_ids = [str(user.branch.id)]
-            elif user.role == 'regional_manager':
-                assigned_branch_ids = [str(b.id) for b in user.assigned_branches.all()]
-                if not assigned_branch_ids and user.branch:
-                    assigned_branch_ids = [str(user.branch.id)]
+        branch_id_param = request.query_params.get("branch")
+
+        # Determine branch scope based on user role
+        branch_ids = get_branch_filter_ids(user)
 
         devices_qs = Device.objects.all()
         health_qs = DeviceHealth.objects.all()
         events_qs = DeviceEvent.objects.all()
-        
-        if assigned_branch_ids:
-            devices_qs = devices_qs.filter(branch_id__in=assigned_branch_ids)
-            health_qs = health_qs.filter(device__branch_id__in=assigned_branch_ids)
-            events_qs = events_qs.filter(device__branch_id__in=assigned_branch_ids)
-        elif branch_id:
-            devices_qs = devices_qs.filter(branch_id=branch_id)
-            health_qs = health_qs.filter(device__branch_id=branch_id)
-            events_qs = events_qs.filter(device__branch_id=branch_id)
 
-        total_devices = devices_qs.count()
+        if branch_ids and branch_ids != ["NONE"]:
+            # Role-restricted user: filter to their branch
+            devices_qs = devices_qs.filter(branch_id__in=branch_ids)
+            health_qs = health_qs.filter(device__branch_id__in=branch_ids)
+            events_qs = events_qs.filter(device__branch_id__in=branch_ids)
+        elif branch_ids == ["NONE"]:
+            # Branch manager with no branch — return zeros
+            return response.Response({
+                "total_devices": 0,
+                "active_devices": 0,
+                "online_devices": 0,
+                "offline_alerts": 0,
+                "sim_change_alerts": 0,
+            })
+        elif branch_id_param and branch_id_param.strip() and branch_id_param not in ("undefined", "null"):
+            # Admin manually filtering by branch
+            devices_qs = devices_qs.filter(branch_id=branch_id_param)
+            health_qs = health_qs.filter(device__branch_id=branch_id_param)
+            events_qs = events_qs.filter(device__branch_id=branch_id_param)
+
+        # ── Aggregate Counts ───────────────────────────────────────────────────
+        # Ensure we only count for non-deleted devices (all_objects used for broad check, then filtered)
         threshold = timezone.now() - timedelta(minutes=5)
         
-        # Count based on recorded heartbeat time
+        # devices_qs and health_qs already exclude soft-deleted items by default due to managers
+        total_devices = devices_qs.count()
         active_devices = devices_qs.filter(last_heartbeat__gte=threshold).count()
         
-        # Count based on health status flag
-        online_devices = health_qs.filter(is_online=True).count()
+        # Online devices are strictly those that have pinged in last 5 mins
+        online_devices = health_qs.filter(
+            device__is_deleted=False, 
+            last_heartbeat__gte=threshold
+        ).count()
         
-        offline_alerts = events_qs.filter(event_type='offline', resolved=False).count()
-        sim_change_alerts = events_qs.filter(event_type='sim_change', resolved=False).count()
+        offline_alerts = events_qs.filter(
+            device__is_deleted=False, 
+            event_type="offline", 
+            resolved=False
+        ).count()
         
+        sim_change_alerts = events_qs.filter(
+            device__is_deleted=False, 
+            event_type="sim_change", 
+            resolved=False
+        ).count()
+
         return response.Response({
             "total_devices": total_devices,
             "active_devices": active_devices,
             "online_devices": online_devices,
             "offline_alerts": offline_alerts,
-            "sim_change_alerts": sim_change_alerts
+            "sim_change_alerts": sim_change_alerts,
         })

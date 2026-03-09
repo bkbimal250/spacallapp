@@ -71,9 +71,8 @@ const UserFilter = ({ onFilter }) => {
                 >
                     <option value="">All Roles</option>
                     <option value="super_admin">Super Admin</option>
-                    <option value="regional_manager">Regional Manager</option>
+                    <option value="admin">Admin</option>
                     <option value="branch_manager">Branch Manager</option>
-                    <option value="viewer">Viewer</option>
                 </select>
             </div>
 

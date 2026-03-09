@@ -1,146 +1,154 @@
+"""
+Analytics views for the CallLog SPA Management System.
+
+Provides time-series analytics, peak hours, and conversion rate data
+for call logs — filtered by role and branch access.
+
+Access Control:
+    super_admin / admin → See all branch data (or filter by ?branch=).
+    branch_manager      → See only their assigned branch data.
+
+Time filter options (via ?time_filter=):
+    today, yesterday, last_7_days, last_30_days, this_month, custom
+"""
+
+from datetime import datetime, timedelta
 from django.utils import timezone
-from datetime import timedelta
+from django.db.models import Count, Q
+from django.db.models.functions import ExtractHour
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
-from django.db.models import Count, Q
-from django.db.models.functions import TruncHour, ExtractHour
-from apps.calllogs.models import CallLog
 
-from datetime import datetime
+from apps.calllogs.models import CallLog
+from apps.common.utils import apply_branch_filter
+from .services import AnalyticsService
+
 
 def get_date_range(request):
-    time_filter = request.query_params.get('time_filter', 'today')
+    """
+    Parse time_filter query parameter into (start_date, end_date) datetime range.
+
+    time_filter values:
+        today       → Current day (midnight to now)
+        yesterday   → Previous day
+        last_7_days → Past 7 days (default)
+        last_30_days→ Past 30 days
+        this_month  → 1st of current month to now
+        custom      → Requires ?start_date=YYYY-MM-DD&end_date=YYYY-MM-DD
+    """
+    time_filter = request.query_params.get("time_filter", "last_7_days")
     now = timezone.localtime(timezone.now())
-    
-    if time_filter == 'custom':
-        start_str = request.query_params.get('start_date')
-        end_str = request.query_params.get('end_date')
+
+    if time_filter == "custom":
+        start_str = request.query_params.get("start_date")
+        end_str = request.query_params.get("end_date")
         try:
             start_date = timezone.make_aware(datetime.strptime(start_str, "%Y-%m-%d")) if start_str else now - timedelta(days=7)
-            end_date = timezone.make_aware(datetime.strptime(end_str, "%Y-%m-%d")).replace(hour=23, minute=59, second=59) if end_str else now
+            end_date = timezone.make_aware(datetime.strptime(end_str, "%Y-%m-%d")).replace(
+                hour=23, minute=59, second=59
+            ) if end_str else now
             return start_date, end_date
         except (ValueError, TypeError):
             return now - timedelta(days=7), now
-            
-    if time_filter == 'today':
+
+    if time_filter == "today":
         start_date = now.replace(hour=0, minute=0, second=0, microsecond=0)
         end_date = now.replace(hour=23, minute=59, second=59, microsecond=999999)
-    elif time_filter == 'yesterday':
-        start_date = (now - timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
-        end_date = (now - timedelta(days=1)).replace(hour=23, minute=59, second=59, microsecond=999999)
-    elif time_filter == 'last_30_days':
+    elif time_filter == "yesterday":
+        yesterday = now - timedelta(days=1)
+        start_date = yesterday.replace(hour=0, minute=0, second=0, microsecond=0)
+        end_date = yesterday.replace(hour=23, minute=59, second=59, microsecond=999999)
+    elif time_filter == "last_30_days":
         start_date = now - timedelta(days=30)
         end_date = now
-    elif time_filter == 'this_month':
+    elif time_filter == "this_month":
         start_date = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
         end_date = now
-    else:  # 'last_7_days' default
+    else:  # default: last_7_days
         start_date = now - timedelta(days=7)
         end_date = now
-        
+
     return start_date, end_date
 
+
 class AnalyticsOverviewView(APIView):
+    """
+    Returns call type distribution (incoming, outgoing, missed, rejected)
+    for the selected time range and branch scope.
+
+    Used by the frontend to render conversion rate pie/bar charts.
+    """
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
         start_date, end_date = get_date_range(request)
-        branch_id = request.query_params.get('branch')
         user = request.user
-        
-        # Enforce branch restriction for branch manager/regional manager
-        assigned_branch_ids = []
-        if user.is_authenticated:
-            if user.role in ['super_admin', 'admin', 'viewer']:
-                if user.role == 'viewer' and user.branch:
-                    assigned_branch_ids = [str(user.branch.id)]
-                else:
-                    assigned_branch_ids = [] # Super/Global Admin sees everything
-            elif user.role == 'branch_manager' and user.branch:
-                assigned_branch_ids = [str(user.branch.id)]
-            elif user.role == 'regional_manager':
-                assigned_branch_ids = [str(b.id) for b in user.assigned_branches.all()]
-                if not assigned_branch_ids and user.branch:
-                    assigned_branch_ids = [str(user.branch.id)]
 
+        # Start with time-filtered queryset
         base_qs = CallLog.objects.filter(call_time__gte=start_date, call_time__lte=end_date)
-        
-        if assigned_branch_ids:
-            base_qs = base_qs.filter(branch_id__in=assigned_branch_ids)
-        elif branch_id:
-            if branch_id == 'null':
-                base_qs = base_qs.filter(branch__isnull=True)
-            elif branch_id.strip() and branch_id != 'undefined':
-                base_qs = base_qs.filter(branch_id=branch_id)
 
-        # Calculate conversion data
+        # Apply role-based branch restriction
+        branch_id = request.query_params.get("branch")
+        base_qs = apply_branch_filter(base_qs, "branch_id", user, extra_branch_id=branch_id)
+
+        # Aggregate call type stats
         stats = base_qs.aggregate(
-            incoming=Count('id', filter=Q(call_type='incoming')),
-            outgoing=Count('id', filter=Q(call_type='outgoing')),
-            missed=Count('id', filter=Q(call_type='missed')),
-            rejected=Count('id', filter=Q(call_type='rejected'))
+            incoming=Count("id", filter=Q(call_type="incoming")),
+            outgoing=Count("id", filter=Q(call_type="outgoing")),
+            missed=Count("id", filter=Q(call_type="missed")),
+            rejected=Count("id", filter=Q(call_type="rejected")),
         )
 
-        # Format exactly for Recharts conversion graph structure
+        # Format for Recharts-compatible structure
         conversion_data = [
-            {"name": "Incoming", "value": stats['incoming'] or 0},
-            {"name": "Outgoing", "value": stats['outgoing'] or 0},
-            {"name": "Missed", "value": stats['missed'] or 0},
-            {"name": "Rejected", "value": stats['rejected'] or 0},
+            {"name": "Incoming",  "value": stats["incoming"] or 0},
+            {"name": "Outgoing",  "value": stats["outgoing"] or 0},
+            {"name": "Missed",    "value": stats["missed"] or 0},
+            {"name": "Rejected",  "value": stats["rejected"] or 0},
         ]
 
-        return Response({
-            "conversion_rates": conversion_data,
-        })
+        return Response({"conversion_rates": conversion_data})
+
 
 class PeakHoursView(APIView):
+    """
+    Returns hourly call volume for the selected time range.
+    Useful for identifying peak business hours at the spa.
+
+    Response format: [{hour: "9AM", calls: 42}, ...]
+    """
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
         start_date, end_date = get_date_range(request)
-        branch_id = request.query_params.get('branch')
         user = request.user
 
-        # Enforce branch restriction for branch manager/regional manager
-        assigned_branch_ids = []
-        if user.is_authenticated:
-            if user.role in ['super_admin', 'admin', 'viewer']:
-                if user.role == 'viewer' and user.branch:
-                    assigned_branch_ids = [str(user.branch.id)]
-                else:
-                    assigned_branch_ids = []
-            elif user.role == 'branch_manager' and user.branch:
-                assigned_branch_ids = [str(user.branch.id)]
-            elif user.role == 'regional_manager':
-                assigned_branch_ids = [str(b.id) for b in user.assigned_branches.all()]
-                if not assigned_branch_ids and user.branch:
-                    assigned_branch_ids = [str(user.branch.id)]
-
-        # Aggregate Peak Hours
+        # Start with time-filtered queryset
         queryset = CallLog.objects.filter(call_time__gte=start_date, call_time__lte=end_date)
-        
-        if assigned_branch_ids:
-            queryset = queryset.filter(branch_id__in=assigned_branch_ids)
-        elif branch_id:
-            if branch_id == 'null':
-                queryset = queryset.filter(branch__isnull=True)
-            elif branch_id.strip() and branch_id != 'undefined':
-                queryset = queryset.filter(branch_id=branch_id)
-            
-        hourly_data = queryset\
-            .annotate(extracted_hour=ExtractHour('call_time'))\
-            .values('extracted_hour')\
-            .annotate(calls=Count('id'))\
-            .order_by('extracted_hour')
 
-        calls_by_hour = {}
-        for h in hourly_data:
-            if h['extracted_hour'] is not None:
-                hour_val = int(h['extracted_hour'])
-                calls_by_hour[hour_val] = h['calls']
+        # Apply role-based branch restriction
+        branch_id = request.query_params.get("branch")
+        queryset = apply_branch_filter(queryset, "branch_id", user, extra_branch_id=branch_id)
 
-        mock_data = []
+        # Aggregate calls by hour of day
+        hourly_data = (
+            queryset
+            .annotate(extracted_hour=ExtractHour("call_time"))
+            .values("extracted_hour")
+            .annotate(calls=Count("id"))
+            .order_by("extracted_hour")
+        )
+
+        # Build a map of hour → call_count
+        calls_by_hour = {
+            int(h["extracted_hour"]): h["calls"]
+            for h in hourly_data
+            if h["extracted_hour"] is not None
+        }
+
+        # Build complete 24-hour dataset (fill missing hours with 0)
+        result = []
         for hour in range(24):
             if hour == 0:
                 hour_str = "12AM"
@@ -148,44 +156,41 @@ class PeakHoursView(APIView):
                 hour_str = "12PM"
             else:
                 hour_str = f"{hour % 12}{'AM' if hour < 12 else 'PM'}"
-                
-            mock_data.append({
+
+            result.append({
                 "hour": hour_str,
-                "calls": calls_by_hour.get(hour, 0)
+                "calls": calls_by_hour.get(hour, 0),
             })
 
-        return Response(mock_data)
+        return Response(result)
 
-from .services import AnalyticsService
 
 class AnalyticsStatsView(APIView):
+    """
+    Returns comprehensive analytics metrics for the given time range and branch.
+    Delegates to AnalyticsService for complex aggregation logic.
+    """
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
         start_date, end_date = get_date_range(request)
-        branch_id = request.query_params.get('branch')
         user = request.user
+        branch_id = request.query_params.get("branch")
 
-        # Enforce branch restriction for branch manager/regional manager
-        assigned_branch_ids = []
-        if user.is_authenticated:
-            if user.role in ['super_admin', 'admin', 'viewer']:
-                if user.role == 'viewer' and user.branch:
-                    assigned_branch_ids = [str(user.branch.id)]
-                else:
-                    assigned_branch_ids = []
-            elif user.role == 'branch_manager' and user.branch:
-                assigned_branch_ids = [str(user.branch.id)]
-            elif user.role == 'regional_manager':
-                assigned_branch_ids = [str(b.id) for b in user.assigned_branches.all()]
-                if not assigned_branch_ids and user.branch:
-                    assigned_branch_ids = [str(user.branch.id)]
+        # Determine branch scope based on role
+        from apps.common.utils import get_branch_filter_ids
+        branch_ids = get_branch_filter_ids(user)
 
-        if assigned_branch_ids:
-             # AnalyticsService needs to handle list of branch_ids
-             metrics = AnalyticsService.get_metrics_multi(assigned_branch_ids, start_date, end_date)
+        if branch_ids and branch_ids != ["NONE"]:
+            # Role-restricted user: compute metrics for their specific branches
+            metrics = AnalyticsService.get_metrics_multi(branch_ids, start_date, end_date)
         else:
-            if not (branch_id and branch_id.strip() and branch_id != 'null' and branch_id != 'undefined'):
-                branch_id = None
-            metrics = AnalyticsService.get_metrics(branch_id, start_date, end_date)
+            # Admin/super_admin: optionally filter by branch query param
+            clean_branch_id = (
+                branch_id
+                if branch_id and branch_id.strip() and branch_id not in ("null", "undefined")
+                else None
+            )
+            metrics = AnalyticsService.get_metrics(clean_branch_id, start_date, end_date)
+
         return Response(metrics)

@@ -34,39 +34,43 @@ const CallLogList = () => {
     const isSuperAdmin = user?.role === 'super_admin';
     const isAdmin = user?.role === 'admin' || isSuperAdmin;
 
-    const fetchLogs = async (currentFilters = {}, currentPage = 1) => {
-        setLoading(true);
+    const fetchLogs = async (currentFilters = {}, currentPage = 1, isBackground = false) => {
+        if (!isBackground) setLoading(true);
         try {
             const response = await callLogsAPI.getCallLogs({ ...currentFilters, page: currentPage });
             setLogs(response.data.results);
             setTotalCount(response.data.count);
-            setSelectedLogs([]);
         } catch (error) {
             console.error("Failed to fetch call logs", error);
         } finally {
-            setLoading(false);
+            if (!isBackground) setLoading(false);
         }
     };
 
-    const fetchStats = async (currentFilters = {}) => {
-        setStatsLoading(true);
+    const fetchStats = async (currentFilters = {}, isBackground = false) => {
+        if (!isBackground) setStatsLoading(true);
         try {
             const response = await callLogsAPI.getCallLogStats(currentFilters);
             setStats(response.data);
         } catch (error) {
             console.error("Failed to fetch call log stats", error);
         } finally {
-            setStatsLoading(false);
+            if (!isBackground) setStatsLoading(false);
         }
     };
 
     useEffect(() => {
         fetchLogs(filters, page);
-    }, [filters, page]);
-
-    useEffect(() => {
         fetchStats(filters);
-    }, [filters]);
+
+        // Real-time polling every 10 seconds
+        const intervalId = setInterval(() => {
+            fetchLogs(filters, page, true);
+            fetchStats(filters, true);
+        }, 10000);
+
+        return () => clearInterval(intervalId);
+    }, [filters, page]);
 
     const handleFilter = (newFilters) => {
         setFilters(newFilters);

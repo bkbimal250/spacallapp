@@ -1,52 +1,82 @@
+"""
+Dashboard views for the CallLog SPA Management System.
+
+Provides the main KPI summary data for the web dashboard home page.
+
+Access Control:
+    super_admin / admin → See stats for all branches (or filter by ?branch=).
+    branch_manager      → See stats only for their assigned branch.
+"""
+
 from django.utils import timezone
 from datetime import timedelta
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
-from apps.calllogs.models import CallLog
-from apps.devices.models import Device
-from apps.branches.models import Branch
 from django.db.models import Count, Avg, Q
 from django.db.models.functions import TruncDate
 
+from apps.calllogs.models import CallLog
+from apps.devices.models import Device
+from apps.branches.models import Branch
+from apps.common.utils import apply_branch_filter, get_branch_filter_ids
+
+
 class DashboardStatsView(APIView):
+    """
+    Returns summary KPI data for the main dashboard.
+
+    Response includes:
+        - total_calls        : Total call count
+        - active_devices     : Number of devices marked online in DeviceHealth
+        - missed_calls       : Count of missed calls
+        - avg_duration       : Average call duration (formatted as "Xm Ys")
+        - call_volume_trends : Last 7 days daily call counts (for chart)
+        - branch_performance : Top 10 branches by call volume (for table)
+
+    Access:
+        super_admin / admin → All branches (or filtered by ?branch=).
+        branch_manager      → Only their assigned branch.
+    """
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
         user = request.user
-        # Enforce branch restriction for branch manager/regional manager
-        assigned_branch_ids = []
-        if user.is_authenticated:
-            if user.role in ['super_admin', 'admin', 'viewer']:
-                if user.role == 'viewer' and user.branch:
-                    assigned_branch_ids = [str(user.branch.id)]
-                else:
-                    assigned_branch_ids = []
-            elif user.role == 'branch_manager' and user.branch:
-                assigned_branch_ids = [str(user.branch.id)]
-            elif user.role == 'regional_manager':
-                assigned_branch_ids = [str(b.id) for b in user.assigned_branches.all()]
-                if not assigned_branch_ids and user.branch:
-                    assigned_branch_ids = [str(user.branch.id)]
-        
         from apps.monitoring.models import DeviceHealth
-        
+
+        # Get branch IDs for the current user's role
+        branch_ids = get_branch_filter_ids(user)
+        branch_id_param = request.query_params.get("branch")
+
+        # Build base querysets
         calls_qs = CallLog.objects.all()
         health_qs = DeviceHealth.objects.all()
-        branch_qs = Branch.objects.all()
-        
-        if assigned_branch_ids:
-            calls_qs = calls_qs.filter(branch_id__in=assigned_branch_ids)
-            health_qs = health_qs.filter(device__branch_id__in=assigned_branch_ids)
-            branch_qs = branch_qs.filter(id__in=assigned_branch_ids)
+        branch_qs = Branch.objects.filter(is_active=True)
 
+        # Apply role-based branch filtering
+        if branch_ids and branch_ids != ["NONE"]:
+            # Restricted user: filter to their branch(es)
+            calls_qs = calls_qs.filter(branch_id__in=branch_ids)
+            health_qs = health_qs.filter(device__branch_id__in=branch_ids)
+            branch_qs = branch_qs.filter(id__in=branch_ids)
+        elif branch_id_param and branch_id_param.strip() and branch_id_param not in ("undefined", "null"):
+            # Admin manually filtering by a specific branch
+            calls_qs = calls_qs.filter(branch_id=branch_id_param)
+            health_qs = health_qs.filter(device__branch_id=branch_id_param)
+            branch_qs = branch_qs.filter(id=branch_id_param)
+        elif branch_ids == ["NONE"]:
+            # Branch manager with no branch assigned — show nothing
+            calls_qs = calls_qs.none()
+            health_qs = health_qs.none()
+            branch_qs = branch_qs.none()
+
+        # ── KPI Stats ──────────────────────────────────────────────────────────
         total_calls = calls_qs.count()
-        # Calculate active devices based on health status flag
         active_devices = health_qs.filter(is_online=True).count()
-        missed_calls = calls_qs.filter(call_type='missed').count()
-        
-        # Calculate avg duration
-        avg_dur = calls_qs.aggregate(Avg('duration'))['duration__avg']
+        missed_calls = calls_qs.filter(call_type="missed").count()
+
+        # Average call duration (formatted as "Xm Ys")
+        avg_dur = calls_qs.aggregate(Avg("duration"))["duration__avg"]
         if avg_dur:
             minutes = int(avg_dur // 60)
             seconds = int(avg_dur % 60)
@@ -54,27 +84,29 @@ class DashboardStatsView(APIView):
         else:
             avg_duration_str = "0m 0s"
 
-        # Aggregate 7 days chart trends
+        # ── 7-Day Call Volume Trend Chart ──────────────────────────────────────
         last_7_days = timezone.now() - timedelta(days=7)
-        daily_trends = calls_qs.filter(call_time__gte=last_7_days) \
-            .annotate(date=TruncDate('call_time')) \
-            .values('date') \
-            .annotate(calls=Count('id')) \
-            .order_by('date')
-            
-        chart_data = []
-        for d in daily_trends:
-            chart_data.append({
-                "name": d['date'].strftime('%a'),
-                "calls": d['calls']
-            })
-            
-        # Aggregate Branch Performance records
+        daily_trends = (
+            calls_qs.filter(call_time__gte=last_7_days)
+            .annotate(date=TruncDate("call_time"))
+            .values("date")
+            .annotate(calls=Count("id"))
+            .order_by("date")
+        )
+        chart_data = [
+            {"name": d["date"].strftime("%a"), "calls": d["calls"]}
+            for d in daily_trends
+        ]
+
+        # ── Top 10 Branch Performance Table ───────────────────────────────────
         performance_branches = branch_qs.annotate(
-            total_calls=Count('call_logs'),
-            completed_calls=Count('call_logs', filter=Q(call_logs__call_type='incoming') | Q(call_logs__call_type='outgoing'))
-        )[:10]  # Just top 10 for dashboard preview
-        
+            total_calls=Count("call_logs"),
+            completed_calls=Count(
+                "call_logs",
+                filter=Q(call_logs__call_type="incoming") | Q(call_logs__call_type="outgoing"),
+            ),
+        ).order_by("-total_calls")[:10]
+
         branch_data = []
         for b in performance_branches:
             conv_rate = round((b.completed_calls / b.total_calls * 100) if b.total_calls > 0 else 0)
@@ -82,16 +114,14 @@ class DashboardStatsView(APIView):
                 "name": b.spa_name,
                 "calls": b.total_calls,
                 "conversion": conv_rate,
-                "status": "Active" if b.is_active else "Inactive"
+                "status": "Active" if b.is_active else "Inactive",
             })
 
-        data = {
+        return Response({
             "total_calls": total_calls,
             "active_devices": active_devices,
             "missed_calls": missed_calls,
             "avg_duration": avg_duration_str,
             "call_volume_trends": chart_data,
-            "branch_performance": branch_data
-        }
-        return Response(data)
-
+            "branch_performance": branch_data,
+        })

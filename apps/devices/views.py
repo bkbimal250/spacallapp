@@ -1,92 +1,145 @@
+"""
+Views for the Devices app.
+
+Endpoints:
+    GET /devices/                → List devices (filtered by role).
+    POST /devices/               → Create device record (admin/super_admin only).
+    PUT/PATCH /devices/<id>/     → Update device (admin/super_admin only).
+    DELETE /devices/<id>/        → Delete device (super_admin only).
+    POST /devices/claim/         → Android app claims a device using registration token.
+
+Access Control:
+    super_admin   → Full CRUD on all devices.
+    admin         → Full CRUD on all devices.
+    branch_manager → Read-only, see only devices in their assigned branch.
+
+Android Flow:
+    1. Admin creates Device → registration_token generated.
+    2. Android app calls POST /devices/claim/ with the token.
+    3. System verifies token, assigns device_id + secret_key.
+    4. App uses device_id + secret_key for HMAC auth on every sync.
+"""
+
 import secrets
 from rest_framework import viewsets, permissions, status
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from .models import Device
-from .serializers import DeviceSerializer, ClaimRegistrationSerializer
-
 from django.db import models
 
+from .models import Device
+from .serializers import DeviceSerializer, ClaimRegistrationSerializer
+from apps.common.permissions import IsAdminOrSuperAdmin
+
+
 class DeviceViewSet(viewsets.ModelViewSet):
+    """
+    CRUD for Device management.
+
+    Each device represents one Android phone installed at a branch.
+    Devices are pre-registered by admin; Android app claims them via token.
+    """
     serializer_class = DeviceSerializer
     permission_classes = [permissions.IsAuthenticated]
 
+    def get_permissions(self):
+        """
+        Write operations are restricted to admin and super_admin.
+        """
+        if self.action in ["create", "update", "partial_update", "destroy"]:
+            return [permissions.IsAuthenticated(), IsAdminOrSuperAdmin()]
+        return [permissions.IsAuthenticated()]
+
     def get_queryset(self):
+        """
+        Return devices filtered by the user's role:
+            super_admin / admin → All devices.
+            branch_manager      → Only devices in their assigned branch.
+        """
         user = self.request.user
-        queryset = Device.objects.select_related('branch').all().order_by('-created_at')
+        queryset = Device.objects.select_related("branch").all().order_by("-created_at")
 
-        # Restriction for branch/regional managers to their assigned branch(es)
-        if user.is_authenticated:
-            if user.role in ['super_admin', 'admin']:
-                pass 
-            elif user.role == 'branch_manager':
-                assigned_branches = user.assigned_branches.all()
-                if assigned_branches.exists():
-                    queryset = queryset.filter(branch__in=assigned_branches)
-                elif user.branch:
-                    queryset = queryset.filter(branch=user.branch)
-            elif user.role == 'regional_manager':
-                assigned_branches = user.assigned_branches.all()
-                if assigned_branches.exists():
-                    queryset = queryset.filter(branch__in=assigned_branches)
-                elif user.branch:
-                    queryset = queryset.filter(branch=user.branch)
-            elif user.role == 'viewer' and user.branch:
+        # Branch managers can only see devices in their assigned branch
+        if user.role == "branch_manager":
+            if user.branch:
                 queryset = queryset.filter(branch=user.branch)
-        
-        search = self.request.query_params.get('search', None)
+            else:
+                queryset = queryset.none()
 
-        branch = self.request.query_params.get('branch', None)
-        is_registered = self.request.query_params.get('is_registered', None)
+        # Admin and super_admin see all devices
 
+        # ─── Optional Filters ─────────────────────────────────────────────────
+
+        # Search by device_id or registration_token
+        search = self.request.query_params.get("search", None)
         if search:
             queryset = queryset.filter(
-                models.Q(device_id__icontains=search) | 
+                models.Q(device_id__icontains=search) |
                 models.Q(registration_token__icontains=search)
             )
-        
+
+        # Filter by branch UUID
+        branch = self.request.query_params.get("branch", None)
         if branch:
             queryset = queryset.filter(branch_id=branch)
-            
+
+        # Filter by registration status (accepts 'true' or 'false' string)
+        is_registered = self.request.query_params.get("is_registered", None)
         if is_registered is not None:
-            is_reg = is_registered.lower() == 'true'
-            queryset = queryset.filter(is_registered=is_reg)
+            queryset = queryset.filter(is_registered=is_registered.lower() == "true")
 
         return queryset
 
+
 class ClaimRegistrationView(APIView):
+    """
+    Android app uses this to claim a pre-registered device.
+
+    Flow:
+        1. Android app sends the registration_token (shown to admin on dashboard).
+        2. System verifies the token exists and is unclaimed (is_registered=False).
+        3. System assigns a unique device_id and a secure secret_key.
+        4. Android app stores device_id + secret_key for use in future sync requests.
+
+    This endpoint is public (no auth required) because the device is not yet registered.
+    Security is ensured by the one-time-use registration_token.
+    """
     permission_classes = [permissions.AllowAny]
 
     def post(self, request):
         serializer = ClaimRegistrationSerializer(data=request.data)
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-        
-        token = serializer.validated_data['token']
-        
+
+        token = serializer.validated_data["token"]
+
+        # Look up the device by token — must be unclaimed
         try:
-            device = Device.objects.get(registration_token=token, is_registered=False)
+            device = Device.objects.select_related("branch").get(
+                registration_token=token,
+                is_registered=False
+            )
         except Device.DoesNotExist:
             return Response(
-                {"error": "Invalid or already used registration token."}, 
+                {"error": "Invalid or already used registration token."},
                 status=status.HTTP_404_NOT_FOUND
             )
 
-        # Generate final credentials
-        # device_id: e.g. SPA-XXXX-XXXX
+        # Generate unique device credentials
+        # device_id format: SPA-<6chars>-<6chars> (e.g. SPA-A1B2C3-D4E5F6)
         device_id = f"SPA-{secrets.token_hex(3).upper()}-{secrets.token_hex(3).upper()}"
-        secret_key = secrets.token_hex(32)
+        secret_key = secrets.token_hex(32)  # 64-character hex secret for HMAC signing
 
+        # Update device with credentials and mark as registered
         device.device_id = device_id
         device.secret_key = secret_key
         device.is_registered = True
-        device.registration_token = None # Clear token after use if desired, or keep track
-        device.save()
+        device.registration_token = None  # Invalidate token after use
+        device.save(update_fields=["device_id", "secret_key", "is_registered", "registration_token"])
 
         return Response({
             "status": "success",
             "device_id": device_id,
             "secret_key": secret_key,
-            "branch_name": device.branch.spa_name if device.branch else "Unknown"
+            "branch_name": device.branch.spa_name if device.branch else "Unknown Branch",
+            "branch_id": str(device.branch.id) if device.branch else None,
         }, status=status.HTTP_200_OK)
-

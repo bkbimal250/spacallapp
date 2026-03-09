@@ -57,6 +57,13 @@ const Login = () => {
 
     const handleAuthSuccess = (response) => {
         const { access, refresh, user: userData } = response.data;
+
+        // Prevent branch_manager from accessing the web dashboard
+        if (userData && userData.role === 'branch_manager') {
+            dispatch(loginFailure('Access Denied: Branch Managers must use the Android App.'));
+            return;
+        }
+
         setToken(access);
         if (refresh) {
             localStorage.setItem('refresh', refresh);

@@ -10,9 +10,8 @@ const UserForm = ({ isOpen, onClose, onSubmit, initialData }) => {
         email: '',
         first_name: '',
         last_name: '',
-        role: 'viewer',
+        role: 'branch_manager',
         branch: '',
-        assigned_branches: [],
         password: '',
     });
 
@@ -36,19 +35,17 @@ const UserForm = ({ isOpen, onClose, onSubmit, initialData }) => {
                 email: initialData.email || '',
                 first_name: initialData.first_name || '',
                 last_name: initialData.last_name || '',
-                role: initialData.role || 'viewer',
+                role: initialData.role || 'branch_manager',
                 branch: initialData.branch || '',
-                assigned_branches: initialData.assigned_branches || [],
-                password: '', // Don't show password
+                password: '',
             });
         } else {
             setFormData({
                 email: '',
                 first_name: '',
                 last_name: '',
-                role: 'viewer',
+                role: 'branch_manager',
                 branch: '',
-                assigned_branches: [],
                 password: '',
             });
         }
@@ -59,17 +56,6 @@ const UserForm = ({ isOpen, onClose, onSubmit, initialData }) => {
         setFormData(prev => ({ ...prev, [name]: value }));
     };
 
-    const handleMultiSelectChange = (e) => {
-        const { options } = e.target;
-        const selectedValues = [];
-        for (let i = 0; i < options.length; i++) {
-            if (options[i].selected) {
-                selectedValues.push(options[i].value);
-            }
-        }
-        setFormData(prev => ({ ...prev, assigned_branches: selectedValues }));
-    };
-
     const handleSubmit = (e) => {
         e.preventDefault();
         const data = { ...formData };
@@ -77,17 +63,8 @@ const UserForm = ({ isOpen, onClose, onSubmit, initialData }) => {
             delete data.password;
         }
 
-        if (data.role === 'branch_manager' || data.role === 'viewer') {
-            data.assigned_branches = [];
-            if (data.role === 'viewer' && !data.branch) {
-                data.branch = null; // Gloal viewer
-            }
-        } else if (data.role === 'regional_manager') {
+        if (data.role !== 'branch_manager') {
             data.branch = null;
-        } else {
-            // Super Admin or Admin
-            data.branch = null;
-            data.assigned_branches = [];
         }
 
         onSubmit(data);
@@ -130,22 +107,20 @@ const UserForm = ({ isOpen, onClose, onSubmit, initialData }) => {
                     >
                         <option value="super_admin">Super Admin</option>
                         <option value="admin">Admin</option>
-                        <option value="regional_manager">Regional Manager</option>
                         <option value="branch_manager">Branch Manager</option>
-                        <option value="viewer">Viewer</option>
                     </select>
                 </div>
 
-                {(formData.role === 'branch_manager' || formData.role === 'viewer') && (
+                {formData.role === 'branch_manager' && (
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">
-                            Assign Branch {formData.role === 'branch_manager' ? '(Required)' : '(Optional - leave blank for Global)'}
+                            Assign Branch (Required)
                         </label>
                         <select
                             name="branch"
                             value={formData.branch}
                             onChange={handleChange}
-                            required={formData.role === 'branch_manager'}
+                            required
                             className="w-full border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500"
                         >
                             <option value="">Select Branch</option>
@@ -155,27 +130,6 @@ const UserForm = ({ isOpen, onClose, onSubmit, initialData }) => {
                                 </option>
                             ))}
                         </select>
-                    </div>
-                )}
-
-                {formData.role === 'regional_manager' && (
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Assign Branches (Multiple)</label>
-                        <select
-                            name="assigned_branches"
-                            multiple
-                            value={formData.assigned_branches}
-                            onChange={handleMultiSelectChange}
-                            required
-                            className="w-full border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 h-32"
-                        >
-                            {branches.map(branch => (
-                                <option key={branch.id} value={branch.id}>
-                                    {branch.spa_name} {branch.city ? `(${branch.city})` : ''}
-                                </option>
-                            ))}
-                        </select>
-                        <p className="text-xs text-gray-500 mt-1">Hold Ctrl (Cmd on Mac) to select multiple</p>
                     </div>
                 )}
 

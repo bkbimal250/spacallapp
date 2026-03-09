@@ -16,7 +16,8 @@ const DashboardHome = () => {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        const fetchStats = async () => {
+        const fetchStats = async (isBackground = false) => {
+            if (!isBackground) setLoading(true);
             try {
                 const response = await dashboardAPI.getStats();
                 const payload = response.data?.data || response.data;
@@ -28,11 +29,16 @@ const DashboardHome = () => {
             } catch (error) {
                 console.error("Failed to fetch dashboard stats", error);
             } finally {
-                setLoading(false);
+                if (!isBackground) setLoading(false);
             }
         };
 
-        fetchStats();
+        fetchStats(); // Initial fetch
+        const interval = setInterval(() => {
+            fetchStats(true); // Background fetch (don't set loading to true)
+        }, 10000);
+
+        return () => clearInterval(interval);
     }, []);
 
     if (loading) return <div>Loading Dashboard...</div>;

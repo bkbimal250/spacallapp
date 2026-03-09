@@ -43,40 +43,46 @@ const AnalyticsDashboard = () => {
         fetchBranches();
     }, []);
 
-    const fetchAnalytics = async () => {
-        if (timeFilter === 'custom' && (!customDates.startDate || !customDates.endDate)) {
-            return;
-        }
-
-        setLoading(true);
-        try {
-            const params = {
-                time_filter: timeFilter,
-                branch: selectedBranch
-            };
-            if (timeFilter === 'custom') {
-                params.start_date = customDates.startDate;
-                params.end_date = customDates.endDate;
+    useEffect(() => {
+        const fetchAnalytics = async (isBackground = false) => {
+            if (timeFilter === 'custom' && (!customDates.startDate || !customDates.endDate)) {
+                return;
             }
 
-            const [peakRes, overviewRes, statsRes] = await Promise.all([
-                analyticsAPI.getPeakHours(params),
-                analyticsAPI.getOverview(params),
-                analyticsAPI.getStats(params)
-            ]);
+            if (!isBackground) setLoading(true);
+            try {
+                const params = {
+                    time_filter: timeFilter,
+                    branch: selectedBranch
+                };
+                if (timeFilter === 'custom') {
+                    params.start_date = customDates.startDate;
+                    params.end_date = customDates.endDate;
+                }
 
-            setPeakData(peakRes.data || []);
-            setConversionData(overviewRes.data?.conversion_rates || []);
-            setStats(statsRes.data || {});
-        } catch (error) {
-            console.error("Failed to fetch analytics", error);
-        } finally {
-            setLoading(false);
-        }
-    };
+                const [peakRes, overviewRes, statsRes] = await Promise.all([
+                    analyticsAPI.getPeakHours(params),
+                    analyticsAPI.getOverview(params),
+                    analyticsAPI.getStats(params)
+                ]);
 
-    useEffect(() => {
+                setPeakData(peakRes.data || []);
+                setConversionData(overviewRes.data?.conversion_rates || []);
+                setStats(statsRes.data || {});
+            } catch (error) {
+                console.error("Failed to fetch analytics", error);
+            } finally {
+                if (!isBackground) setLoading(false);
+            }
+        };
+
         fetchAnalytics();
+
+        const intervalId = setInterval(() => {
+            fetchAnalytics(true);
+        }, 10000);
+
+        return () => clearInterval(intervalId);
     }, [timeFilter, customDates, selectedBranch]);
 
     const handleDateChange = (field, value) => {
@@ -95,13 +101,12 @@ const AnalyticsDashboard = () => {
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div className="flex items-center space-x-3">
                     <h1 className="text-2xl font-semibold text-gray-900">Analytics</h1>
-                    <button
-                        onClick={fetchAnalytics}
-                        className="p-1.5 text-gray-400 hover:text-sky-600 rounded-lg hover:bg-sky-50 transition-colors"
-                        title="Refresh Dashboard"
+                    <div
+                        className="p-1.5 text-gray-400 hover:text-sky-600 rounded-lg hover:bg-sky-50 transition-colors cursor-default"
+                        title="Dashboard auto-refreshes every 10s"
                     >
                         <RefreshCcw size={18} className={loading ? "animate-spin" : ""} />
-                    </button>
+                    </div>
                 </div>
 
                 <div className="flex flex-wrap items-center gap-4">
@@ -157,7 +162,7 @@ const AnalyticsDashboard = () => {
                     <ConversionChart data={conversionData} loading={loading} />
                 </div>
             </div>
-        </div>
+        </div >
     );
 };
 

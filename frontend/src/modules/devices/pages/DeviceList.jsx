@@ -19,26 +19,28 @@ const DeviceList = () => {
     const [totalCount, setTotalCount] = useState(0);
     const pageSize = 50;
 
-    const fetchDevices = async (currentFilters = {}, currentPage = 1) => {
-        setLoading(true);
+    const fetchDevices = async (currentFilters = {}, currentPage = 1, isBackground = false) => {
+        if (!isBackground) setLoading(true);
         try {
             const response = await devicesAPI.getDevices({ ...currentFilters, page: currentPage });
-            if (response.data.results) {
-                setDevices(response.data.results);
-                setTotalCount(response.data.count);
-            } else {
-                setDevices(response.data);
-                setTotalCount(response.data.length);
-            }
+            const data = response.data.results || response.data;
+            setDevices(data);
+            setTotalCount(response.data.count || data.length);
         } catch (error) {
             console.error("Failed to fetch devices", error);
         } finally {
-            setLoading(false);
+            if (!isBackground) setLoading(false);
         }
     };
 
     useEffect(() => {
         fetchDevices(filters, page);
+
+        const intervalId = setInterval(() => {
+            fetchDevices(filters, page, true);
+        }, 10000);
+
+        return () => clearInterval(intervalId);
     }, [filters, page]);
 
     const handleFilter = (newFilters) => {
@@ -122,7 +124,14 @@ const DeviceList = () => {
         { header: 'Branch', accessor: 'branch_name' },
         {
             header: 'Status',
-            render: (row) => <DeviceStatusBadge isActive={row.is_active} isBlocked={row.is_blocked} isRegistered={row.is_registered} />
+            render: (row) => (
+                <DeviceStatusBadge
+                    isActive={row.is_active}
+                    isBlocked={row.is_blocked}
+                    isRegistered={row.is_registered}
+                    isOnline={row.is_online}
+                />
+            )
         },
         { header: 'Last Sync', render: (row) => formatDate(row.last_sync, 'MMM dd, HH:mm') },
 

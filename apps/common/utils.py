@@ -1,9 +1,66 @@
-import hashlib
+"""
+Shared utility functions used across the CallLog SPA Management System.
+
+Provides role-based branch filtering helpers to avoid repeating the
+same 3-role logic in every view.
+"""
 
 
-def generate_hash(*args):
+def get_branch_filter_ids(user):
     """
-    Generate SHA256 hash from arguments
+    Return a list of branch UUIDs (as strings) that the given user is
+    allowed to see, based on their role.
+
+    Rules:
+        super_admin  → None (empty list) means "see everything, no filter"
+        admin        → None (empty list) means "see everything, no filter"
+        branch_manager → [user.branch.id] if branch is assigned, else ['NONE']
+
+    Returns:
+        list[str] : Branch IDs to filter by.
+                   Empty list [] = no restriction (admin/super_admin).
+                   ['NONE']      = branch_manager with no branch (should see nothing).
     """
-    raw = "_".join(str(a) for a in args)
-    return hashlib.sha256(raw.encode()).hexdigest()
+    if user.role in ["super_admin", "admin"]:
+        # Admins see all branches — return empty list to indicate no filter
+        return []
+
+    if user.role == "branch_manager":
+        if user.branch:
+            # Branch managers see only their one assigned branch
+            return [str(user.branch.id)]
+        else:
+            # Branch manager with no assigned branch → should see nothing
+            # Return a placeholder that won't match any real branch
+            return ["NONE"]
+
+    # Future-proof: any other role sees nothing
+    return ["NONE"]
+
+
+def apply_branch_filter(queryset, field_path, user, extra_branch_id=None):
+    """
+    Apply branch-based filtering to a queryset based on the user's role.
+
+    Args:
+        queryset       : The base Django queryset to filter.
+        field_path     : The queryset field path to filter on (e.g. 'branch_id', 'device__branch_id').
+        user           : The authenticated request.user object.
+        extra_branch_id: An additional branch_id from query params (used for admin-side filtering).
+
+    Returns:
+        Filtered queryset.
+    """
+    branch_ids = get_branch_filter_ids(user)
+
+    if branch_ids:
+        # This user is restricted to specific branches
+        queryset = queryset.filter(**{f"{field_path}__in": branch_ids})
+    elif extra_branch_id:
+        # Admin is applying a manual branch filter via query param
+        if extra_branch_id == "null":
+            queryset = queryset.filter(**{f"{field_path}__isnull": True})
+        elif extra_branch_id.strip() and extra_branch_id not in ("undefined", ""):
+            queryset = queryset.filter(**{field_path: extra_branch_id})
+
+    return queryset

@@ -8,7 +8,7 @@ from apps.devices.models import Device
 def check_offline_devices():
     from apps.monitoring.models import DeviceHealth, DeviceEvent
     
-    threshold = timezone.now() - timedelta(minutes=10)
+    threshold = timezone.now() - timedelta(minutes=5)
 
     # Find devices that have heartbeats but are now late
     late_devices = Device.objects.filter(

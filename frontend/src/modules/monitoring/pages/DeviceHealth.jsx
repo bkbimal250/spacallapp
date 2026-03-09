@@ -6,7 +6,9 @@ import Table from '../../../shared/components/Table';
 import Badge from '../../../shared/components/Badge';
 import Pagination from '../../../shared/components/Pagination';
 import { formatDate } from '../../../shared/utils/formatDate';
-import { RefreshCcw } from 'lucide-react';
+import { RefreshCcw, Wifi, WifiOff } from 'lucide-react';
+import { devicesAPI } from '../../devices/api';
+import DeviceStatusBadge from '../../devices/components/DeviceStatusBadge';
 
 const DeviceHealth = () => {
     const [stats, setStats] = useState({
@@ -17,25 +19,29 @@ const DeviceHealth = () => {
         sim_change_alerts: 0,
     });
     const [alerts, setAlerts] = useState([]);
+    const [devices, setDevices] = useState([]);
     const [loading, setLoading] = useState(true);
     const [page, setPage] = useState(1);
     const [totalCount, setTotalCount] = useState(0);
     const pageSize = 50;
 
-    const fetchData = async () => {
-        setLoading(true);
+    const fetchData = async (isBackground = false) => {
+        if (!isBackground) setLoading(true);
         try {
             const statsResponse = await monitoringAPI.getDeviceHealth();
             setStats(statsResponse.data);
-            await fetchAlerts(1);
+            await fetchAlerts(page, isBackground);
+
+            const devicesResponse = await devicesAPI.getDevices({ page_size: 10 });
+            setDevices(devicesResponse.data.results || devicesResponse.data);
         } catch (error) {
             console.error("Failed to fetch monitoring data", error);
         } finally {
-            setLoading(false);
+            if (!isBackground) setLoading(false);
         }
     };
 
-    const fetchAlerts = async (currentPage) => {
+    const fetchAlerts = async (currentPage, isBackground = false) => {
         try {
             const alertsResponse = await monitoringAPI.getAlerts({ page: currentPage });
             setAlerts(alertsResponse.data.results || alertsResponse.data);
@@ -47,6 +53,13 @@ const DeviceHealth = () => {
 
     useEffect(() => {
         fetchData();
+
+        // Real-time updates every 10 seconds
+        const intervalId = setInterval(() => {
+            fetchData(true);
+        }, 10000);
+
+        return () => clearInterval(intervalId);
     }, []);
 
     useEffect(() => {
@@ -106,7 +119,35 @@ const DeviceHealth = () => {
                 <div className="lg:col-span-2 flex flex-col space-y-4">
                     <div className="bg-white shadow rounded-lg overflow-hidden flex flex-col">
                         <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
-                            <h3 className="text-lg font-medium text-gray-900">Recent Alerts</h3>
+                            <h3 className="text-lg font-medium text-gray-900">Live Device Monitoring</h3>
+                            <span className="text-xs text-gray-500">Showing top 10 devices</span>
+                        </div>
+                        <div className="overflow-x-auto text-sm">
+                            <Table
+                                columns={[
+                                    { header: 'Device', accessor: 'device_id' },
+                                    { header: 'Branch', accessor: 'branch_name' },
+                                    {
+                                        header: 'Status',
+                                        render: (row) => (
+                                            <DeviceStatusBadge
+                                                isActive={row.is_active}
+                                                isBlocked={row.is_blocked}
+                                                isRegistered={row.is_registered}
+                                                isOnline={row.is_online}
+                                            />
+                                        )
+                                    },
+                                    { header: 'Last Heartbeat', render: (row) => row.last_heartbeat ? formatDate(row.last_heartbeat, 'HH:mm:ss') : 'Never' }
+                                ]}
+                                data={devices}
+                            />
+                        </div>
+                    </div>
+
+                    <div className="bg-white shadow rounded-lg overflow-hidden flex flex-col">
+                        <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
+                            <h3 className="text-lg font-medium text-gray-900">Recent Alerts (System Logs)</h3>
                         </div>
                         <div className="overflow-x-auto text-sm">
                             <Table columns={columns} data={alerts} />

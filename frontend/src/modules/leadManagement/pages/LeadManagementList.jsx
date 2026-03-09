@@ -35,8 +35,8 @@ const LeadManagementList = () => {
 
     const isSuperAdmin = user?.role === 'super_admin';
 
-    const fetchLeads = async (currentFilters = {}, currentPage = 1) => {
-        setLoading(true);
+    const fetchLeads = async (currentFilters = {}, currentPage = 1, isBackground = false) => {
+        if (!isBackground) setLoading(true);
         try {
             const apiFilters = { page: currentPage };
             if (currentFilters.branch) {
@@ -55,12 +55,18 @@ const LeadManagementList = () => {
         } catch (error) {
             console.error("Failed to fetch leads", error);
         } finally {
-            setLoading(false);
+            if (!isBackground) setLoading(false);
         }
     };
 
     useEffect(() => {
         fetchLeads(filters, page);
+
+        const intervalId = setInterval(() => {
+            fetchLeads(filters, page, true);
+        }, 10000);
+
+        return () => clearInterval(intervalId);
     }, [filters, page]);
 
     const handleFilterChange = (field, value) => {
