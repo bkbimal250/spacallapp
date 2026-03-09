@@ -16,6 +16,7 @@ CORS_ALLOWED_ORIGINS = env.list("CORS_ALLOWED_ORIGINS", default=[
 CSRF_TRUSTED_ORIGINS = env.list("CSRF_TRUSTED_ORIGINS", default=[
     'https://api.spa.branch.call.workspa.in',
     'https://spacallapp.dishaonlinesolution.in',
+    'http://localhost:5173',
 ])
 
 # Use WhiteNoise for static files in production
