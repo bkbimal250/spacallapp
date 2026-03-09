@@ -3,20 +3,21 @@ from .base import *
 DEBUG = False
 
 # Pull allowed hosts from .env (comma-separated list)
-ALLOWED_HOSTS = env.list("ALLOWED_HOSTS", default=['api.spa.branch.call.workspa.in'])
+ALLOWED_HOSTS = env.list("ALLOWED_HOSTS", default=['api.spa.branch.call.workspa.in', 'localhost', '127.0.0.1'])
 
-# In production, we should NOT allow all origins. 
-# We explicitly list the frontend URL(s).
-CORS_ALLOW_ALL_ORIGINS = False
+# Temporarily allowing all origins to debug the "Network Error" on login
+CORS_ALLOW_ALL_ORIGINS = True
 CORS_ALLOWED_ORIGINS = env.list("CORS_ALLOWED_ORIGINS", default=[
     'https://spacallapp.dishaonlinesolution.in',
-    'http://localhost:5173', # For testing prod settings locally if needed
+    'http://localhost:5173',
+    'http://127.0.0.1:5173',
 ])
 
 CSRF_TRUSTED_ORIGINS = env.list("CSRF_TRUSTED_ORIGINS", default=[
     'https://api.spa.branch.call.workspa.in',
     'https://spacallapp.dishaonlinesolution.in',
     'http://localhost:5173',
+    'http://127.0.0.1:5173',
 ])
 
 # Use WhiteNoise for static files in production
