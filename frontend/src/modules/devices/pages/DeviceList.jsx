@@ -102,22 +102,28 @@ const DeviceList = () => {
         {
             header: 'Reg. Token',
             render: (row) => row.is_registered ? (
-                <span className="text-gray-300 text-[10px]">—</span>
+                <span className="text-gray-400 text-[10px]">— Registered —</span>
             ) : (
                 <div className="flex items-center group">
-                    <code className="bg-indigo-50 text-indigo-700 px-2 py-1 rounded border border-indigo-100 font-black text-xs tracking-wider">
-                        {row.registration_token}
-                    </code>
-                    <button
-                        onClick={() => {
-                            navigator.clipboard.writeText(row.registration_token);
-                            alert('Token copied!');
-                        }}
-                        className="ml-2 p-1 text-gray-400 hover:text-indigo-600 opacity-0 group-hover:opacity-100 transition-opacity"
-                        title="Copy Token"
-                    >
-                        <svg size={12} fill="none" viewBox="0 0 24 24" stroke="currentColor" className="w-3 h-3"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7v8a2 2 0 002 2h6M8 7V5a2 2 0 012-2h4.586a1 1 0 01.707.293l4.414 4.414a1 1 0 01.293.707V15a2 2 0 01-2 2h-2M8 7H6a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2v-2" /></svg>
-                    </button>
+                    {row.registration_token ? (
+                        <>
+                            <code className="bg-sky-50 text-sky-700 px-2 py-1 rounded border border-sky-100 font-extrabold text-xs tracking-widest shadow-sm">
+                                {row.registration_token}
+                            </code>
+                            <button
+                                onClick={() => {
+                                    navigator.clipboard.writeText(row.registration_token);
+                                    alert('Registration token copied to clipboard!');
+                                }}
+                                className="ml-2 p-1.5 text-gray-400 hover:text-sky-600 hover:bg-sky-50 rounded-md transition-all opacity-40 group-hover:opacity-100"
+                                title="Copy Token"
+                            >
+                                <svg size={12} fill="none" viewBox="0 0 24 24" stroke="currentColor" className="w-3.5 h-3.5"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2 / 2} d="M8 7v8a2 2 0 002 2h6M8 7V5a2 2 0 012-2h4.586a1 1 0 01.707.293l4.414 4.414a1 1 0 01.293.707V15a2 2 0 01-2 2h-2M8 7H6a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2v-2" /></svg>
+                            </button>
+                        </>
+                    ) : (
+                        <span className="text-amber-500 text-xs italic opacity-70">Token Unassigned</span>
+                    )}
                 </div>
             )
         },
