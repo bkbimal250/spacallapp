@@ -9,15 +9,11 @@ ALLOWED_HOSTS = env.list("ALLOWED_HOSTS", default=['api.spa.branch.call.workspa.
 CORS_ALLOW_ALL_ORIGINS = True
 CORS_ALLOWED_ORIGINS = env.list("CORS_ALLOWED_ORIGINS", default=[
     'https://spacallapp.dishaonlinesolution.in',
-    'http://localhost:5173',
-    'http://127.0.0.1:5173',
 ])
 
 CSRF_TRUSTED_ORIGINS = env.list("CSRF_TRUSTED_ORIGINS", default=[
     'https://api.spa.branch.call.workspa.in',
     'https://spacallapp.dishaonlinesolution.in',
-    'http://localhost:5173',
-    'http://127.0.0.1:5173',
 ])
 
 # Use WhiteNoise for static files in production
@@ -35,6 +31,19 @@ CSRF_COOKIE_SECURE = True
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 USE_X_FORWARDED_HOST = True
 USE_X_FORWARDED_PORT = True
+
+
+CORS_ALLOW_HEADERS = [
+    "accept",
+    "accept-encoding",
+    "authorization",
+    "content-type",
+    "origin",
+    "user-agent",
+    "x-csrftoken",
+    "x-requested-with",
+    "device-id",
+]
 
 # Logging Configuration
 LOGGING = {
