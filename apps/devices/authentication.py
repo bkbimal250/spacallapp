@@ -27,4 +27,5 @@ class DeviceAuthentication(BaseAuthentication):
         # Return (user, auth) tuple. 
         # Since usage of request.user usually implies a User object, 
         # but here we return the Device object as the 'user'.
-        return (device, None)
+        return (device, device)
+

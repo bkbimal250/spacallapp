@@ -102,7 +102,13 @@ class Device(BaseModel, TimeStampedModel, SoftDeleteModel):
     )
 
     @property
+    def is_authenticated(self):
+        """Always True for an actual Device instance (used for request.user compatibility)."""
+        return True
+
+    @property
     def is_online(self):
+
         """Returns True if the device has sent a heartbeat in the last 5 minutes."""
         if not self.last_heartbeat:
             return False
