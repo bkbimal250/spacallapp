@@ -12,5 +12,6 @@ export const ROUTES = {
     CONTACTS: '/contacts',
     LEAD_MANAGEMENT: '/lead-management',
     LEAD_MANAGEMENT_LIST: '/lead-management/list',
+    NOTIFICATIONS: '/notifications',
 };
 

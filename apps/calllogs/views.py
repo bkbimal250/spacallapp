@@ -260,7 +260,10 @@ class CallLogViewSet(viewsets.ModelViewSet):
         # Search by phone number (partial / contains)
         search = params.get("search", None)
         if search:
-            queryset = queryset.filter(phone_number__icontains=search)
+            queryset = queryset.filter(
+                Q(phone_number__icontains=search) |
+                Q(contact__name__icontains=search)
+            )
 
         # Date range filters
         start_date = params.get("start_date", None)

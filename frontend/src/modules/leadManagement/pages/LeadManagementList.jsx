@@ -145,14 +145,7 @@ const LeadManagementList = () => {
             )
         },
         { header: 'Branch', accessor: 'branch_name' },
-        {
-            header: 'Latest Status',
-            render: (row) => (
-                <Badge variant={getStatusColor(row.status)}>
-                    {row.status.replace('_', ' ').toUpperCase()}
-                </Badge>
-            )
-        },
+
         {
             header: 'Details',
             render: (row) => (

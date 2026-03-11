@@ -135,7 +135,7 @@ const CallLogSummary = () => {
                         <List size={14} />
                         <span>Details</span>
                     </Button>
-                    <Button variant="white" size="sm" onClick={() => handleAnalytics(row.branch_id)} className="flex items-center space-x-1 border-gray-200 text-indigo-600">
+                    <Button variant="white" size="sm" onClick={() => handleAnalytics(row.branch_id)} className="flex items-center space-x-1 border-gray-200 text-sky-600">
                         <BarChart3 size={14} />
                         <span>Analytics</span>
                     </Button>
@@ -159,7 +159,7 @@ const CallLogSummary = () => {
                                     setFilterPeriod(e.target.value);
                                     setPage(1);
                                 }}
-                                className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm xl:min-w-[200px] focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm cursor-pointer hover:border-indigo-400"
+                                className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm xl:min-w-[200px] focus:ring-sky-500 focus:border-sky-500 sm:text-sm cursor-pointer hover:border-sky-400"
                             >
                                 <option value="today">Today data only</option>
                                 <option value="yesterday">Yesterday</option>
@@ -192,7 +192,7 @@ const CallLogSummary = () => {
                         <div className="flex flex-col">
                             <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Status</label>
                             <select
-                                className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                                className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-sky-500 focus:border-sky-500 sm:text-sm"
                                 value={status}
                                 onChange={(e) => setStatus(e.target.value)}
                             >
@@ -203,7 +203,7 @@ const CallLogSummary = () => {
                         </div>
                         <div className="flex justify-end space-x-2">
                             <Button variant="outline" onClick={handleClear} className="w-1/2 justify-center border-gray-300 text-gray-700 hover:bg-gray-50">Clear</Button>
-                            <Button onClick={handleFilter} className="w-1/2 justify-center bg-indigo-600 hover:bg-indigo-700 text-white border-transparent">Filter</Button>
+                            <Button onClick={handleFilter} className="w-1/2 justify-center bg-sky-600 hover:bg-sky-700 text-white border-transparent">Filter</Button>
                         </div>
                     </div>
                 </div>

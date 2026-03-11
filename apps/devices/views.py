@@ -29,6 +29,8 @@ from django.db import models
 from .models import Device
 from .serializers import DeviceSerializer, ClaimRegistrationSerializer
 from apps.common.permissions import IsAdminOrSuperAdmin
+from core.authentication import DeviceAuthentication
+from core.permissions import IsDevice
 
 
 class DeviceViewSet(viewsets.ModelViewSet):
@@ -143,3 +145,23 @@ class ClaimRegistrationView(APIView):
             "branch_name": device.branch.spa_name if device.branch else "Unknown Branch",
             "branch_id": str(device.branch.id) if device.branch else None,
         }, status=status.HTTP_200_OK)
+
+
+class UpdateFCMTokenView(APIView):
+    """
+    Android app uses this to update its FCM registration token.
+    Authenticated via DeviceAuthentication (X-Device-ID + X-Device-Secret).
+    """
+    authentication_classes = [DeviceAuthentication]
+    permission_classes = [IsDevice]
+
+    def post(self, request):
+        token = request.data.get("fcm_token")
+        if not token:
+            return Response({"error": "fcm_token is required"}, status=status.HTTP_400_BAD_REQUEST)
+
+        device = request.user  # The authenticated Device object
+        device.fcm_token = token
+        device.save(update_fields=["fcm_token"])
+
+        return Response({"status": "success", "message": "FCM token updated successfully"})

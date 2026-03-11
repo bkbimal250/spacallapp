@@ -14,6 +14,7 @@ import {
     Download,
     Users,
     LogOut,
+    Bell,
     Contact,
     Briefcase
 } from 'lucide-react';
@@ -40,6 +41,7 @@ const Sidebar = () => {
         { to: ROUTES.EXPORTS, label: 'Exports', icon: Download },
         { to: ROUTES.CONTACTS, label: 'Contacts', icon: Contact },
         { to: ROUTES.LEAD_MANAGEMENT, label: 'Lead Management', icon: Briefcase },
+        { to: ROUTES.NOTIFICATIONS, label: 'Notifications', icon: Bell },
     ];
 
     return (

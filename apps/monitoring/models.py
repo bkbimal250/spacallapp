@@ -33,6 +33,8 @@ class DeviceEvent(TimeStampedModel):
         ("sim_change", "SIM Card Changed"),
         ("sync_failure", "Sync Failure"),
         ("battery_low", "Battery Low"),
+        ("storage_full", "Storage Full"),
+        ("permission_denied", "Permission Denied"),
         ("app_crash", "App Crash"),
     )
     

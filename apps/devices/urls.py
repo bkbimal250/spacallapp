@@ -1,12 +1,13 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from .views import DeviceViewSet, ClaimRegistrationView
+from .views import DeviceViewSet, ClaimRegistrationView, UpdateFCMTokenView
 
 router = DefaultRouter()
 router.register(r'', DeviceViewSet, basename='device')
 
 urlpatterns = [
     path('claim-registration/', ClaimRegistrationView.as_view(), name='claim-registration'),
+    path('update-fcm-token/', UpdateFCMTokenView.as_view(), name='update-fcm-token'),
     path('', include(router.urls)),
 ]
 

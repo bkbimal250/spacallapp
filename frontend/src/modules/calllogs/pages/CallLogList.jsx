@@ -10,29 +10,52 @@ import { formatDate } from '../../../shared/utils/formatDate';
 import { useAuth } from '../../../shared/hooks/useAuth';
 import { leadManagementAPI } from '../../leadManagement/api';
 import LeadForm from '../../leadManagement/components/LeadForm';
-import { Edit, FileDown, PhoneIncoming, PhoneOutgoing, PhoneMissed, PhoneForwarded, Trash2 } from 'lucide-react';
+import { Edit, FileDown, PhoneIncoming, PhoneOutgoing, PhoneMissed, PhoneForwarded, Trash2, UserPlus, UserCheck, ExternalLink, X, Filter } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { contactApi } from '../../contacts/api';
+import ContactForm from '../../contacts/components/ContactForm';
 
 const CallLogList = () => {
     const { user } = useAuth();
+    const navigate = useNavigate();
     const location = useLocation();
     const queryParams = new URLSearchParams(location.search);
     const initialBranch = queryParams.get('branch') || '';
+    const initialSearch = queryParams.get('search') || '';
 
     const [logs, setLogs] = useState([]);
     const [stats, setStats] = useState(null);
     const [loading, setLoading] = useState(true);
     const [statsLoading, setStatsLoading] = useState(true);
-    const [filters, setFilters] = useState({ branch: initialBranch });
+    const [filters, setFilters] = useState({ 
+        branch: initialBranch, 
+        search: initialSearch 
+    });
     const [page, setPage] = useState(1);
     const [totalCount, setTotalCount] = useState(0);
     const [selectedLogs, setSelectedLogs] = useState([]);
     const [exporting, setExporting] = useState(false);
     const [selectedLead, setSelectedLead] = useState(null);
     const [isLeadFormOpen, setIsLeadFormOpen] = useState(false);
+    const [isContactFormOpen, setIsContactFormOpen] = useState(false);
+    const [quickContactData, setQuickContactData] = useState(null);
     const pageSize = 50;
 
     const isSuperAdmin = user?.role === 'super_admin';
     const isAdmin = user?.role === 'admin' || isSuperAdmin;
+
+    useEffect(() => {
+        const queryParams = new URLSearchParams(location.search);
+        const searchVal = queryParams.get('search') || '';
+        const branchVal = queryParams.get('branch') || '';
+        
+        setFilters(prev => ({
+            ...prev,
+            search: searchVal,
+            branch: branchVal
+        }));
+        setPage(1);
+    }, [location.search]);
 
     const fetchLogs = async (currentFilters = {}, currentPage = 1, isBackground = false) => {
         if (!isBackground) setLoading(true);
@@ -106,6 +129,25 @@ const CallLogList = () => {
         }
     };
 
+    const handleQuickContact = (row) => {
+        setQuickContactData({
+            phone_number: row.phone_number,
+            name: ''
+        });
+        setIsContactFormOpen(true);
+    };
+
+    const handleContactSubmit = async (data) => {
+        try {
+            await contactApi.createContact(data);
+            setIsContactFormOpen(false);
+            fetchLogs(filters, page);
+        } catch (error) {
+            console.error("Failed to create contact", error);
+            alert("Failed to create contact. It might already exist.");
+        }
+    };
+
     const handleExport = async () => {
         setExporting(true);
         try {
@@ -161,11 +203,32 @@ const CallLogList = () => {
         {
             header: 'Number / Contact',
             render: (row) => (
-                <div className="flex flex-col">
-                    <span className="font-medium text-gray-900">{row.phone_number}</span>
-                    <span className="text-xs text-gray-500">
-                        {row.contact_name ? row.contact_name : 'Unknown'}
-                    </span>
+                <div className="flex flex-col group">
+                    <div className="flex items-center space-x-2">
+                        <span className="font-bold text-gray-900 tracking-tight">{row.phone_number}</span>
+                        {row.contact ? (
+                            <UserCheck size={14} className="text-green-500" />
+                        ) : (
+                            <button 
+                                onClick={() => handleQuickContact(row)}
+                                className="opacity-0 group-hover:opacity-100 p-0.5 bg-sky-50 text-sky-600 rounded-full transition-all hover:bg-sky-100"
+                                title="Quick Add Contact"
+                            >
+                                <UserPlus size={12} />
+                            </button>
+                        )}
+                    </div>
+                    {row.contact_name ? (
+                        <button 
+                            onClick={() => navigate('/contacts')} 
+                            className="text-[11px] text-sky-600 hover:underline flex items-center mt-0.5"
+                        >
+                            {row.contact_name}
+                            <ExternalLink size={10} className="ml-1" />
+                        </button>
+                    ) : (
+                        <span className="text-[11px] text-gray-400 italic mt-0.5">Unknown Contact</span>
+                    )}
                 </div>
             )
         },
@@ -177,7 +240,7 @@ const CallLogList = () => {
             header: 'SIM / Received On',
             render: (row) => (
                 <div className="flex flex-col">
-                    <span className="px-1.5 py-0.5 bg-indigo-50 text-indigo-700 rounded text-[10px] font-black uppercase w-fit mb-0.5">
+                    <span className="px-1.5 py-0.5 bg-sky-50 text-sky-700 rounded text-[10px] font-black uppercase w-fit mb-0.5">
                         Slot {row.sim_slot}
                     </span>
                     <span className="text-[11px] font-bold text-gray-400 tracking-tight">
@@ -349,8 +412,56 @@ const CallLogList = () => {
                 </div>
             </div>
 
+            {(filters.search || filters.branch || filters.start_date) && (
+                <div className="flex flex-wrap items-center gap-2 px-1 py-2">
+                    <div className="flex items-center text-[10px] font-black text-gray-400 mr-2 uppercase tracking-widest">
+                        <Filter size={10} className="mr-1" />
+                        Active View
+                    </div>
+                    {filters.search && (
+                        <div className="inline-flex items-center bg-sky-50 text-sky-700 px-3 py-1 rounded-lg text-xs font-bold border border-sky-100">
+                            <span className="opacity-50 font-medium mr-1 uppercase text-[9px]">Search:</span>
+                            {filters.search}
+                            <button onClick={() => {
+                                const newFilters = { ...filters };
+                                delete newFilters.search;
+                                handleFilter(newFilters);
+                            }} className="ml-2 hover:bg-sky-200 rounded p-0.5">
+                                <X size={12} />
+                            </button>
+                        </div>
+                    )}
+                    {filters.branch && (
+                        <div className="inline-flex items-center bg-green-50 text-green-700 px-3 py-1 rounded-lg text-xs font-bold border border-green-100">
+                            <span className="opacity-50 font-medium mr-1 uppercase text-[9px]">Branch ID:</span>
+                            {filters.branch.substring(0, 8)}...
+                            <button onClick={() => {
+                                const newFilters = { ...filters };
+                                delete newFilters.branch;
+                                handleFilter(newFilters);
+                            }} className="ml-2 hover:bg-green-200 rounded p-0.5">
+                                <X size={12} />
+                            </button>
+                        </div>
+                    )}
+                    <button 
+                        onClick={() => {
+                            navigate('/calllogs/details');
+                            handleFilter({});
+                        }} 
+                        className="text-[10px] font-bold text-gray-400 hover:text-red-500 uppercase tracking-widest hover:underline ml-2"
+                    >
+                        Reset All Filters
+                    </button>
+                </div>
+            )}
+
             <div className="bg-white shadow rounded-lg p-6">
-                <CallLogFilter onFilter={handleFilter} initialBranch={initialBranch} />
+                <CallLogFilter 
+                    onFilter={handleFilter} 
+                    initialBranch={initialBranch} 
+                    initialSearch={initialSearch}
+                />
             </div>
 
             <div className="bg-white shadow rounded-lg overflow-hidden flex flex-col">
@@ -384,6 +495,12 @@ const CallLogList = () => {
                 onClose={() => setIsLeadFormOpen(false)}
                 onSubmit={handleLeadSubmit}
                 initialData={selectedLead}
+            />
+            <ContactForm
+                isOpen={isContactFormOpen}
+                onClose={() => setIsContactFormOpen(false)}
+                onSubmit={handleContactSubmit}
+                initialData={quickContactData}
             />
         </div>
     );

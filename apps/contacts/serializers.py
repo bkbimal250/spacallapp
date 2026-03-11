@@ -3,17 +3,14 @@ from .models import Contact
 
 
 class ContactSerializer(serializers.ModelSerializer):
+    total_calls = serializers.IntegerField(read_only=True)
+
     class Meta:
         model = Contact
-        fields = '__all__'
-        read_only_fields = ('id', 'created_at')
-        extra_kwargs = {
-            'name': {'required': True},
-            'phone_number': {'required': True},
-            'email': {'required': False},
-            'country': {'required': False},
-            'city': {'required': False},
-        }
+        fields = [
+            'id', 'name', 'phone_number', 'email', 'country', 'city',
+            'created_by', 'updated_by', 'created_at', 'total_calls'
+        ]
 
     def validate_phone_number(self, value):
         instance = self.instance

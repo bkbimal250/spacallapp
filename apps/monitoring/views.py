@@ -56,7 +56,24 @@ class DeviceHeartbeatView(views.APIView):
 
         # Update health metrics if provided in payload
         if "battery_level" in health_data:
-            health.battery_level = health_data["battery_level"]
+            battery = health_data["battery_level"]
+            health.battery_level = battery
+            # Trigger alert for low battery (< 15%)
+            if battery < 15:
+                if not DeviceEvent.objects.filter(device=device, event_type='battery_low', resolved=False).exists():
+                    DeviceEvent.objects.create(
+                        device=device,
+                        event_type='battery_low',
+                        description=f"Battery critically low: {battery}%"
+                    )
+                    from apps.notifications.services import NotificationService
+                    NotificationService.send_push(
+                        device=device,
+                        title="Battery Low",
+                        body=f"Device {device.device_id} is at {battery}%. Please connect to power.",
+                        notification_type="alert"
+                    )
+
         if "signal_strength" in health_data:
             health.signal_strength = health_data["signal_strength"]
         if "app_version" in health_data:

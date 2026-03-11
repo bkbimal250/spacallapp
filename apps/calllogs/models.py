@@ -16,8 +16,7 @@ Data Flow:
 """
 
 from django.db import models
-from core.models.timestamped import TimeStampedModel
-from core.models.base import BaseModel
+from core.models import TimeStampedModel, BaseModel
 from core.constants import CALL_TYPES
 
 
@@ -99,6 +98,21 @@ class CallLog(BaseModel, TimeStampedModel):
         unique=True,
         help_text="Unique hash for deduplication. Prevents duplicate call log entries."
     )
+
+    def save(self, *args, **kwargs):
+        """
+        Auto-match contact if not provided, by matching the last 10 digits of the phone number.
+        This ensures that even manually created call logs are linked to known contacts.
+        """
+        if not self.contact and self.phone_number:
+            from apps.contacts.models import Contact
+            # Extract last 10 digits for flexible matching (+91, 0, etc.)
+            last_10 = self.phone_number[-10:] if len(self.phone_number) >= 10 else self.phone_number
+            contact = Contact.objects.filter(phone_number__endswith=last_10).first()
+            if contact:
+                self.contact = contact
+        
+        super().save(*args, **kwargs)
 
     class Meta:
         db_table = "call_logs"

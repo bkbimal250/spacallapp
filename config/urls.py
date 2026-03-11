@@ -32,6 +32,7 @@ urlpatterns = [
     path("api/v1/dashboard/", include("apps.dashboard.urls")),
     path("api/v1/contacts/", include("apps.contacts.urls")),
     path("api/v1/leadmanagement/", include("apps.leadmanagement.urls")),
+    path("api/v1/notifications/", include("apps.notifications.urls")),
 ]
 
 if settings.DEBUG:

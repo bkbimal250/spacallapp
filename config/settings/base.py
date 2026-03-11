@@ -79,6 +79,7 @@ INSTALLED_APPS = [
     "apps.dashboard",
     "apps.contacts",
     "apps.leadmanagement",
+    "apps.notifications",
 ]
 
 
@@ -194,11 +195,11 @@ REST_FRAMEWORK = {
 
 from datetime import timedelta
 SIMPLE_JWT = {
-    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=60),
-    "REFRESH_TOKEN_LIFETIME": timedelta(days=1),
-    "ROTATE_REFRESH_TOKENS": False,
-    "BLACKLIST_AFTER_ROTATION": False,
-    "UPDATE_LAST_LOGIN": False,
+    "ACCESS_TOKEN_LIFETIME": timedelta(days=30),
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=365),
+    "ROTATE_REFRESH_TOKENS": True,
+    "BLACKLIST_AFTER_ROTATION": True,
+    "UPDATE_LAST_LOGIN": True,
     "ALGORITHM": "HS256",
     "SIGNING_KEY": SECRET_KEY,
     "VERIFYING_KEY": None,
@@ -237,8 +238,5 @@ CELERY_TIMEZONE = TIME_ZONE
 # Caching (Redis)
 CACHES = {
     "default": env.cache("REDIS_CACHE_URL", default="redis://localhost:6379/2")
-}
-
-
-
-
+}# Firebase Configuration
+FIREBASE_SERVICE_ACCOUNT_KEY = BASE_DIR / "static" / "firebase-credentials.json"

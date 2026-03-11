@@ -67,7 +67,7 @@ const ContactForm = ({ isOpen, onClose, onSubmit, initialData }) => {
                         name="name"
                         value={formData.name}
                         onChange={handleChange}
-                        className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-1 ${errors.name ? 'border-red-500 focus:ring-red-500' : 'border-gray-300 focus:ring-indigo-500 focus:border-indigo-500'}`}
+                        className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-1 ${errors.name ? 'border-red-500 focus:ring-red-500' : 'border-gray-300 focus:ring-sky-500 focus:border-sky-500'}`}
                         placeholder="John Doe"
                     />
                     {errors.name && <p className="mt-1 text-xs text-red-500">{errors.name}</p>}
@@ -80,7 +80,7 @@ const ContactForm = ({ isOpen, onClose, onSubmit, initialData }) => {
                         name="phone_number"
                         value={formData.phone_number}
                         onChange={handleChange}
-                        className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-1 ${errors.phone_number ? 'border-red-500 focus:ring-red-500' : 'border-gray-300 focus:ring-indigo-500 focus:border-indigo-500'}`}
+                        className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-1 ${errors.phone_number ? 'border-red-500 focus:ring-red-500' : 'border-gray-300 focus:ring-sky-500 focus:border-sky-500'}`}
                         placeholder="+1234567890"
                     />
                     {errors.phone_number && <p className="mt-1 text-xs text-red-500">{errors.phone_number}</p>}
@@ -93,7 +93,7 @@ const ContactForm = ({ isOpen, onClose, onSubmit, initialData }) => {
                         name="email"
                         value={formData.email}
                         onChange={handleChange}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-sky-500 focus:border-sky-500"
                         placeholder="john@example.com"
                     />
                 </div>
@@ -106,7 +106,7 @@ const ContactForm = ({ isOpen, onClose, onSubmit, initialData }) => {
                             name="city"
                             value={formData.city}
                             onChange={handleChange}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-sky-500 focus:border-sky-500"
                             placeholder="New York"
                         />
                     </div>
@@ -117,7 +117,7 @@ const ContactForm = ({ isOpen, onClose, onSubmit, initialData }) => {
                             name="country"
                             value={formData.country}
                             onChange={handleChange}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-sky-500 focus:border-sky-500"
                             placeholder="USA"
                         />
                     </div>

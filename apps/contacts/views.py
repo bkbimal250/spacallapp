@@ -12,7 +12,7 @@ Access Control:
 
 from rest_framework import viewsets
 from rest_framework.permissions import IsAuthenticated
-from django.db.models import Q
+from django.db.models import Q, Count
 
 from .models import Contact
 from .serializers import ContactSerializer
@@ -49,7 +49,9 @@ class ContactViewSet(viewsets.ModelViewSet):
                               OR contacts they created themselves.
         """
         user = self.request.user
-        queryset = Contact.objects.all().order_by("-created_at")
+        queryset = Contact.objects.annotate(
+            total_calls=Count("call_logs")
+        ).all().order_by("-created_at")
 
         # Admin and super_admin see all contacts globally
         if user.role in ["super_admin", "admin"]:

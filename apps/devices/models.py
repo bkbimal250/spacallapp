@@ -15,9 +15,7 @@ Flow:
 
 import secrets
 from django.db import models
-from core.models.base import BaseModel
-from core.models.timestamped import TimeStampedModel
-from core.models.soft_delete import SoftDeleteModel
+from core.models import BaseModel, TimeStampedModel, SoftDeleteModel
 
 
 class Device(BaseModel, TimeStampedModel, SoftDeleteModel):
@@ -81,6 +79,13 @@ class Device(BaseModel, TimeStampedModel, SoftDeleteModel):
     # SIM card numbers for the device (used to identify receiver in call logs)
     sim_1_number = models.CharField(max_length=20, blank=True, null=True)
     sim_2_number = models.CharField(max_length=20, blank=True, null=True)
+
+    # Firebase Cloud Messaging token for push notifications
+    fcm_token = models.TextField(
+        null=True, 
+        blank=True, 
+        help_text="Registration token for Firebase Cloud Messaging."
+    )
 
     # Sync & heartbeat timestamps for monitoring
     last_sync = models.DateTimeField(

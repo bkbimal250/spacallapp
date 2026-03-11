@@ -20,6 +20,7 @@ const DeviceHealth = lazy(() => import('../modules/monitoring/pages/DeviceHealth
 const ContactList = lazy(() => import('../modules/contacts/pages/ContactList'));
 const LeadManagementSummary = lazy(() => import('../modules/leadManagement/pages/LeadManagementSummary'));
 const LeadManagementList = lazy(() => import('../modules/leadManagement/pages/LeadManagementList'));
+const NotificationList = lazy(() => import('../modules/notifications/pages/NotificationList'));
 
 
 
@@ -48,6 +49,7 @@ export const AppRoutes = () => {
                         <Route path={ROUTES.CONTACTS} element={<ContactList />} />
                         <Route path={ROUTES.LEAD_MANAGEMENT} element={<LeadManagementSummary />} />
                         <Route path={ROUTES.LEAD_MANAGEMENT_LIST} element={<LeadManagementList />} />
+                        <Route path={ROUTES.NOTIFICATIONS} element={<NotificationList />} />
 
                         {/* Super Admin Only Routes */}
                         <Route element={<RoleRoute allowedRoles={['super_admin']} />}>

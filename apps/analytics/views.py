@@ -194,3 +194,46 @@ class AnalyticsStatsView(APIView):
             metrics = AnalyticsService.get_metrics(clean_branch_id, start_date, end_date)
 
         return Response(metrics)
+
+class CallAnalyticsView(APIView):
+    """
+    Returns call volume trends and daily metrics.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        start_date, end_date = get_date_range(request)
+        user = request.user
+        
+        from apps.common.utils import get_branch_filter_ids
+        branch_ids = get_branch_filter_ids(user)
+        
+        # Override with specific branch if provided (and allowed)
+        requested_branch = request.query_params.get("branch")
+        if requested_branch and requested_branch != "null":
+            branch_ids = [requested_branch]
+
+        data = AnalyticsService.get_call_analytics(branch_ids, start_date, end_date)
+        return Response(data)
+
+
+class LeadAnalyticsView(APIView):
+    """
+    Returns lead conversion funnel and status distribution.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        start_date, end_date = get_date_range(request)
+        user = request.user
+        
+        from apps.common.utils import get_branch_filter_ids
+        branch_ids = get_branch_filter_ids(user)
+        
+        # Override with specific branch if provided
+        requested_branch = request.query_params.get("branch")
+        if requested_branch and requested_branch != "null":
+            branch_ids = [requested_branch]
+
+        data = AnalyticsService.get_lead_analytics(branch_ids, start_date, end_date)
+        return Response(data)
