@@ -43,15 +43,36 @@ class DashboardStatsView(APIView):
     def get(self, request):
         user = request.user
         from apps.monitoring.models import DeviceHealth
+        from apps.leadmanagement.models import LeadManagement
+        from apps.contacts.models import Contact
+        from apps.exports.models import ExportJob
+        from django.contrib.auth import get_user_model
+        User = get_user_model()
 
         # Get branch IDs for the current user's role
         branch_ids = get_branch_filter_ids(user)
         branch_id_param = request.query_params.get("branch")
+        lead_source = request.query_params.get("lead_source")  # New filter: 'direct' or 'manual'
 
         # Build base querysets
         calls_qs = CallLog.objects.all()
         health_qs = DeviceHealth.objects.all()
         branch_qs = Branch.objects.filter(is_active=True)
+        device_qs = Device.objects.filter(is_deleted=False)
+        lead_qs = LeadManagement.objects.all()
+        contact_qs = Contact.objects.all()
+        user_qs = User.objects.filter(is_active=True)
+        export_qs = ExportJob.objects.all()
+
+        # Apply lead source filtering if requested
+        if lead_source == "direct":
+            # Only leads that came from a call sync
+            lead_qs = lead_qs.filter(calllog__isnull=False)
+            calls_qs = calls_qs.filter(lead__isnull=False)
+        elif lead_source == "manual":
+            # Only leads created manually
+            lead_qs = lead_qs.filter(calllog__isnull=True)
+            calls_qs = calls_qs.none()
 
         # Apply role-based branch filtering
         if branch_ids and branch_ids != ["NONE"]:
@@ -59,21 +80,38 @@ class DashboardStatsView(APIView):
             calls_qs = calls_qs.filter(branch_id__in=branch_ids)
             health_qs = health_qs.filter(device__branch_id__in=branch_ids)
             branch_qs = branch_qs.filter(id__in=branch_ids)
+            device_qs = device_qs.filter(branch_id__in=branch_ids)
+            lead_qs = lead_qs.filter(branch_id__in=branch_ids)
+            # Users and Contacts might not be directly linked to branches in a simple way 
+            # for this level of filtering, but let's stick to devices/calls for now.
         elif branch_id_param and branch_id_param.strip() and branch_id_param not in ("undefined", "null"):
             # Admin manually filtering by a specific branch
             calls_qs = calls_qs.filter(branch_id=branch_id_param)
             health_qs = health_qs.filter(device__branch_id=branch_id_param)
             branch_qs = branch_qs.filter(id=branch_id_param)
+            device_qs = device_qs.filter(branch_id=branch_id_param)
+            lead_qs = lead_qs.filter(branch_id=branch_id_param)
         elif branch_ids == ["NONE"]:
             # Branch manager with no branch assigned — show nothing
             calls_qs = calls_qs.none()
             health_qs = health_qs.none()
             branch_qs = branch_qs.none()
+            device_qs = device_qs.none()
+            lead_qs = lead_qs.none()
+            user_qs = user_qs.none()
+            export_qs = export_qs.none()
 
         # ── KPI Stats ──────────────────────────────────────────────────────────
         total_calls = calls_qs.count()
         active_devices = health_qs.filter(is_online=True).count()
         missed_calls = calls_qs.filter(call_type="missed").count()
+        
+        total_devices = device_qs.count()
+        total_leads = lead_qs.count()
+        total_branches = branch_qs.count()
+        total_contacts = contact_qs.count()
+        total_users = user_qs.count()
+        total_exports = export_qs.count()
 
         # Average call duration (formatted as "Xm Ys")
         avg_dur = calls_qs.aggregate(Avg("duration"))["duration__avg"]
@@ -100,19 +138,25 @@ class DashboardStatsView(APIView):
 
         # ── Top 10 Branch Performance Table ───────────────────────────────────
         performance_branches = branch_qs.annotate(
-            total_calls=Count("call_logs"),
-            completed_calls=Count(
+            total_calls_count=Count("call_logs"),
+            incoming_count=Count("call_logs", filter=Q(call_logs__call_type="incoming")),
+            outgoing_count=Count("call_logs", filter=Q(call_logs__call_type="outgoing")),
+            missed_count=Count("call_logs", filter=Q(call_logs__call_type="missed")),
+            completed_calls_count=Count(
                 "call_logs",
                 filter=Q(call_logs__call_type="incoming") | Q(call_logs__call_type="outgoing"),
             ),
-        ).order_by("-total_calls")[:10]
+        ).order_by("-total_calls_count")[:10]
 
         branch_data = []
         for b in performance_branches:
-            conv_rate = round((b.completed_calls / b.total_calls * 100) if b.total_calls > 0 else 0)
+            conv_rate = round((b.completed_calls_count / b.total_calls_count * 100) if b.total_calls_count > 0 else 0)
             branch_data.append({
                 "name": b.spa_name,
-                "calls": b.total_calls,
+                "calls": b.total_calls_count,
+                "incoming": b.incoming_count,
+                "outgoing": b.outgoing_count,
+                "missed": b.missed_count,
                 "conversion": conv_rate,
                 "status": "Active" if b.is_active else "Inactive",
             })
@@ -120,7 +164,13 @@ class DashboardStatsView(APIView):
         return Response({
             "total_calls": total_calls,
             "active_devices": active_devices,
+            "total_devices": total_devices,
             "missed_calls": missed_calls,
+            "total_leads": total_leads,
+            "total_branches": total_branches,
+            "total_contacts": total_contacts,
+            "total_users": total_users,
+            "total_exports": total_exports,
             "avg_duration": avg_duration_str,
             "call_volume_trends": chart_data,
             "branch_performance": branch_data,
