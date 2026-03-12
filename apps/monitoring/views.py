@@ -11,6 +11,7 @@ Access Control:
 from datetime import timedelta
 from django.utils import timezone
 from rest_framework import viewsets, permissions, views, response, status
+from rest_framework.decorators import action
 
 from .models import DeviceEvent, DeviceHealth
 from .serializers import DeviceEventSerializer, DeviceHealthSerializer
@@ -138,6 +139,22 @@ class DeviceEventViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(resolved=resolved.lower() == "true")
 
         return queryset
+
+    @action(detail=True, methods=['post'])
+    def resolve(self, request, pk=None):
+        """Mark a single event as resolved."""
+        event = self.get_object()
+        event.resolved = True
+        event.resolved_at = timezone.now()
+        event.save()
+        return response.Response({'status': 'event resolved'})
+
+    @action(detail=False, methods=['post'])
+    def resolve_all(self, request):
+        """Mark all unresolved events in the user's scope as resolved."""
+        queryset = self.get_queryset().filter(resolved=False)
+        count = queryset.update(resolved=True, resolved_at=timezone.now())
+        return response.Response({'status': 'all events resolved', 'count': count})
 
 
 class DeviceStatusResultView(views.APIView):

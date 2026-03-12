@@ -6,7 +6,7 @@ import Table from '../../../shared/components/Table';
 import Badge from '../../../shared/components/Badge';
 import Pagination from '../../../shared/components/Pagination';
 import { formatDate } from '../../../shared/utils/formatDate';
-import { RefreshCcw, Wifi, WifiOff } from 'lucide-react';
+import { RefreshCcw, Wifi, WifiOff, Check, Trash2 } from 'lucide-react';
 import { devicesAPI } from '../../devices/api';
 import DeviceStatusBadge from '../../devices/components/DeviceStatusBadge';
 
@@ -72,6 +72,25 @@ const DeviceHealth = () => {
         setPage(newPage);
     };
 
+    const handleResolveAlert = async (id) => {
+        try {
+            await monitoringAPI.resolveAlert(id);
+            fetchAlerts(page);
+        } catch (error) {
+            console.error("Failed to resolve alert", error);
+        }
+    };
+
+    const handleDeleteAlert = async (id) => {
+        if (!window.confirm("Are you sure you want to delete this alert?")) return;
+        try {
+            await monitoringAPI.deleteAlert(id);
+            fetchAlerts(page);
+        } catch (error) {
+            console.error("Failed to delete alert", error);
+        }
+    };
+
     const columns = [
         { header: 'Device', accessor: 'device_uid' },
         { header: 'Branch', accessor: 'branch_name' },
@@ -91,6 +110,29 @@ const DeviceHealth = () => {
                 <Badge variant={row.resolved ? 'green' : 'red'}>
                     {row.resolved ? 'Resolved' : 'Active'}
                 </Badge>
+            )
+        },
+        {
+            header: 'Actions',
+            render: (row) => (
+                <div className="flex items-center space-x-2">
+                    {!row.resolved && (
+                        <button
+                            onClick={() => handleResolveAlert(row.id)}
+                            className="p-1 text-green-600 hover:bg-green-50 rounded transition-colors"
+                            title="Mark as Read"
+                        >
+                            <Check size={16} />
+                        </button>
+                    )}
+                    <button
+                        onClick={() => handleDeleteAlert(row.id)}
+                        className="p-1 text-red-600 hover:bg-red-50 rounded transition-colors"
+                        title="Delete Alert"
+                    >
+                        <Trash2 size={16} />
+                    </button>
+                </div>
             )
         },
     ];

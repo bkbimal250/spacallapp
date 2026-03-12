@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { notificationsAPI } from '../api';
-import { Bell, Send, Filter, CheckCircle2, XCircle, RefreshCcw, Smartphone, Zap, Clock, ShieldAlert } from 'lucide-react';
+import { Bell, Send, Filter, CheckCircle2, XCircle, RefreshCcw, Smartphone, Zap, Clock, ShieldAlert, Trash2 } from 'lucide-react';
 import SendNotificationModal from '../components/SendNotificationModal';
 
 const NotificationList = () => {
@@ -43,6 +43,26 @@ const NotificationList = () => {
         } catch (err) {
             console.error(err);
             throw err;
+        }
+    };
+
+    const handleDelete = async (id) => {
+        if (!window.confirm('Are you sure you want to delete this notification log?')) return;
+        try {
+            await notificationsAPI.deleteLog(id);
+            setLogs(logs.filter(log => log.id !== id));
+        } catch (err) {
+            console.error(err);
+        }
+    };
+
+    const handleDeleteAll = async () => {
+        if (!window.confirm('Are you sure you want to clear ALL notification history? This action cannot be undone.')) return;
+        try {
+            await notificationsAPI.deleteAllLogs();
+            setLogs([]);
+        } catch (err) {
+            console.error(err);
         }
     };
 
@@ -123,12 +143,22 @@ const NotificationList = () => {
                         ))}
                     </div>
                     
-                    <button 
-                        onClick={fetchLogs}
-                        className="p-3 bg-gray-50 text-gray-400 hover:text-sky-600 rounded-2xl transition-all active:rotate-180"
-                    >
-                        <RefreshCcw size={20} />
-                    </button>
+                    <div className="flex items-center space-x-4">
+                        <button 
+                            onClick={handleDeleteAll}
+                            className="flex items-center space-x-2 p-3 bg-rose-50 text-rose-600 hover:bg-rose-100 rounded-2xl transition-all text-xs font-bold"
+                            title="Clear All History"
+                        >
+                            <Trash2 size={18} />
+                            <span>Clear All</span>
+                        </button>
+                        <button 
+                            onClick={fetchLogs}
+                            className="p-3 bg-gray-50 text-gray-400 hover:text-sky-600 rounded-2xl transition-all active:rotate-180"
+                        >
+                            <RefreshCcw size={20} />
+                        </button>
+                    </div>
                 </div>
 
                 <div className="overflow-x-auto">
@@ -139,7 +169,8 @@ const NotificationList = () => {
                                 <th className="px-8 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest">Notification Details</th>
                                 <th className="px-8 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest">Type</th>
                                 <th className="px-8 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest">Status</th>
-                                <th className="px-8 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest last:rounded-tr-[2rem]">Time Sent</th>
+                                <th className="px-8 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest">Time Sent</th>
+                                <th className="px-8 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest last:rounded-tr-[2rem]">Actions</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-50">
@@ -200,6 +231,15 @@ const NotificationList = () => {
                                                     {new Date(log.created_at).toLocaleDateString()} {new Date(log.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                                 </span>
                                             </div>
+                                        </td>
+                                        <td className="px-8 py-6 text-right">
+                                            <button 
+                                                onClick={() => handleDelete(log.id)}
+                                                className="p-2 text-gray-400 hover:text-rose-500 hover:bg-rose-50 rounded-xl transition-all"
+                                                title="Delete Log"
+                                            >
+                                                <Trash2 size={16} />
+                                            </button>
                                         </td>
                                     </tr>
                                 ))

@@ -1,5 +1,6 @@
 from django.db.models import Count, Q
 from rest_framework import views, viewsets, response, status, permissions
+from rest_framework.decorators import action
 from .models import Notification
 from .serializers import NotificationSerializer
 from .services import NotificationService
@@ -36,9 +37,9 @@ class AdminSendNotificationView(views.APIView):
         })
 
 
-class NotificationViewSet(viewsets.ReadOnlyModelViewSet):
+class NotificationViewSet(viewsets.ModelViewSet):
     """
-    View history of sent notifications.
+    View summary and delete history of sent notifications.
     """
     queryset = Notification.objects.all().select_related('device', 'device__branch').order_by('-created_at')
     serializer_class = NotificationSerializer
@@ -57,6 +58,14 @@ class NotificationViewSet(viewsets.ReadOnlyModelViewSet):
             queryset = queryset.filter(notification_type=notif_type)
             
         return queryset
+
+    @action(detail=False, methods=['delete'])
+    def delete_all(self, request):
+        """Delete all notification logs in the user's scope."""
+        queryset = self.get_queryset()
+        count = queryset.count()
+        queryset.delete()
+        return response.Response({'status': 'all notifications deleted', 'count': count})
 
 
 class NotificationStatsView(views.APIView):

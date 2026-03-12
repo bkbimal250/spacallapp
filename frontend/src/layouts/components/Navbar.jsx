@@ -9,7 +9,10 @@ import {
     CheckCircle2,
     WifiOff,
     BatteryLow,
-    CircleDot
+    CircleDot,
+    Check,
+    Trash2,
+    X
 } from 'lucide-react';
 import { monitoringAPI } from '../../modules/monitoring/api';
 import { formatDate } from '../../shared/utils/formatDate';
@@ -24,16 +27,43 @@ const Navbar = () => {
     const fetchNotifications = async () => {
         setLoading(true);
         try {
-            const response = await monitoringAPI.getAlerts();
+            const response = await monitoringAPI.getAlerts({ resolved: false });
             // Data might be in .results if paginated
             const data = response.data.results || response.data;
-            // Filter unresolved alerts
-            const unresolved = data.filter(n => !n.resolved);
-            setNotifications(unresolved.slice(0, 8)); // Show up to 8 recent alerts
+            setNotifications(data.slice(0, 8)); // Show up to 8 recent alerts
         } catch (error) {
             console.error("Failed to fetch notifications", error);
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleResolve = async (id, e) => {
+        if (e) e.stopPropagation();
+        try {
+            await monitoringAPI.resolveAlert(id);
+            setNotifications(notifications.filter(n => n.id !== id));
+        } catch (error) {
+            console.error("Failed to resolve notification", error);
+        }
+    };
+
+    const handleResolveAll = async () => {
+        try {
+            await monitoringAPI.resolveAllAlerts();
+            setNotifications([]);
+        } catch (error) {
+            console.error("Failed to resolve all notifications", error);
+        }
+    };
+
+    const handleDelete = async (id, e) => {
+        if (e) e.stopPropagation();
+        try {
+            await monitoringAPI.deleteAlert(id);
+            setNotifications(notifications.filter(n => n.id !== id));
+        } catch (error) {
+            console.error("Failed to delete notification", error);
         }
     };
 
@@ -101,9 +131,17 @@ const Navbar = () => {
                                     <p className="text-[10px] text-gray-400 uppercase tracking-tighter">Real-time device monitoring</p>
                                 </div>
                                 {notifications.length > 0 && (
-                                    <span className="bg-red-50 text-red-600 text-[10px] font-black px-2 py-0.5 rounded-full">
-                                        {notifications.length} NEW
-                                    </span>
+                                    <div className="flex items-center space-x-2">
+                                        <button 
+                                            onClick={handleResolveAll}
+                                            className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 bg-indigo-50 px-2 py-1 rounded-lg transition-colors"
+                                        >
+                                            Mark all read
+                                        </button>
+                                        <span className="bg-red-50 text-red-600 text-[10px] font-black px-2 py-0.5 rounded-full">
+                                            {notifications.length} NEW
+                                        </span>
+                                    </div>
                                 )}
                             </div>
 
@@ -143,6 +181,22 @@ const Navbar = () => {
                                                                 {n.branch_name}
                                                             </div>
                                                         )}
+                                                    </div>
+                                                    <div className="flex flex-col space-y-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                        <button
+                                                            onClick={(e) => handleResolve(n.id, e)}
+                                                            className="p-1.5 bg-green-50 text-green-600 rounded-lg hover:bg-green-100 transition-colors"
+                                                            title="Mark as read"
+                                                        >
+                                                            <Check size={14} />
+                                                        </button>
+                                                        <button
+                                                            onClick={(e) => handleDelete(n.id, e)}
+                                                            className="p-1.5 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition-colors"
+                                                            title="Delete"
+                                                        >
+                                                            <Trash2 size={14} />
+                                                        </button>
                                                     </div>
                                                 </div>
                                             </div>
