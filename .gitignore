@@ -91,3 +91,6 @@ server.log
 
 firebase-credentials.json
 static/firebase-credentials.json
+firebase/
+static/firebase-credentials.json/
+firebase-credentials.json
