@@ -238,5 +238,10 @@ CELERY_TIMEZONE = TIME_ZONE
 # Caching (Redis)
 CACHES = {
     "default": env.cache("REDIS_CACHE_URL", default="redis://localhost:6379/2")
-}# Firebase Configuration
-FIREBASE_SERVICE_ACCOUNT_KEY = BASE_DIR / "static" / "firebase-credentials.json"
+}
+# Firebase Configuration
+_firebase_path = env("FIREBASE_SERVICE_ACCOUNT_KEY", default="firebase/firebase-credentials.json")
+if not os.path.isabs(_firebase_path):
+    FIREBASE_SERVICE_ACCOUNT_KEY = str(BASE_DIR / _firebase_path)
+else:
+    FIREBASE_SERVICE_ACCOUNT_KEY = _firebase_path
