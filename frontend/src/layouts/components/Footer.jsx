@@ -2,8 +2,8 @@ import React from 'react';
 
 const Footer = () => {
     return (
-        <footer className="bg-white border-t p-4 text-center text-gray-600 text-sm">
-            &copy; {new Date().getFullYear()} CallLog System. All rights reserved.
+        <footer className="bg-sidebar border-t border-border px-6 py-3 text-center text-text-secondary text-sm">
+            © {new Date().getFullYear()} CallLog System. All rights reserved.
         </footer>
     );
 };

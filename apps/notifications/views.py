@@ -13,7 +13,7 @@ class AdminSendNotificationView(views.APIView):
     permission_classes = [permissions.IsAuthenticated] # Should be IsAdmin
 
     def post(self, request):
-        device_ids = request.data.get("device_ids", []) # List of UUIDs or [] for all
+        device_ids = request.data.get("device_ids", [])
         title = request.data.get("title")
         body = request.data.get("body")
         notif_type = request.data.get("type", "system")
@@ -21,11 +21,38 @@ class AdminSendNotificationView(views.APIView):
         if not title or not body:
             return response.Response({"error": "Title and body required"}, status=status.HTTP_400_BAD_REQUEST)
 
-        devices = Device.objects.filter(is_active=True)
+        # Base active devices queryset
+        devices = Device.objects.filter(is_active=True, is_deleted=False)
+
+        # Respect user branch scope
+        if hasattr(request.user, 'role') and request.user.role == 'branch_manager' and hasattr(request.user, 'branch'):
+            devices = devices.filter(branch=request.user.branch)
+
+        # Handle specific targets if provided
         if device_ids:
-            devices = devices.filter(id__in=device_ids)
+            from uuid import UUID
+            valid_uuids = []
+            for d_id in device_ids:
+                if not d_id: continue  # Skip empty strings (common if "All" is selected in some frontends)
+                try:
+                    # Validate UUID format to prevent 400 error in the filter
+                    UUID(str(d_id))
+                    valid_uuids.append(d_id)
+                except (ValueError, TypeError):
+                    continue
+            
+            if valid_uuids:
+                devices = devices.filter(id__in=valid_uuids)
+            elif any(d_id == "" for d_id in device_ids):
+                # If only "" was provided, we treat it as "all devices in scope"
+                pass
+            else:
+                # If IDs were provided but none were valid, we return empty to be safe
+                devices = devices.none()
 
         success_count = 0
+        total_count = devices.count()
+        
         for device in devices:
             if NotificationService.send_push(device, title, body, notif_type):
                 success_count += 1
@@ -33,7 +60,7 @@ class AdminSendNotificationView(views.APIView):
         return response.Response({
             "status": "success",
             "sent_count": success_count,
-            "total_count": devices.count()
+            "total_count": total_count
         })
 
 
@@ -56,6 +83,10 @@ class NotificationViewSet(viewsets.ModelViewSet):
         notif_type = self.request.query_params.get('type')
         if notif_type:
             queryset = queryset.filter(notification_type=notif_type)
+            
+        branch_id = self.request.query_params.get('branch')
+        if branch_id and user.role != 'branch_manager':
+            queryset = queryset.filter(device__branch_id=branch_id)
             
         return queryset
 

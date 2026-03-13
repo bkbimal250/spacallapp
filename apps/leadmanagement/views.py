@@ -256,6 +256,8 @@ class LeadsSyncView(viewsets.ViewSet):
 
             if not calllog:
                 # Fall back: find the most recent call from this number at this branch
+                # NOTE: We keep endswith here for phone_number check as it's the external field,
+                # but we could add phone_normalized to CallLog too if needed later.
                 last_10 = phone_number[-10:] if len(phone_number) >= 10 else phone_number
                 calllog = CallLog.objects.filter(
                     phone_number__endswith=last_10,
@@ -278,9 +280,9 @@ class LeadsSyncView(viewsets.ViewSet):
                     created_count += 1
             else:
                 # Manual lead without a matching call log
-                # Try to match contact by phone number
+                # Try to match contact by phone number using indexed normalization
                 last_10 = phone_number[-10:] if len(phone_number) >= 10 else phone_number
-                contact = Contact.objects.filter(phone_number__endswith=last_10).first()
+                contact = Contact.objects.filter(phone_normalized=last_10).first()
 
                 LeadManagement.objects.create(
                     branch=device.branch,

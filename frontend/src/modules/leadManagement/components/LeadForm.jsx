@@ -2,16 +2,13 @@ import React, { useState, useEffect } from 'react';
 import Input from '../../../shared/components/Input';
 import Button from '../../../shared/components/Button';
 import Modal from '../../../shared/components/Modal';
+
 const LeadForm = ({ isOpen, onClose, onSubmit, initialData }) => {
     const [formData, setFormData] = useState({
         status: 'pending',
         booking_date: '',
         remarks: '',
     });
-
-    useEffect(() => {
-        // Form initialization logic if needed
-    }, [isOpen]);
 
     useEffect(() => {
         if (initialData) {
@@ -37,15 +34,14 @@ const LeadForm = ({ isOpen, onClose, onSubmit, initialData }) => {
     const handleSubmit = (e) => {
         e.preventDefault();
 
-        // Clean data: convert empty strings to null for the API
         const cleanedData = {
             ...formData,
             booking_date: formData.booking_date || null,
             remarks: formData.remarks || null,
         };
 
-        // Only send fields relevant to the current status to skip server-side clearing issues
         const finalData = { status: formData.status };
+
         if (['coming', 'interested'].includes(formData.status)) {
             finalData.booking_date = cleanedData.booking_date;
             finalData.remarks = cleanedData.remarks;
@@ -57,15 +53,23 @@ const LeadForm = ({ isOpen, onClose, onSubmit, initialData }) => {
     };
 
     return (
-        <Modal isOpen={isOpen} onClose={onClose} title={initialData ? 'Edit Lead' : 'Create Lead'}>
-            <form onSubmit={handleSubmit} className="space-y-4">
+        <Modal
+            isOpen={isOpen}
+            onClose={onClose}
+            title={initialData ? 'Edit Lead' : 'Create Lead'}
+        >
+            <form onSubmit={handleSubmit} className="space-y-4 text-text-primary">
+
                 <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+                    <label className="block text-sm font-medium text-text-secondary mb-1">
+                        Status
+                    </label>
+
                     <select
                         name="status"
                         value={formData.status}
                         onChange={handleChange}
-                        className="w-full border-gray-300 rounded-md shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                        className="w-full px-3 py-2 bg-card border border-border rounded-lg text-text-primary focus:border-primary outline-none"
                     >
                         <option value="pending">Pending</option>
                         <option value="ringing">Ringing</option>
@@ -83,32 +87,48 @@ const LeadForm = ({ isOpen, onClose, onSubmit, initialData }) => {
                         value={formData.booking_date}
                         onChange={handleChange}
                         required
+                        className="bg-card border-border text-text-primary"
                     />
                 )}
 
                 {['coming', 'interested'].includes(formData.status) && (
                     <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Remarks</label>
+                        <label className="block text-sm font-medium text-text-secondary mb-1">
+                            Remarks
+                        </label>
+
                         <textarea
                             name="remarks"
                             value={formData.remarks}
                             onChange={handleChange}
                             rows="3"
-                            className="w-full border-gray-300 rounded-md shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
                             placeholder="Enter lead details or notes..."
                             required={formData.status === 'interested'}
-                        ></textarea>
+                            className="w-full px-3 py-2 bg-card border border-border rounded-lg text-text-primary focus:border-primary outline-none"
+                        />
                     </div>
                 )}
 
-                <div className="flex justify-end space-x-2 mt-6">
-                    <Button variant="secondary" onClick={onClose} type="button">
+                <div className="flex justify-end gap-2 mt-6">
+
+                    <Button
+                        variant="outline"
+                        onClick={onClose}
+                        type="button"
+                        className="border-border text-text-secondary"
+                    >
                         Cancel
                     </Button>
-                    <Button type="submit">
+
+                    <Button
+                        type="submit"
+                        className="bg-primary hover:bg-primary-hover text-white"
+                    >
                         {initialData ? 'Update' : 'Create'}
                     </Button>
+
                 </div>
+
             </form>
         </Modal>
     );

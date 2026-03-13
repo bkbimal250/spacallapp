@@ -6,10 +6,20 @@ import Button from '../../../shared/components/Button';
 import BranchForm from '../components/BranchForm';
 import BranchFilter from '../components/BranchFilter';
 import Pagination from '../../../shared/components/Pagination';
-import { Edit, Trash2, Plus, MapPin, TrendingUp } from 'lucide-react';
+
+import {
+    Edit,
+    Trash2,
+    Plus,
+    MapPin,
+    TrendingUp,
+    PhoneCall
+} from 'lucide-react';
 
 const BranchList = () => {
+
     const navigate = useNavigate();
+
     const [branches, setBranches] = useState([]);
     const [loading, setLoading] = useState(true);
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -17,24 +27,40 @@ const BranchList = () => {
     const [filters, setFilters] = useState({});
     const [page, setPage] = useState(1);
     const [totalCount, setTotalCount] = useState(0);
+
     const pageSize = 50;
 
     const fetchBranches = async (currentFilters = {}, currentPage = 1) => {
+
         setLoading(true);
+
         try {
-            const response = await branchesAPI.getBranches({ ...currentFilters, page: currentPage });
-            // The API returns paginated data if configured, otherwise use total count logic
+
+            const response = await branchesAPI.getBranches({
+                ...currentFilters,
+                page: currentPage
+            });
+
             if (response.data.results) {
+
                 setBranches(response.data.results);
                 setTotalCount(response.data.count);
+
             } else {
+
                 setBranches(response.data);
                 setTotalCount(response.data.length);
+
             }
+
         } catch (error) {
+
             console.error("Failed to fetch branches", error);
+
         } finally {
+
             setLoading(false);
+
         }
     };
 
@@ -62,111 +88,195 @@ const BranchList = () => {
     };
 
     const handleDelete = async (id) => {
+
         if (window.confirm("Are you sure you want to delete this branch?")) {
+
             try {
+
                 await branchesAPI.deleteBranch(id);
                 fetchBranches(filters, page);
+
             } catch (error) {
+
                 console.error("Failed to delete branch", error);
+
             }
+
         }
+
     };
 
     const handleSubmit = async (data) => {
+
         try {
+
             if (editingBranch) {
                 await branchesAPI.updateBranch(editingBranch.id, data);
             } else {
                 await branchesAPI.createBranch(data);
             }
+
             setIsModalOpen(false);
             fetchBranches(filters, page);
+
         } catch (error) {
+
             console.error("Failed to save branch", error);
+
         }
+
     };
 
     const columns = [
+
         { header: 'Spa Name', accessor: 'spa_name' },
         { header: 'Branch Code', accessor: 'code' },
         { header: 'Area', accessor: 'area' },
         { header: 'Postal Code', accessor: 'postal_code' },
+
         {
             header: 'Location',
             render: (row) => (
-                <div className="flex items-center text-gray-500">
-                    <MapPin size={14} className="mr-1" />
+                <div className="flex items-center text-text-secondary">
+                    <MapPin size={14} className="mr-1 text-primary" />
                     {`${row.city}, ${row.state}`}
                 </div>
             )
         },
+
         {
             header: 'Status',
             render: (row) => (
-                <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${row.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                <span
+                    className={`px-2 py-0.5 text-xs font-semibold rounded-md
+                    ${row.is_active
+                            ? "bg-success/10 text-success"
+                            : "bg-danger/10 text-danger"
+                        }`}
+                >
                     {row.is_active ? 'Active' : 'Inactive'}
                 </span>
             )
         },
+
         {
             header: 'Actions',
             render: (row) => (
-                <div className="flex space-x-2">
+
+                <div className="flex gap-2">
+
+                    {/* Call Logs */}
+                    <button
+                        onClick={() => navigate(`/calllogs/details?branch=${row.id}`)}
+                        className="p-1 rounded-md text-primary hover:bg-primary/10"
+                        title="View Call Logs"
+                    >
+                        <PhoneCall size={16} />
+                    </button>
+
+                    {/* Analytics */}
                     <button
                         onClick={() => navigate(`/analytics?branch=${row.id}`)}
-                        className="text-sky-600 hover:text-sky-800 p-1 hover:bg-sky-50 rounded transition-colors"
+                        className="p-1 rounded-md text-info hover:bg-info/10"
                         title="View Analytics"
                     >
                         <TrendingUp size={16} />
                     </button>
-                    <button onClick={() => handleEdit(row)} className="text-blue-600 hover:text-blue-800 p-1 hover:bg-blue-50 rounded transition-colors" title="Edit">
+
+                    {/* Edit */}
+                    <button
+                        onClick={() => handleEdit(row)}
+                        className="p-1 rounded-md text-warning hover:bg-warning/10"
+                        title="Edit"
+                    >
                         <Edit size={16} />
                     </button>
-                    <button onClick={() => handleDelete(row.id)} className="text-red-600 hover:text-red-800 p-1 hover:bg-red-50 rounded transition-colors" title="Delete">
+
+                    {/* Delete */}
+                    <button
+                        onClick={() => handleDelete(row.id)}
+                        className="p-1 rounded-md text-danger hover:bg-danger/10"
+                        title="Delete"
+                    >
                         <Trash2 size={16} />
                     </button>
+
                 </div>
-            ),
-        },
+            )
+        }
+
     ];
 
     return (
+
         <div className="space-y-6">
+
+            {/* HEADER */}
+
             <div className="flex justify-between items-center">
-                <h1 className="text-2xl font-semibold text-gray-900">Branches</h1>
-                <Button onClick={handleCreate} className="flex items-center space-x-2">
+
+                <h1 className="text-2xl font-semibold text-text-primary">
+                    Branches
+                </h1>
+
+                <Button
+                    onClick={handleCreate}
+                    className="flex items-center gap-2"
+                >
                     <Plus size={16} />
-                    <span>Add Branch</span>
+                    Add Branch
                 </Button>
+
             </div>
 
-            <div className="bg-white shadow rounded-lg p-6">
+            {/* FILTER */}
+
+            <div className="bg-card border border-border rounded-2xl p-6">
+
                 <BranchFilter onFilter={handleFilter} />
+
             </div>
 
-            <div className="bg-white shadow rounded-lg overflow-hidden flex flex-col">
+            {/* TABLE */}
+
+            <div className="bg-card border border-border rounded-2xl overflow-hidden flex flex-col">
+
                 <div className="overflow-x-auto">
+
                     {loading ? (
-                        <div className="p-12 text-center text-gray-500">
-                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-sky-500 mx-auto mb-4"></div>
+
+                        <div className="p-12 text-center text-text-secondary">
+
+                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
+
                             Loading branches...
+
                         </div>
+
                     ) : (
+
                         <Table
                             columns={columns}
                             data={branches}
                         />
+
                     )}
+
                 </div>
 
                 {!loading && totalCount > 0 && Math.ceil(totalCount / pageSize) > 1 && (
+
                     <Pagination
                         currentPage={page}
                         totalPages={Math.ceil(totalCount / pageSize)}
                         onPageChange={handlePageChange}
                     />
+
                 )}
+
             </div>
+
+            {/* FORM MODAL */}
 
             <BranchForm
                 isOpen={isModalOpen}
@@ -174,6 +284,7 @@ const BranchList = () => {
                 onSubmit={handleSubmit}
                 initialData={editingBranch}
             />
+
         </div>
     );
 };

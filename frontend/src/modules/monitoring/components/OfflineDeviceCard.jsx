@@ -1,24 +1,52 @@
 import React from 'react';
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, Clock, MapPin } from 'lucide-react';
 
 const OfflineDeviceCard = ({ deviceName, location, lastSeen }) => {
     return (
-        <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded shadow-sm">
-            <div className="flex">
-                <div className="flex-shrink-0">
-                    <AlertTriangle className="h-5 w-5 text-red-500" />
+
+        <div className="bg-card border border-border rounded-xl p-4 shadow hover:bg-cardHover transition">
+
+            <div className="flex items-start gap-3">
+
+                {/* Icon */}
+                <div className="flex-shrink-0 bg-danger/20 p-2 rounded-lg">
+                    <AlertTriangle className="h-5 w-5 text-danger" />
                 </div>
-                <div className="ml-3">
-                    <h3 className="text-sm font-medium text-red-800">Device Offline</h3>
-                    <div className="mt-2 text-sm text-red-700">
-                        <p>
-                            <span className="font-semibold">{deviceName}</span> at {location}
-                        </p>
-                        <p className="mt-1 text-xs">Last seen: {lastSeen}</p>
+
+                {/* Content */}
+                <div className="flex-1">
+
+                    <h3 className="text-sm font-semibold text-danger">
+                        Device Offline
+                    </h3>
+
+                    <div className="mt-2 space-y-1 text-sm">
+
+                        {/* Device */}
+                        <div className="font-semibold text-text-primary">
+                            {deviceName}
+                        </div>
+
+                        {/* Location */}
+                        <div className="flex items-center gap-1 text-xs text-text-secondary">
+                            <MapPin size={12} />
+                            {location}
+                        </div>
+
+                        {/* Last Seen */}
+                        <div className="flex items-center gap-1 text-xs text-warning">
+                            <Clock size={12} />
+                            Last seen: {lastSeen}
+                        </div>
+
                     </div>
+
                 </div>
+
             </div>
+
         </div>
+
     );
 };
 

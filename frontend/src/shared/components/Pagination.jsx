@@ -2,11 +2,14 @@ import React from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 
 const Pagination = ({ currentPage, totalPages, onPageChange }) => {
+
     if (totalPages <= 1) return null;
 
     const getPageNumbers = () => {
+
         const pages = [];
         const maxVisiblePages = 10;
+
         let start = Math.max(1, currentPage - Math.floor(maxVisiblePages / 2));
         let end = Math.min(totalPages, start + maxVisiblePages - 1);
 
@@ -17,70 +20,106 @@ const Pagination = ({ currentPage, totalPages, onPageChange }) => {
         for (let i = start; i <= end; i++) {
             pages.push(i);
         }
+
         return pages;
+
     };
 
     return (
-        <div className="bg-white px-4 py-4 flex items-center justify-between border-t border-gray-100 sm:px-6">
+
+        <div className="bg-card border-t border-border px-4 py-4 flex items-center justify-between">
+
+            {/* MOBILE */}
             <div className="flex-1 flex justify-between sm:hidden">
+
                 <button
                     onClick={() => onPageChange(currentPage - 1)}
                     disabled={currentPage === 1}
-                    className="relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
+                    className="px-4 py-2 rounded-lg border border-border bg-background text-text-primary hover:bg-background/80 disabled:opacity-50"
                 >
                     Previous
                 </button>
+
                 <button
                     onClick={() => onPageChange(currentPage + 1)}
                     disabled={currentPage === totalPages}
-                    className="ml-3 relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
+                    className="px-4 py-2 rounded-lg border border-border bg-background text-text-primary hover:bg-background/80 disabled:opacity-50"
                 >
                     Next
                 </button>
+
             </div>
+
+            {/* DESKTOP */}
             <div className="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
-                <div>
-                    <p className="text-sm text-gray-600">
-                        Showing page <span className="font-semibold text-sky-600">{currentPage}</span> of <span className="font-semibold">{totalPages}</span>
-                    </p>
-                </div>
-                <div>
-                    <nav className="relative z-0 inline-flex rounded-md shadow-sm -space-x-px" aria-label="Pagination">
+
+                {/* PAGE INFO */}
+                <p className="text-sm text-text-secondary">
+
+                    Showing page
+                    <span className="font-semibold text-primary mx-1">
+                        {currentPage}
+                    </span>
+
+                    of
+
+                    <span className="font-semibold text-text-primary ml-1">
+                        {totalPages}
+                    </span>
+
+                </p>
+
+                {/* PAGE BUTTONS */}
+                <nav className="inline-flex rounded-lg border border-border overflow-hidden">
+
+                    {/* PREVIOUS */}
+                    <button
+                        onClick={() => onPageChange(currentPage - 1)}
+                        disabled={currentPage === 1}
+                        className="px-3 py-2 bg-background text-text-secondary hover:bg-background/70 disabled:opacity-40"
+                    >
+
+                        <ChevronLeft className="h-5 w-5" />
+
+                    </button>
+
+                    {/* PAGE NUMBERS */}
+                    {getPageNumbers().map(number => (
+
                         <button
-                            onClick={() => onPageChange(currentPage - 1)}
-                            disabled={currentPage === 1}
-                            className="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50 transition-colors"
+                            key={number}
+                            onClick={() => onPageChange(number)}
+                            className={`px-4 py-2 text-sm font-medium transition ${currentPage === number
+                                    ? 'bg-primary text-white'
+                                    : 'bg-background text-text-secondary hover:bg-background/70'
+                                }`}
                         >
-                            <span className="sr-only">Previous</span>
-                            <ChevronLeft className="h-5 w-5" aria-hidden="true" />
+
+                            {number}
+
                         </button>
 
-                        {getPageNumbers().map(number => (
-                            <button
-                                key={number}
-                                onClick={() => onPageChange(number)}
-                                className={`relative inline-flex items-center px-4 py-2 border text-sm font-medium transition-all ${currentPage === number
-                                    ? 'z-10 bg-sky-50 border-sky-500 text-sky-600'
-                                    : 'bg-white border-gray-300 text-gray-500 hover:bg-gray-50'
-                                    }`}
-                            >
-                                {number}
-                            </button>
-                        ))}
+                    ))}
 
-                        <button
-                            onClick={() => onPageChange(currentPage + 1)}
-                            disabled={currentPage === totalPages}
-                            className="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50 transition-colors"
-                        >
-                            <span className="sr-only">Next</span>
-                            <ChevronRight className="h-5 w-5" aria-hidden="true" />
-                        </button>
-                    </nav>
-                </div>
+                    {/* NEXT */}
+                    <button
+                        onClick={() => onPageChange(currentPage + 1)}
+                        disabled={currentPage === totalPages}
+                        className="px-3 py-2 bg-background text-text-secondary hover:bg-background/70 disabled:opacity-40"
+                    >
+
+                        <ChevronRight className="h-5 w-5" />
+
+                    </button>
+
+                </nav>
+
             </div>
+
         </div>
+
     );
+
 };
 
 export default Pagination;

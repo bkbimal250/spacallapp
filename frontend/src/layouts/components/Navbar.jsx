@@ -16,6 +16,7 @@ import { monitoringAPI } from '../../modules/monitoring/api';
 import { formatDate } from '../../shared/utils/formatDate';
 
 const Navbar = () => {
+
     const { user } = useSelector((state) => state.auth);
 
     const [notifications, setNotifications] = useState([]);
@@ -86,61 +87,70 @@ const Navbar = () => {
     const getEventDetails = (type) => {
         switch (type) {
             case 'offline':
-                return { icon: <WifiOff size={16} className="text-red-500" />, label: 'Device Offline' };
+                return { icon: <WifiOff size={16} className="text-danger" />, label: 'Device Offline' };
             case 'battery_low':
-                return { icon: <BatteryLow size={16} className="text-orange-500" />, label: 'Battery Low' };
+                return { icon: <BatteryLow size={16} className="text-warning" />, label: 'Battery Low' };
             case 'sim_change':
-                return { icon: <Smartphone size={16} className="text-purple-500" />, label: 'SIM Changed' };
+                return { icon: <Smartphone size={16} className="text-accent-purple" />, label: 'SIM Changed' };
             default:
-                return { icon: <CircleDot size={16} className="text-indigo-500" />, label: 'System Event' };
+                return { icon: <CircleDot size={16} className="text-primary" />, label: 'System Event' };
         }
     };
 
     return (
-        <header className="bg-white border-b border-gray-100 h-16 flex items-center justify-between px-6 sticky top-0 z-40">
+        <header className="bg-sidebar border-b border-border h-16 flex items-center justify-between px-6 sticky top-0 z-40">
 
             {/* USER INFO */}
             <div className="flex items-center gap-3">
+
                 <div className="flex flex-col">
-                    <span className="text-sm font-semibold text-gray-800">
+
+                    <span className="text-sm font-semibold text-text-primary">
                         {user?.full_name || "Admin"}
                     </span>
 
-                    <span className="flex items-center text-xs text-indigo-600 font-medium">
+                    <span className="flex items-center text-xs text-primary font-medium">
                         <ShieldCheck size={12} className="mr-1" />
                         {user?.role?.replace('_', ' ') || "Super Admin"}
                     </span>
+
                 </div>
+
             </div>
 
             {/* RIGHT SECTION */}
             <div className="flex items-center gap-6">
 
-                {/* NOTIFICATION */}
+                {/* NOTIFICATIONS */}
                 <div className="relative" ref={notificationRef}>
+
                     <button
                         onClick={() => setShowNotifications(!showNotifications)}
-                        className="relative p-2 rounded-lg hover:bg-gray-100 transition"
+                        className="relative p-2 rounded-lg hover:bg-card transition"
                     >
-                        <Bell size={20} className="text-gray-600" />
+
+                        <Bell size={20} className="text-text-secondary" />
 
                         {notifications.length > 0 && (
-                            <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] h-4 w-4 flex items-center justify-center rounded-full">
+                            <span className="absolute -top-1 -right-1 bg-danger text-white text-[10px] h-4 w-4 flex items-center justify-center rounded-full">
                                 {notifications.length}
                             </span>
                         )}
+
                     </button>
 
                     {showNotifications && (
-                        <div className="absolute right-0 mt-4 w-96 bg-white rounded-xl shadow-lg border border-gray-100 overflow-hidden">
+                        <div className="absolute right-0 mt-4 w-96 bg-card rounded-xl shadow-2xl border border-border overflow-hidden">
 
                             {/* HEADER */}
-                            <div className="flex items-center justify-between px-4 py-3 border-b">
+                            <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+
                                 <div>
-                                    <p className="font-semibold text-gray-800">
+                                    <p className="font-semibold text-text-primary">
                                         Notifications
                                     </p>
-                                    <p className="text-xs text-gray-400">
+
+                                    <p className="text-xs text-text-muted">
                                         Recent system alerts
                                     </p>
                                 </div>
@@ -148,11 +158,12 @@ const Navbar = () => {
                                 {notifications.length > 0 && (
                                     <button
                                         onClick={handleResolveAll}
-                                        className="text-xs text-indigo-600 hover:text-indigo-800 font-medium"
+                                        className="text-xs text-primary hover:text-primary-hover font-medium"
                                     >
                                         Mark all read
                                     </button>
                                 )}
+
                             </div>
 
                             {/* BODY */}
@@ -160,23 +171,28 @@ const Navbar = () => {
 
                                 {notifications.length === 0 && (
                                     <div className="p-10 text-center">
-                                        <CheckCircle2 size={36} className="text-green-500 mx-auto mb-3" />
-                                        <p className="text-sm font-medium text-gray-700">
+
+                                        <CheckCircle2 size={36} className="text-success mx-auto mb-3" />
+
+                                        <p className="text-sm font-medium text-text-primary">
                                             All clear
                                         </p>
-                                        <p className="text-xs text-gray-400">
+
+                                        <p className="text-xs text-text-muted">
                                             No alerts right now
                                         </p>
+
                                     </div>
                                 )}
 
                                 {notifications.map((n) => {
+
                                     const { icon, label } = getEventDetails(n.event_type);
 
                                     return (
                                         <div
                                             key={n.id}
-                                            className="flex gap-3 px-4 py-3 border-b hover:bg-gray-50 group"
+                                            className="flex gap-3 px-4 py-3 border-b border-border hover:bg-background group"
                                         >
 
                                             <div className="mt-1">
@@ -186,75 +202,85 @@ const Navbar = () => {
                                             <div className="flex-1">
 
                                                 <div className="flex justify-between">
-                                                    <p className="text-sm font-medium text-gray-800">
+
+                                                    <p className="text-sm font-medium text-text-primary">
                                                         {label}
                                                     </p>
 
-                                                    <span className="text-xs text-gray-400">
+                                                    <span className="text-xs text-text-muted">
                                                         {formatDate(n.created_at)}
                                                     </span>
+
                                                 </div>
 
-                                                <p className="text-xs text-gray-600 mt-1">
-                                                    Device <span className="font-mono text-indigo-600">{n.device_uid}</span> {n.description}
+                                                <p className="text-xs text-text-secondary mt-1">
+                                                    Device <span className="font-mono text-primary">{n.device_uid}</span> {n.description}
                                                 </p>
 
                                                 {n.branch_name && (
-                                                    <p className="text-[11px] text-gray-400 mt-1">
+                                                    <p className="text-[11px] text-text-muted mt-1">
                                                         {n.branch_name}
                                                     </p>
                                                 )}
+
                                             </div>
 
                                             <div className="flex flex-col gap-2 opacity-0 group-hover:opacity-100 transition">
 
                                                 <button
                                                     onClick={(e) => handleResolve(n.id, e)}
-                                                    className="p-1 rounded-md bg-green-50 text-green-600 hover:bg-green-100"
+                                                    className="p-1 rounded-md bg-success/10 text-success hover:bg-success/20"
                                                 >
                                                     <Check size={14} />
                                                 </button>
 
                                                 <button
                                                     onClick={(e) => handleDelete(n.id, e)}
-                                                    className="p-1 rounded-md bg-red-50 text-red-600 hover:bg-red-100"
+                                                    className="p-1 rounded-md bg-danger/10 text-danger hover:bg-danger/20"
                                                 >
                                                     <Trash2 size={14} />
                                                 </button>
 
                                             </div>
+
                                         </div>
                                     );
                                 })}
                             </div>
 
                             {/* FOOTER */}
-                            <div className="text-center p-3 bg-gray-50">
+                            <div className="text-center p-3 bg-background border-t border-border">
+
                                 <Link
                                     to="/notifications"
-                                    className="text-xs text-indigo-600 font-medium hover:text-indigo-800"
+                                    className="text-xs text-primary font-medium hover:text-primary-hover"
                                 >
                                     View all notifications
                                 </Link>
+
                             </div>
+
                         </div>
                     )}
+
                 </div>
 
                 {/* PROFILE */}
-                <div className="flex items-center gap-3 border-l pl-6">
+                <div className="flex items-center gap-3 border-l border-border pl-6">
 
                     <div className="hidden md:block text-right">
-                        <p className="text-xs font-medium text-gray-800">
+
+                        <p className="text-xs font-medium text-text-primary">
                             {user?.email}
                         </p>
 
-                        <p className="text-[10px] text-green-500">
+                        <p className="text-[10px] text-success">
                             Verified
                         </p>
+
                     </div>
 
-                    <div className="h-9 w-9 rounded-full bg-indigo-600 text-white flex items-center justify-center font-semibold">
+                    <div className="h-9 w-9 rounded-full bg-primary text-white flex items-center justify-center font-semibold">
                         {user?.full_name?.charAt(0) ||
                             user?.email?.charAt(0)?.toUpperCase() ||
                             "A"}
@@ -263,6 +289,7 @@ const Navbar = () => {
                 </div>
 
             </div>
+
         </header>
     );
 };

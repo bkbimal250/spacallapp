@@ -82,8 +82,9 @@ class DashboardStatsView(APIView):
             branch_qs = branch_qs.filter(id__in=branch_ids)
             device_qs = device_qs.filter(branch_id__in=branch_ids)
             lead_qs = lead_qs.filter(branch_id__in=branch_ids)
-            # Users and Contacts might not be directly linked to branches in a simple way 
-            # for this level of filtering, but let's stick to devices/calls for now.
+            contact_qs = contact_qs.filter(call_logs__branch_id__in=branch_ids).distinct()
+            user_qs = user_qs.filter(Q(branch_id__in=branch_ids) | Q(role__in=["admin", "super_admin"]))
+            export_qs = export_qs.filter(user__branch_id__in=branch_ids)
         elif branch_id_param and branch_id_param.strip() and branch_id_param not in ("undefined", "null"):
             # Admin manually filtering by a specific branch
             calls_qs = calls_qs.filter(branch_id=branch_id_param)
@@ -91,6 +92,9 @@ class DashboardStatsView(APIView):
             branch_qs = branch_qs.filter(id=branch_id_param)
             device_qs = device_qs.filter(branch_id=branch_id_param)
             lead_qs = lead_qs.filter(branch_id=branch_id_param)
+            contact_qs = contact_qs.filter(call_logs__branch_id=branch_id_param).distinct()
+            user_qs = user_qs.filter(branch_id=branch_id_param)
+            export_qs = export_qs.filter(user__branch_id=branch_id_param)
         elif branch_ids == ["NONE"]:
             # Branch manager with no branch assigned — show nothing
             calls_qs = calls_qs.none()
@@ -100,6 +104,7 @@ class DashboardStatsView(APIView):
             lead_qs = lead_qs.none()
             user_qs = user_qs.none()
             export_qs = export_qs.none()
+            contact_qs = contact_qs.none()
 
         # ── KPI Stats ──────────────────────────────────────────────────────────
         total_calls = calls_qs.count()
@@ -137,14 +142,22 @@ class DashboardStatsView(APIView):
         ]
 
         # ── Top 10 Branch Performance Table ───────────────────────────────────
+        # Define filter Q for the annotations based on lead_source
+        call_filter_q = Q()
+        if lead_source == "direct":
+            call_filter_q &= Q(call_logs__lead__isnull=False)
+        elif lead_source == "manual":
+            # If manual source is selected, call logs will be 0 as they only come from sync
+            call_filter_q &= Q(call_logs__id__isnull=True)
+
         performance_branches = branch_qs.annotate(
-            total_calls_count=Count("call_logs"),
-            incoming_count=Count("call_logs", filter=Q(call_logs__call_type="incoming")),
-            outgoing_count=Count("call_logs", filter=Q(call_logs__call_type="outgoing")),
-            missed_count=Count("call_logs", filter=Q(call_logs__call_type="missed")),
+            total_calls_count=Count("call_logs", filter=call_filter_q),
+            incoming_count=Count("call_logs", filter=call_filter_q & Q(call_logs__call_type="incoming")),
+            outgoing_count=Count("call_logs", filter=call_filter_q & Q(call_logs__call_type="outgoing")),
+            missed_count=Count("call_logs", filter=call_filter_q & Q(call_logs__call_type="missed")),
             completed_calls_count=Count(
                 "call_logs",
-                filter=Q(call_logs__call_type="incoming") | Q(call_logs__call_type="outgoing"),
+                filter=call_filter_q & (Q(call_logs__call_type="incoming") | Q(call_logs__call_type="outgoing")),
             ),
         ).order_by("-total_calls_count")[:10]
 
@@ -152,6 +165,7 @@ class DashboardStatsView(APIView):
         for b in performance_branches:
             conv_rate = round((b.completed_calls_count / b.total_calls_count * 100) if b.total_calls_count > 0 else 0)
             branch_data.append({
+                "id": str(b.id),
                 "name": b.spa_name,
                 "calls": b.total_calls_count,
                 "incoming": b.incoming_count,

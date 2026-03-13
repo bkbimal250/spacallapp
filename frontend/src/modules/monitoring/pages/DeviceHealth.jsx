@@ -1,174 +1,167 @@
-import React, { useEffect, useState } from 'react';
-import { monitoringAPI } from '../api';
-import OfflineDeviceCard from '../components/OfflineDeviceCard';
+import React from 'react';
+import { RefreshCcw } from 'lucide-react';
 import StatsCard from '../../dashboard/components/StatsCard';
 import Table from '../../../shared/components/Table';
-import Badge from '../../../shared/components/Badge';
 import Pagination from '../../../shared/components/Pagination';
-import { formatDate } from '../../../shared/utils/formatDate';
-import { RefreshCcw, Wifi, WifiOff, Check, Trash2 } from 'lucide-react';
-import { devicesAPI } from '../../devices/api';
+import Badge from '../../../shared/components/Badge';
 import DeviceStatusBadge from '../../devices/components/DeviceStatusBadge';
+import OfflineDeviceCard from '../components/OfflineDeviceCard';
+import { formatDate } from '../../../shared/utils/formatDate';
 
-const DeviceHealth = () => {
-    const [stats, setStats] = useState({
-        total_devices: 0,
-        active_devices: 0,
-        online_devices: 0,
-        offline_alerts: 0,
-        sim_change_alerts: 0,
-    });
-    const [alerts, setAlerts] = useState([]);
-    const [devices, setDevices] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const [page, setPage] = useState(1);
-    const [totalCount, setTotalCount] = useState(0);
-    const pageSize = 50;
+const DeviceHealthUI = ({
+    stats = {},
+    alerts = [],
+    devices = [],
+    loading = false,
+    page = 1,
+    totalCount = 0,
+    pageSize = 10,
+    fetchData,
+    handleResolveAlert,
+    handleDeleteAlert,
+    handlePageChange
+}) => {
 
-    const fetchData = async (isBackground = false) => {
-        if (!isBackground) setLoading(true);
-        try {
-            const statsResponse = await monitoringAPI.getDeviceHealth();
-            setStats(statsResponse.data);
-            await fetchAlerts(page, isBackground);
+    const offlineAlerts = (alerts || []).filter(
+        a => !a.resolved && a.event_type === 'offline'
+    );
 
-            const devicesResponse = await devicesAPI.getDevices({ page_size: 10 });
-            setDevices(devicesResponse.data.results || devicesResponse.data);
-        } catch (error) {
-            console.error("Failed to fetch monitoring data", error);
-        } finally {
-            if (!isBackground) setLoading(false);
-        }
-    };
-
-    const fetchAlerts = async (currentPage, isBackground = false) => {
-        try {
-            const alertsResponse = await monitoringAPI.getAlerts({ page: currentPage });
-            setAlerts(alertsResponse.data.results || alertsResponse.data);
-            setTotalCount(alertsResponse.data.count || (alertsResponse.data.results ? 0 : alertsResponse.data.length));
-        } catch (error) {
-            console.error("Failed to fetch alerts", error);
-        }
-    };
-
-    useEffect(() => {
-        fetchData();
-
-        // Real-time updates every 10 seconds
-        const intervalId = setInterval(() => {
-            fetchData(true);
-        }, 10000);
-
-        return () => clearInterval(intervalId);
-    }, []);
-
-    useEffect(() => {
-        if (page > 1) {
-            fetchAlerts(page);
-        }
-    }, [page]);
-
-    const handlePageChange = (newPage) => {
-        setPage(newPage);
-    };
-
-    const handleResolveAlert = async (id) => {
-        try {
-            await monitoringAPI.resolveAlert(id);
-            fetchAlerts(page);
-        } catch (error) {
-            console.error("Failed to resolve alert", error);
-        }
-    };
-
-    const handleDeleteAlert = async (id) => {
-        if (!window.confirm("Are you sure you want to delete this alert?")) return;
-        try {
-            await monitoringAPI.deleteAlert(id);
-            fetchAlerts(page);
-        } catch (error) {
-            console.error("Failed to delete alert", error);
-        }
-    };
-
-    const columns = [
+    const alertColumns = [
         { header: 'Device', accessor: 'device_uid' },
+
         { header: 'Branch', accessor: 'branch_name' },
+
         {
             header: 'Event',
             render: (row) => (
-                <Badge variant={row.event_type === 'offline' ? 'red' : 'amber'}>
+                <Badge variant={row.event_type === 'offline' ? 'danger' : 'warning'}>
                     {row.event_type}
                 </Badge>
             )
         },
+
         { header: 'Description', accessor: 'description' },
-        { header: 'Time', render: (row) => formatDate(row.created_at) },
+
+        {
+            header: 'Time',
+            render: (row) => formatDate(row.created_at)
+        },
+
         {
             header: 'Status',
             render: (row) => (
-                <Badge variant={row.resolved ? 'green' : 'red'}>
+                <Badge variant={row.resolved ? 'success' : 'danger'}>
                     {row.resolved ? 'Resolved' : 'Active'}
                 </Badge>
             )
         },
+
         {
             header: 'Actions',
             render: (row) => (
-                <div className="flex items-center space-x-2">
+                <div className="flex items-center gap-2">
+
                     {!row.resolved && (
                         <button
                             onClick={() => handleResolveAlert(row.id)}
-                            className="p-1 text-green-600 hover:bg-green-50 rounded transition-colors"
-                            title="Mark as Read"
+                            className="px-2 py-1 text-xs rounded bg-success/20 text-success hover:bg-success/30 transition"
                         >
-                            <Check size={16} />
+                            Resolve
                         </button>
                     )}
+
                     <button
                         onClick={() => handleDeleteAlert(row.id)}
-                        className="p-1 text-red-600 hover:bg-red-50 rounded transition-colors"
-                        title="Delete Alert"
+                        className="px-2 py-1 text-xs rounded bg-danger/20 text-danger hover:bg-danger/30 transition"
                     >
-                        <Trash2 size={16} />
+                        Delete
                     </button>
+
                 </div>
             )
-        },
+        }
     ];
 
     return (
-        <div className="space-y-6">
-            <div className="flex justify-between items-center">
-                <h1 className="text-2xl font-semibold text-gray-900">Device Health & Monitoring</h1>
+
+        <div className="space-y-6 text-text-primary">
+
+            <div className="flex items-center justify-between">
+
+                <h1 className="text-2xl font-bold">
+                    Device Health & Monitoring
+                </h1>
+
                 <button
                     onClick={fetchData}
-                    className="p-2 text-gray-500 hover:text-sky-600 rounded-full hover:bg-sky-50 transition-all"
-                    title="Refresh Data"
+                    className="flex items-center gap-2 px-3 py-2 text-sm rounded-lg border border-border bg-card hover:bg-cardHover transition"
                 >
-                    <RefreshCcw size={20} className={loading ? "animate-spin" : ""} />
+                    <RefreshCcw
+                        size={16}
+                        className={loading ? "animate-spin" : ""}
+                    />
+                    Refresh
                 </button>
+
             </div>
+
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                <StatsCard title="Total Devices" value={stats.total_devices} />
-                <StatsCard title="Online Devices" value={stats.online_devices !== undefined ? stats.online_devices : stats.active_devices} />
-                <StatsCard title="Offline Alerts" value={stats.offline_alerts} isNegative />
-                <StatsCard title="SIM Changes" value={stats.sim_change_alerts} isNegative />
+
+                <StatsCard
+                    title="Total Devices"
+                    value={stats?.total_devices || 0}
+                />
+
+                <StatsCard
+                    title="Online Devices"
+                    value={stats?.online_devices || 0}
+                    color="success"
+                />
+
+                <StatsCard
+                    title="Offline Alerts"
+                    value={stats?.offline_alerts || 0}
+                    color="danger"
+                />
+
+                <StatsCard
+                    title="SIM Change Alerts"
+                    value={stats?.sim_change_alerts || 0}
+                    color="warning"
+                />
+
             </div>
 
+
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                <div className="lg:col-span-2 flex flex-col space-y-4">
-                    <div className="bg-white shadow rounded-lg overflow-hidden flex flex-col">
-                        <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
-                            <h3 className="text-lg font-medium text-gray-900">Live Device Monitoring</h3>
-                            <span className="text-xs text-gray-500">Showing top 10 devices</span>
+
+
+                <div className="lg:col-span-2 space-y-6">
+
+
+                    <div className="bg-card border border-border rounded-xl shadow-lg">
+
+                        <div className="flex items-center justify-between p-4 border-b border-border">
+
+                            <h3 className="text-lg font-semibold">
+                                Live Device Monitoring
+                            </h3>
+
+                            <span className="text-xs text-text-secondary">
+                                Top 10 Devices
+                            </span>
+
                         </div>
-                        <div className="overflow-x-auto text-sm">
+
+                        <div className="overflow-x-auto">
+
                             <Table
                                 columns={[
                                     { header: 'Device', accessor: 'device_id' },
+
                                     { header: 'Branch', accessor: 'branch_name' },
+
                                     {
                                         header: 'Status',
                                         render: (row) => (
@@ -180,54 +173,107 @@ const DeviceHealth = () => {
                                             />
                                         )
                                     },
-                                    { header: 'Last Heartbeat', render: (row) => row.last_heartbeat ? formatDate(row.last_heartbeat, 'HH:mm:ss') : 'Never' }
+
+                                    {
+                                        header: 'Last Heartbeat',
+                                        render: (row) =>
+                                            row.last_heartbeat
+                                                ? formatDate(row.last_heartbeat, 'HH:mm:ss')
+                                                : 'Never'
+                                    }
                                 ]}
-                                data={devices}
+                                data={devices || []}
                             />
+
                         </div>
+
                     </div>
 
-                    <div className="bg-white shadow rounded-lg overflow-hidden flex flex-col">
-                        <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
-                            <h3 className="text-lg font-medium text-gray-900">Recent Alerts (System Logs)</h3>
+
+                    <div className="bg-card border border-border rounded-xl shadow-lg">
+
+                        <div className="p-4 border-b border-border">
+
+                            <h3 className="text-lg font-semibold">
+                                Recent Alerts
+                            </h3>
+
                         </div>
-                        <div className="overflow-x-auto text-sm">
-                            <Table columns={columns} data={alerts} />
-                        </div>
-                        {!loading && totalCount > pageSize && (
-                            <Pagination
-                                currentPage={page}
-                                totalPages={Math.ceil(totalCount / pageSize)}
-                                onPageChange={handlePageChange}
+
+                        <div className="overflow-x-auto">
+
+                            <Table
+                                columns={alertColumns}
+                                data={alerts || []}
                             />
+
+                        </div>
+
+                        {totalCount > pageSize && (
+
+                            <div className="p-4 border-t border-border">
+
+                                <Pagination
+                                    currentPage={page}
+                                    totalPages={Math.ceil(totalCount / pageSize)}
+                                    onPageChange={handlePageChange}
+                                />
+
+                            </div>
+
                         )}
+
                     </div>
+
                 </div>
 
+
                 <div className="space-y-4">
+
+
                     <div className="flex items-center justify-between">
-                        <h3 className="text-lg font-medium text-gray-900">Critical Issues</h3>
-                        <span className="px-2 py-0.5 bg-red-100 text-red-600 rounded text-xs font-bold uppercase tracking-wider">Live</span>
+
+                        <h3 className="text-lg font-semibold">
+                            Critical Issues
+                        </h3>
+
+                        <span className="text-xs font-semibold px-2 py-1 rounded bg-danger/20 text-danger">
+                            LIVE
+                        </span>
+
                     </div>
+
+
                     <div className="space-y-4">
-                        {alerts.filter(a => !a.resolved && a.event_type === 'offline').slice(0, 5).map(alert => (
+
+                        {offlineAlerts.slice(0, 5).map(alert => (
+
                             <OfflineDeviceCard
                                 key={alert.id}
                                 deviceName={alert.device_uid}
                                 location={alert.branch_name}
                                 lastSeen={alert.created_at}
                             />
+
                         ))}
-                        {alerts.filter(a => !a.resolved && a.event_type === 'offline').length === 0 && (
-                            <div className="bg-white p-8 border border-dashed border-gray-200 rounded-lg text-center opacity-60">
-                                <p className="text-gray-500 text-sm">No critical offline devices reported.</p>
+
+                        {offlineAlerts.length === 0 && (
+
+                            <div className="bg-card border border-dashed border-border p-6 rounded-lg text-center text-sm text-text-secondary">
+                                No offline devices detected
                             </div>
+
                         )}
+
                     </div>
+
                 </div>
+
             </div>
+
         </div>
+
     );
 };
 
-export default DeviceHealth;
+export default DeviceHealthUI;

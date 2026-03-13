@@ -1,7 +1,21 @@
 import React, { useState, useEffect } from 'react';
 import { notificationsAPI } from '../api';
-import { Bell, Send, Filter, CheckCircle2, XCircle, RefreshCcw, Smartphone, Zap, Clock, ShieldAlert, Trash2 } from 'lucide-react';
+import {
+    Bell,
+    Send,
+    CheckCircle2,
+    XCircle,
+    RefreshCcw,
+    Smartphone,
+    Zap,
+    Clock,
+    ShieldAlert,
+    Trash2
+} from 'lucide-react';
 import SendNotificationModal from '../components/SendNotificationModal';
+
+import { branchesAPI } from '../../branches/api';
+import { getUser } from '../../../shared/services/tokenService';
 
 const NotificationList = () => {
     const [logs, setLogs] = useState([]);
@@ -9,16 +23,37 @@ const NotificationList = () => {
     const [loading, setLoading] = useState(true);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [filter, setFilter] = useState('');
+    const [branchFilter, setBranchFilter] = useState('');
+    const [branches, setBranches] = useState([]);
+    const [user, setUser] = useState(getUser());
 
     useEffect(() => {
         fetchLogs();
         fetchStats();
-    }, [filter]);
+    }, [filter, branchFilter]);
+
+    useEffect(() => {
+        if (user?.role !== 'branch_manager') {
+            fetchBranches();
+        }
+    }, [user]);
+
+    const fetchBranches = async () => {
+        try {
+            const res = await branchesAPI.getBranches();
+            setBranches(res.data.results || res.data || []);
+        } catch (err) {
+            console.error('Failed to fetch branches:', err);
+        }
+    };
 
     const fetchLogs = async () => {
         setLoading(true);
         try {
-            const res = await notificationsAPI.getLogs({ type: filter });
+            const res = await notificationsAPI.getLogs({ 
+                type: filter,
+                branch: branchFilter 
+            });
             setLogs(res.data.results || res.data || []);
         } catch (err) {
             console.error(err);
@@ -38,16 +73,23 @@ const NotificationList = () => {
 
     const handleSendNotification = async (data) => {
         try {
-            await notificationsAPI.sendManual(data);
+            const res = await notificationsAPI.sendManual(data);
+            const { sent_count, total_count } = res.data;
+            
+            alert(`Successfully sent ${sent_count} of ${total_count} notifications.`);
+            
             fetchLogs();
+            fetchStats();
         } catch (err) {
-            console.error(err);
+            console.error('Failed to send notification:', err);
+            const errorMsg = err.response?.data?.error || 'Failed to send notification. Please try again.';
+            alert(errorMsg);
             throw err;
         }
     };
 
     const handleDelete = async (id) => {
-        if (!window.confirm('Are you sure you want to delete this notification log?')) return;
+        if (!window.confirm('Delete this notification log?')) return;
         try {
             await notificationsAPI.deleteLog(id);
             setLogs(logs.filter(log => log.id !== id));
@@ -57,7 +99,7 @@ const NotificationList = () => {
     };
 
     const handleDeleteAll = async () => {
-        if (!window.confirm('Are you sure you want to clear ALL notification history? This action cannot be undone.')) return;
+        if (!window.confirm('Clear ALL notification history?')) return;
         try {
             await notificationsAPI.deleteAllLogs();
             setLogs([]);
@@ -67,193 +109,234 @@ const NotificationList = () => {
     };
 
     const getStatusIcon = (notif) => {
-        if (notif.is_sent) return <CheckCircle2 className="text-emerald-500" size={16} />;
-        return <XCircle className="text-rose-500" size={16} />;
+        if (notif.is_sent) return <CheckCircle2 className="text-success" size={16} />;
+        return <XCircle className="text-danger" size={16} />;
     };
 
     const getTypeStyles = (type) => {
         switch (type) {
-            case 'alert': return 'bg-orange-50 text-orange-600 border-orange-100';
-            case 'sync_issue': return 'bg-rose-50 text-rose-600 border-rose-100';
-            case 'reminder': return 'bg-indigo-50 text-indigo-600 border-indigo-100';
-            default: return 'bg-sky-50 text-sky-600 border-sky-100';
+            case 'alert': return 'bg-warning/10 text-warning';
+            case 'sync_issue': return 'bg-danger/10 text-danger';
+            case 'reminder': return 'bg-primary/10 text-primary';
+            default: return 'bg-info/10 text-info';
         }
     };
 
     return (
-        <div className="p-8 space-y-8 bg-gray-50/50 min-h-screen">
-            {/* Header Section */}
+        <div className="p-8 space-y-8 bg-background min-h-screen text-text-primary">
+
+            {/* Header */}
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+
                 <div className="flex items-center space-x-4">
-                    <div className="bg-white p-3 rounded-2xl shadow-sm border border-gray-100">
-                        <Bell className="text-sky-600" size={32} />
+                    <div className="bg-card p-3 rounded-xl border border-border">
+                        <Bell className="text-primary" size={32} />
                     </div>
+
                     <div>
-                        <h1 className="text-2xl font-black text-gray-900 leading-tight">Notification Center</h1>
-                        <p className="text-gray-400 text-sm font-medium">Manage push alerts & delivery logs</p>
+                        <h1 className="text-2xl font-bold text-text-primary">
+                            Notification Center
+                        </h1>
+                        <p className="text-text-secondary text-sm">
+                            Manage push alerts & delivery logs
+                        </p>
                     </div>
                 </div>
-                
-                <button 
+
+                <button
                     onClick={() => setIsModalOpen(true)}
-                    className="bg-gray-900 text-white px-8 py-4 rounded-2xl font-black flex items-center justify-center space-x-3 hover:bg-black transition-all shadow-xl shadow-gray-900/10 active:scale-95"
+                    className="bg-primary text-white px-6 py-3 rounded-lg font-semibold flex items-center gap-2 hover:bg-primary-hover"
                 >
                     <Send size={18} />
-                    <span>Send New Alert</span>
+                    Send Alert
                 </button>
+
             </div>
 
-            {/* Quick Stats */}
+            {/* Stats */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+
                 {[
-                    { label: 'Total Sent', value: stats.total_sent, icon: Zap, color: 'text-sky-600', bg: 'bg-sky-50' },
-                    { label: 'Delivery Rate', value: stats.delivery_rate, icon: CheckCircle2, color: 'text-emerald-600', bg: 'bg-emerald-50' },
-                    { label: 'Active Devices', value: stats.active_devices, icon: Smartphone, color: 'text-indigo-600', bg: 'bg-indigo-50' }
+                    { label: 'Total Sent', value: stats.total_sent, icon: Zap, color: 'text-primary' },
+                    { label: 'Delivery Rate', value: stats.delivery_rate, icon: CheckCircle2, color: 'text-success' },
+                    { label: 'Active Devices', value: stats.active_devices, icon: Smartphone, color: 'text-info' }
                 ].map((stat, i) => (
-                    <div key={i} className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm flex items-center space-x-4">
-                        <div className={`${stat.bg} p-4 rounded-2xl`}>
-                            <stat.icon className={stat.color} size={24} />
+                    <div key={i} className="bg-card p-6 rounded-xl border border-border flex items-center gap-4">
+
+                        <div className="bg-background p-3 rounded-lg">
+                            <stat.icon className={stat.color} size={22} />
                         </div>
+
                         <div>
-                            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest leading-none mb-1">{stat.label}</p>
-                            <p className="text-2xl font-black text-gray-900">{stat.value}</p>
+                            <p className="text-xs text-text-secondary uppercase">{stat.label}</p>
+                            <p className="text-xl font-semibold text-text-primary">{stat.value}</p>
                         </div>
+
                     </div>
                 ))}
+
             </div>
 
-            {/* Main Content */}
-            <div className="bg-white rounded-[2.5rem] shadow-sm border border-gray-100 overflow-hidden">
-                <div className="p-8 border-b border-gray-50 flex flex-col md:flex-row md:items-center justify-between gap-6">
-                    <div className="flex items-center space-x-4 overflow-x-auto pb-2 md:pb-0 scrollbar-hide">
-                        <button 
+            {/* Logs */}
+            <div className="bg-card rounded-xl border border-border overflow-hidden">
+
+                <div className="p-6 border-b border-border flex items-center justify-between">
+
+                    <div className="flex gap-2">
+                        <button
                             onClick={() => setFilter('')}
-                            className={`px-6 py-2 rounded-full text-xs font-bold transition-all whitespace-nowrap ${!filter ? 'bg-gray-900 text-white' : 'bg-gray-50 text-gray-500 hover:bg-gray-100'}`}
+                            className={`px-4 py-1 rounded-full text-xs font-medium ${!filter ? 'bg-primary text-white' : 'bg-background text-text-secondary'}`}
                         >
-                            All Logs
+                            All Types
                         </button>
+
                         {['system', 'reminder', 'alert', 'sync_issue'].map(t => (
-                            <button 
+                            <button
                                 key={t}
                                 onClick={() => setFilter(t)}
-                                className={`px-6 py-2 rounded-full text-xs font-bold transition-all whitespace-nowrap capitalize ${filter === t ? 'bg-gray-900 text-white' : 'bg-gray-50 text-gray-500 hover:bg-gray-100'}`}
+                                className={`px-4 py-1 rounded-full text-xs font-medium capitalize ${filter === t ? 'bg-primary text-white' : 'bg-background text-text-secondary'}`}
                             >
                                 {t.replace('_', ' ')}
                             </button>
                         ))}
+
+                        {user?.role !== 'branch_manager' && (
+                            <select
+                                value={branchFilter}
+                                onChange={(e) => setBranchFilter(e.target.value)}
+                                className="ml-4 bg-background border border-border rounded-full px-4 py-1 text-xs font-medium outline-none focus:border-primary"
+                            >
+                                <option value="">All Branches</option>
+                                {branches.map(b => (
+                                    <option key={b.id} value={b.id}>{b.spa_name}</option>
+                                ))}
+                            </select>
+                        )}
                     </div>
-                    
-                    <div className="flex items-center space-x-4">
-                        <button 
+
+                    <div className="flex items-center gap-3">
+
+                        <button
                             onClick={handleDeleteAll}
-                            className="flex items-center space-x-2 p-3 bg-rose-50 text-rose-600 hover:bg-rose-100 rounded-2xl transition-all text-xs font-bold"
-                            title="Clear All History"
+                            className="flex items-center gap-1 px-3 py-2 text-danger bg-danger/10 rounded-md"
                         >
-                            <Trash2 size={18} />
-                            <span>Clear All</span>
+                            <Trash2 size={16} />
+                            Clear
                         </button>
-                        <button 
+
+                        <button
                             onClick={fetchLogs}
-                            className="p-3 bg-gray-50 text-gray-400 hover:text-sky-600 rounded-2xl transition-all active:rotate-180"
+                            className="p-2 bg-background rounded-md hover:bg-cardHover"
                         >
-                            <RefreshCcw size={20} />
+                            <RefreshCcw size={18} />
                         </button>
+
                     </div>
+
                 </div>
 
                 <div className="overflow-x-auto">
-                    <table className="w-full text-left">
-                        <thead>
-                            <tr className="bg-gray-50/50">
-                                <th className="px-8 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest first:rounded-tl-[2rem]">Device & Branch</th>
-                                <th className="px-8 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest">Notification Details</th>
-                                <th className="px-8 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest">Type</th>
-                                <th className="px-8 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest">Status</th>
-                                <th className="px-8 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest">Time Sent</th>
-                                <th className="px-8 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest last:rounded-tr-[2rem]">Actions</th>
+
+                    <table className="w-full text-sm">
+
+                        <thead className="bg-background">
+                            <tr className="text-text-secondary text-xs uppercase">
+                                <th className="px-6 py-4 text-left">Device</th>
+                                <th className="px-6 py-4 text-left">Notification</th>
+                                <th className="px-6 py-4 text-left">Type</th>
+                                <th className="px-6 py-4 text-left">Status</th>
+                                <th className="px-6 py-4 text-left">Time</th>
+                                <th className="px-6 py-4 text-right">Actions</th>
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-gray-50">
+
+                        <tbody className="divide-y divide-border">
+
                             {loading ? (
-                                Array(5).fill(0).map((_, i) => (
-                                    <tr key={i} className="animate-pulse">
-                                        <td colSpan={5} className="px-8 py-6">
-                                            <div className="h-4 bg-gray-100 rounded-full w-3/4 mb-2"></div>
-                                            <div className="h-4 bg-gray-50 rounded-full w-1/2"></div>
-                                        </td>
-                                    </tr>
-                                ))
+                                <tr>
+                                    <td colSpan="6" className="text-center py-10 text-text-secondary">
+                                        Loading notifications...
+                                    </td>
+                                </tr>
                             ) : logs.length === 0 ? (
                                 <tr>
-                                    <td colSpan={5} className="px-8 py-20 text-center">
-                                        <div className="inline-flex items-center justify-center p-6 bg-gray-50 rounded-full mb-4">
-                                            <ShieldAlert size={48} className="text-gray-300" />
-                                        </div>
-                                        <p className="text-gray-400 font-bold">No notification history found</p>
+                                    <td colSpan="6" className="text-center py-16">
+                                        <ShieldAlert className="mx-auto text-text-secondary mb-2" size={40} />
+                                        <p className="text-text-secondary">No notification history</p>
                                     </td>
                                 </tr>
                             ) : (
-                                logs.map((log) => (
-                                    <tr key={log.id} className="group hover:bg-gray-50/80 transition-colors">
-                                        <td className="px-8 py-6">
-                                            <div className="flex items-center space-x-3">
-                                                <div className="w-10 h-10 bg-gray-100 rounded-xl flex items-center justify-center group-hover:bg-white transition-colors border border-transparent group-hover:border-gray-100">
-                                                    <Smartphone size={18} className="text-gray-400" />
+                                logs.map(log => (
+
+                                    <tr key={log.id} className="hover:bg-background">
+
+                                        <td className="px-6 py-4">
+
+                                            <div className="flex items-center gap-3">
+
+                                                <div className="w-9 h-9 bg-background rounded-lg flex items-center justify-center">
+                                                    <Smartphone size={16} className="text-text-secondary" />
                                                 </div>
+
                                                 <div>
-                                                    <p className="text-sm font-bold text-gray-900 leading-none">{log.device_name}</p>
-                                                    <p className="text-[10px] text-gray-400 mt-1 font-medium">{log.branch_name}</p>
+                                                    <p className="font-medium text-text-primary">{log.device_name}</p>
+                                                    <p className="text-xs text-text-secondary">{log.branch_name}</p>
                                                 </div>
+
                                             </div>
+
                                         </td>
-                                        <td className="px-8 py-6 max-w-xs">
-                                            <p className="text-sm font-bold text-gray-800 leading-tight">{log.title}</p>
-                                            <p className="text-xs text-gray-500 mt-1 line-clamp-1">{log.body}</p>
+
+                                        <td className="px-6 py-4 max-w-xs">
+                                            <p className="font-medium">{log.title}</p>
+                                            <p className="text-xs text-text-secondary truncate">{log.body}</p>
                                         </td>
-                                        <td className="px-8 py-6">
-                                            <span className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border border-transparent ${getTypeStyles(log.notification_type)}`}>
+
+                                        <td className="px-6 py-4">
+                                            <span className={`px-3 py-1 rounded-full text-xs ${getTypeStyles(log.notification_type)}`}>
                                                 {log.notification_type.replace('_', ' ')}
                                             </span>
                                         </td>
-                                        <td className="px-8 py-6">
-                                            <div className="flex items-center space-x-2">
-                                                {getStatusIcon(log)}
-                                                <span className="text-xs font-bold text-gray-700">{log.is_sent ? 'Delivered' : 'Failed'}</span>
-                                            </div>
-                                            {log.error_message && (
-                                                <p className="text-[9px] text-rose-500 mt-1 max-w-[150px] line-clamp-1">{log.error_message}</p>
-                                            )}
+
+                                        <td className="px-6 py-4 flex items-center gap-2">
+                                            {getStatusIcon(log)}
+                                            <span className="text-xs">{log.is_sent ? 'Delivered' : 'Failed'}</span>
                                         </td>
-                                        <td className="px-8 py-6">
-                                            <div className="flex items-center space-x-2 text-gray-400">
-                                                <Clock size={14} />
-                                                <span className="text-xs font-medium">
-                                                    {new Date(log.created_at).toLocaleDateString()} {new Date(log.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                                </span>
-                                            </div>
+
+                                        <td className="px-6 py-4 text-text-secondary text-xs flex items-center gap-1">
+                                            <Clock size={14} />
+                                            {new Date(log.created_at).toLocaleDateString()}{" "}
+                                            {new Date(log.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                         </td>
-                                        <td className="px-8 py-6 text-right">
-                                            <button 
+
+                                        <td className="px-6 py-4 text-right">
+                                            <button
                                                 onClick={() => handleDelete(log.id)}
-                                                className="p-2 text-gray-400 hover:text-rose-500 hover:bg-rose-50 rounded-xl transition-all"
-                                                title="Delete Log"
+                                                className="p-2 text-text-secondary hover:text-danger"
                                             >
                                                 <Trash2 size={16} />
                                             </button>
                                         </td>
+
                                     </tr>
+
                                 ))
                             )}
+
                         </tbody>
+
                     </table>
+
                 </div>
+
             </div>
 
-            <SendNotificationModal 
-                isOpen={isModalOpen} 
+            <SendNotificationModal
+                isOpen={isModalOpen}
                 onClose={() => setIsModalOpen(false)}
                 onSend={handleSendNotification}
             />
+
         </div>
     );
 };

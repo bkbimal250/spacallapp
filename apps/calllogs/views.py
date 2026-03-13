@@ -81,13 +81,11 @@ class DeviceSyncView(views.APIView):
         contact_map = {}  # Maps last_10_digits → Contact object
 
         if phone_numbers:
-            # Build a dynamic OR query to match all phone numbers at once
-            contact_query = Q()
-            for pn in phone_numbers:
-                last_10 = pn[-10:] if len(pn) >= 10 else pn
-                contact_query |= Q(phone_number__endswith=last_10)
-
-            contacts = Contact.objects.filter(contact_query)
+            # Build a list of normalized numbers (last 10 digits)
+            normalized_numbers = {pn[-10:] if len(pn) >= 10 else pn for pn in phone_numbers}
+            
+            # Efficiently fetch all matching contacts in one query using the indexed field
+            contacts = Contact.objects.filter(phone_normalized__in=normalized_numbers)
             for c in contacts:
                 c_last_10 = c.phone_number[-10:] if len(c.phone_number) >= 10 else c.phone_number
                 contact_map[c_last_10] = c
@@ -265,14 +263,30 @@ class CallLogViewSet(viewsets.ModelViewSet):
                 Q(contact__name__icontains=search)
             )
 
-        # Date range filters
+        # Date range filters (using direct timestamp comparison for index efficiency)
         start_date = params.get("start_date", None)
         if start_date:
-            queryset = queryset.filter(call_time__date__gte=start_date)
+            try:
+                # Ensure we capture everything from 00:00:00 of the start date
+                from django.utils import timezone
+                from datetime import datetime
+                naive_start = datetime.strptime(start_date, "%Y-%m-%d")
+                aware_start = timezone.make_aware(naive_start)
+                queryset = queryset.filter(call_time__gte=aware_start)
+            except (ValueError, TypeError):
+                pass
 
         end_date = params.get("end_date", None)
         if end_date:
-            queryset = queryset.filter(call_time__date__lte=end_date)
+            try:
+                # Ensure we capture everything up to 23:59:59 of the end date
+                from django.utils import timezone
+                from datetime import datetime, timedelta
+                naive_end = datetime.strptime(end_date, "%Y-%m-%d")
+                aware_end = timezone.make_aware(naive_end).replace(hour=23, minute=59, second=59, microsecond=999999)
+                queryset = queryset.filter(call_time__lte=aware_end)
+            except (ValueError, TypeError):
+                pass
 
         return queryset
 

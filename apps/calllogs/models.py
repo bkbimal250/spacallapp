@@ -102,13 +102,13 @@ class CallLog(BaseModel, TimeStampedModel):
     def save(self, *args, **kwargs):
         """
         Auto-match contact if not provided, by matching the last 10 digits of the phone number.
-        This ensures that even manually created call logs are linked to known contacts.
+        Uses the indexed phone_normalized field for high performance.
         """
         if not self.contact and self.phone_number:
             from apps.contacts.models import Contact
-            # Extract last 10 digits for flexible matching (+91, 0, etc.)
+            # Extract last 10 digits for fast lookup
             last_10 = self.phone_number[-10:] if len(self.phone_number) >= 10 else self.phone_number
-            contact = Contact.objects.filter(phone_number__endswith=last_10).first()
+            contact = Contact.objects.filter(phone_normalized=last_10).first()
             if contact:
                 self.contact = contact
         

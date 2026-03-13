@@ -1,42 +1,66 @@
-import React, { Fragment } from 'react';
+import React from 'react';
 import clsx from 'clsx';
 
 const Modal = ({ isOpen, onClose, title, children }) => {
+
     if (!isOpen) return null;
 
     return (
-        <div className="fixed z-10 inset-0 overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
-            <div className="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
-                <div className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" aria-hidden="true" onClick={onClose}></div>
+        <div
+            className="fixed inset-0 z-50 flex items-center justify-center px-4"
+            role="dialog"
+            aria-modal="true"
+        >
 
-                <span className="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
+            {/* BACKDROP */}
+            <div
+                className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+                onClick={onClose}
+            />
 
-                <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
-                    <div className="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
-                        <div className="sm:flex sm:items-start">
-                            <div className="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left w-full">
-                                <h3 className="text-lg leading-6 font-medium text-gray-900" id="modal-title">
-                                    {title}
-                                </h3>
-                                <div className="mt-2">
-                                    {children}
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    <div className="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
-                        <button
-                            type="button"
-                            className="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-indigo-600 text-base font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:ml-3 sm:w-auto sm:text-sm"
-                            onClick={onClose}
-                        >
-                            Close
-                        </button>
-                    </div>
+            {/* MODAL */}
+            <div
+                className="relative w-full max-w-lg bg-card border border-border rounded-xl shadow-xl"
+            >
+
+                {/* HEADER */}
+                <div className="px-6 py-4 border-b border-border flex items-center justify-between">
+
+                    <h3 className="text-lg font-semibold text-text-primary">
+                        {title}
+                    </h3>
+
+                    <button
+                        onClick={onClose}
+                        className="text-text-secondary hover:text-text-primary"
+                    >
+                        ✕
+                    </button>
+
                 </div>
+
+                {/* BODY */}
+                <div className="px-6 py-5 text-text-primary">
+                    {children}
+                </div>
+
+                {/* FOOTER */}
+                <div className="px-6 py-4 border-t border-border flex justify-end">
+
+                    <button
+                        onClick={onClose}
+                        className="px-4 py-2 rounded-lg bg-primary text-white hover:bg-primary-hover transition"
+                    >
+                        Close
+                    </button>
+
+                </div>
+
             </div>
+
         </div>
     );
+
 };
 
 export default Modal;

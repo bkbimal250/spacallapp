@@ -3,10 +3,14 @@ import { Outlet } from 'react-router-dom';
 
 const AuthLayout = () => {
     return (
-        <div className="min-h-screen flex items-center justify-center bg-gray-50">
-            <div className="max-w-md w-full space-y-8 p-8 bg-white rounded-lg shadow-md">
+        <div className="min-h-screen flex items-center justify-center bg-background px-4">
+
+            <div className="w-full max-w-md p-8 space-y-6 bg-card border border-border rounded-2xl shadow-xl">
+
                 <Outlet />
+
             </div>
+
         </div>
     );
 };

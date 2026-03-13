@@ -1,22 +1,42 @@
 import React from 'react';
 
-const StatsCard = ({ title, value, change, isNegative }) => {
+const StatsCard = ({ title, value, icon, change, isNegative, className = "" }) => {
     return (
-        <div className="bg-white overflow-hidden shadow rounded-lg">
-            <div className="px-4 py-5 sm:p-6">
-                <dt className="text-sm font-medium text-gray-500 truncate">
+        <div className={`bg-card border border-border rounded-2xl p-5 flex flex-col justify-between transition hover:border-primary/40 hover:bg-background ${className}`}>
+
+            {/* TOP */}
+            <div className="flex items-center justify-between">
+
+                <p className="text-sm text-text-secondary font-medium">
                     {title}
-                </dt>
-                <dd className="mt-1 text-3xl font-semibold text-gray-900">
-                    {value}
-                </dd>
-                {change && (
-                    <div className={`mt-2 flex items-baseline text-sm font-semibold ${isNegative ? 'text-red-600' : 'text-green-600'}`}>
-                        {change}
-                        <span className="ml-2 text-gray-500 font-medium">from last month</span>
+                </p>
+
+                {icon && (
+                    <div className="p-2 rounded-lg bg-background text-primary">
+                        {icon}
                     </div>
                 )}
+
             </div>
+
+            {/* VALUE */}
+            <div className="mt-3">
+
+                <p className="text-3xl font-bold text-text-primary">
+                    {value}
+                </p>
+
+                {change && (
+                    <div className={`mt-2 text-xs font-semibold ${isNegative ? "text-danger" : "text-success"}`}>
+                        {change}
+                        <span className="ml-2 text-text-muted font-medium">
+                            from last period
+                        </span>
+                    </div>
+                )}
+
+            </div>
+
         </div>
     );
 };

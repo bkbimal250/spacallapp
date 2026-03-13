@@ -1,40 +1,81 @@
 import React from 'react';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 
-const COLORS = ['#10b981', '#0ea5e9', '#f43f5e', '#f59e0b']; // Incoming, Outgoing, Missed, Rejected
+const COLORS = [
+    "rgb(16 185 129)", // Incoming
+    "rgb(59 130 246)", // Outgoing
+    "rgb(239 68 68)",  // Missed
+    "rgb(245 158 11)"  // Rejected
+];
 
 const ConversionChart = ({ data = [], loading = false }) => {
+
+    const safeData = data || [];
+
     return (
-        <div className="h-72 relative">
+
+        <div className="relative w-full min-h-[280px]">
+
             {loading && (
-                <div className="absolute inset-0 bg-white/50 z-10 flex items-center justify-center">
-                    <div className="animate-pulse text-sky-600 font-medium">Updating...</div>
+                <div className="absolute inset-0 bg-background/70 backdrop-blur-sm z-10 flex items-center justify-center">
+                    <div className="text-primary font-semibold animate-pulse">
+                        Updating analytics...
+                    </div>
                 </div>
             )}
-            <ResponsiveContainer width="100%" height="100%" minWidth={40} minHeight={40}>
+
+            <ResponsiveContainer width="100%" height={280} minWidth={0}>
+
                 <PieChart>
+
                     <Pie
-                        data={data}
+                        data={safeData}
                         cx="50%"
                         cy="50%"
-                        innerRadius={60}
-                        outerRadius={90}
-                        paddingAngle={5}
+                        innerRadius={65}
+                        outerRadius={95}
+                        paddingAngle={4}
                         dataKey="value"
                         stroke="none"
                     >
-                        {data.map((entry, index) => (
-                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+
+                        {safeData.map((entry, index) => (
+                            <Cell
+                                key={`cell-${index}`}
+                                fill={COLORS[index % COLORS.length]}
+                            />
                         ))}
+
                     </Pie>
+
                     <Tooltip
-                        contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                        contentStyle={{
+                            background: "var(--card)",
+                            border: "1px solid var(--border)",
+                            borderRadius: "10px",
+                            fontSize: "12px"
+                        }}
+                        labelStyle={{
+                            color: "var(--text-secondary)"
+                        }}
                     />
-                    <Legend iconType="circle" />
+
+                    <Legend
+                        iconType="circle"
+                        wrapperStyle={{
+                            fontSize: "12px",
+                            color: "var(--text-secondary)"
+                        }}
+                    />
+
                 </PieChart>
+
             </ResponsiveContainer>
+
         </div>
+
     );
+
 };
 
 export default ConversionChart;

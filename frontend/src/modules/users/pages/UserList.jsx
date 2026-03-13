@@ -23,6 +23,7 @@ const UserList = () => {
         setLoading(true);
         try {
             const response = await usersAPI.getUsers({ ...currentFilters, page: currentPage });
+
             if (response.data.results) {
                 setUsers(response.data.results);
                 setTotalCount(response.data.count);
@@ -78,8 +79,10 @@ const UserList = () => {
             } else {
                 await usersAPI.createUser(data);
             }
+
             setIsModalOpen(false);
             fetchUsers(filters, page);
+
         } catch (error) {
             console.error("Failed to save user", error);
             alert("Failed to save user");
@@ -87,72 +90,138 @@ const UserList = () => {
     };
 
     const columns = [
-        { header: 'Name', accessor: 'full_name' },
-        { header: 'Email', accessor: 'email' },
+        {
+            header: 'Name',
+            render: (row) => (
+                <span className="text-text-primary font-medium">
+                    {row.full_name}
+                </span>
+            )
+        },
+        {
+            header: 'Email',
+            render: (row) => (
+                <span className="text-text-secondary">
+                    {row.email}
+                </span>
+            )
+        },
         {
             header: 'Role',
             render: (row) => (
-                <Badge variant={row.role === 'super_admin' ? 'red' : row.role === 'admin' ? 'blue' : 'green'}>
+                <Badge
+                    variant={
+                        row.role === 'super_admin'
+                            ? 'danger'
+                            : row.role === 'admin'
+                                ? 'primary'
+                                : 'success'
+                    }
+                >
                     {row.role.replace('_', ' ')}
                 </Badge>
             )
         },
         {
             header: 'Branch',
-            accessor: 'branch_name'
+            render: (row) => (
+                <span className="text-text-secondary">
+                    {row.branch_name || '-'}
+                </span>
+            )
         },
-        { header: 'Joined', render: (row) => formatDate(row.created_at) },
+        {
+            header: 'Joined',
+            render: (row) => (
+                <span className="text-text-secondary">
+                    {formatDate(row.created_at)}
+                </span>
+            )
+        },
         {
             header: 'Actions',
             render: (row) => (
-                <div className="flex space-x-2">
-                    <button onClick={() => handleEdit(row)} className="text-blue-600 hover:text-blue-800 p-1 hover:bg-blue-50 rounded transition-colors" title="Edit">
+                <div className="flex gap-2">
+
+                    <button
+                        onClick={() => handleEdit(row)}
+                        className="text-primary hover:bg-primary/10 p-1 rounded transition"
+                        title="Edit"
+                    >
                         <Edit size={16} />
                     </button>
-                    <button onClick={() => handleDelete(row.id)} className="text-red-600 hover:text-red-800 p-1 hover:bg-red-50 rounded transition-colors" title="Delete">
+
+                    <button
+                        onClick={() => handleDelete(row.id)}
+                        className="text-danger hover:bg-danger/10 p-1 rounded transition"
+                        title="Delete"
+                    >
                         <Trash2 size={16} />
                     </button>
+
                 </div>
             ),
         },
     ];
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-6 text-text-primary">
+
             <div className="flex justify-between items-center">
-                <h1 className="text-2xl font-semibold text-gray-900">Users</h1>
-                <Button onClick={handleCreate} className="flex items-center space-x-2">
+
+                <h1 className="text-2xl font-semibold">
+                    Users
+                </h1>
+
+                <Button
+                    onClick={handleCreate}
+                    className="flex items-center gap-2 bg-primary text-white hover:bg-primary-hover"
+                >
                     <Plus size={16} />
-                    <span>Add User</span>
+                    Add User
                 </Button>
+
             </div>
 
-            <div className="bg-white shadow rounded-lg p-6">
+            <div className="bg-card border border-border rounded-lg p-6">
                 <UserFilter onFilter={handleFilter} />
             </div>
 
-            <div className="bg-white shadow rounded-lg overflow-hidden flex flex-col">
+            <div className="bg-card border border-border rounded-lg overflow-hidden flex flex-col">
+
                 <div className="overflow-x-auto">
+
                     {loading ? (
-                        <div className="p-12 text-center text-gray-500">
-                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-sky-500 mx-auto mb-4"></div>
+
+                        <div className="p-12 text-center text-text-secondary">
+
+                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
+
                             Loading users...
+
                         </div>
+
                     ) : (
+
                         <Table
                             columns={columns}
                             data={users}
                         />
+
                     )}
+
                 </div>
 
                 {!loading && totalCount > 0 && Math.ceil(totalCount / pageSize) > 1 && (
+
                     <Pagination
                         currentPage={page}
                         totalPages={Math.ceil(totalCount / pageSize)}
                         onPageChange={handlePageChange}
                     />
+
                 )}
+
             </div>
 
             <UserForm
@@ -161,6 +230,7 @@ const UserList = () => {
                 onSubmit={handleSubmit}
                 initialData={editingUser}
             />
+
         </div>
     );
 };

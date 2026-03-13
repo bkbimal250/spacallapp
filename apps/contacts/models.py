@@ -10,8 +10,9 @@ class Contact(BaseModel, TimeStampedModel):
     Contact Model
     """
     name = models.CharField(max_length=255)
-    phone_number = models.CharField(max_length=20,unique=True)
-    email = models.EmailField(max_length=255,null=True, blank=True)
+    phone_number = models.CharField(max_length=20, unique=True)
+    phone_normalized = models.CharField(max_length=10, db_index=True, null=True, blank=True)
+    email = models.EmailField(max_length=255, null=True, blank=True)
     country = models.CharField(max_length=255,null=True, blank=True)
     city = models.CharField(max_length=200,null=True, blank=True)
     created_by = models.ForeignKey(
@@ -35,6 +36,7 @@ class Contact(BaseModel, TimeStampedModel):
         db_table = "contacts"
         indexes = [
             models.Index(fields=["phone_number"]),
+            models.Index(fields=["phone_normalized"]),
             models.Index(fields=["email"]),
             models.Index(fields=["country"]),
             models.Index(fields=["city"]),
@@ -44,13 +46,15 @@ class Contact(BaseModel, TimeStampedModel):
         return self.name
 
     def save(self, *args, **kwargs):
+        # Normalize phone number (store last 10 digits for fast lookup)
+        if self.phone_number:
+            self.phone_normalized = self.phone_number[-10:] if len(self.phone_number) >= 10 else self.phone_number
+        
         super().save(*args, **kwargs)
-        # Always attempt to auto-match and link any existing unlinked CallLogs instantly
-        # By matching solely on the last 10 digits.
+        
+        # Link unlinked call logs using normalization
         from apps.calllogs.models import CallLog
         from apps.leadmanagement.models import LeadManagement
-        if self.phone_number:
-            last_10 = self.phone_number[-10:] if len(self.phone_number) >= 10 else self.phone_number
-            CallLog.objects.filter(phone_number__endswith=last_10, contact__isnull=True).update(contact=self)
-            # Also update any unlinked leads for these call logs or leads created manually for this number
-            LeadManagement.objects.filter(calllog__phone_number__endswith=last_10, contact__isnull=True).update(contact=self)
+        if self.phone_normalized:
+            CallLog.objects.filter(phone_number__endswith=self.phone_normalized, contact__isnull=True).update(contact=self)
+            LeadManagement.objects.filter(calllog__phone_number__endswith=self.phone_normalized, contact__isnull=True).update(contact=self)
