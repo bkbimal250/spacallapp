@@ -21,7 +21,8 @@ Android Flow:
 """
 
 import secrets
-from rest_framework import viewsets, permissions, status
+from rest_framework import viewsets, permissions, status, decorators
+from rest_framework.decorators import action
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from django.db import models
@@ -90,6 +91,35 @@ class DeviceViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(is_registered=is_registered.lower() == "true")
 
         return queryset
+
+    @action(detail=False, methods=["get"])
+    def stats(self, request):
+        """
+        Returns aggregate device statistics respecting role-based filters.
+        """
+        queryset = self.get_queryset()
+        
+        from django.utils import timezone
+        from datetime import timedelta
+        five_minutes_ago = timezone.now() - timedelta(minutes=5)
+
+        stats = {
+            "total": queryset.count(),
+            "registered": queryset.filter(is_registered=True).count(),
+            "unregistered": queryset.filter(is_registered=False).count(),
+            "online": queryset.filter(
+                last_heartbeat__gte=five_minutes_ago, 
+                is_active=True, 
+                is_blocked=False
+            ).count(),
+            "offline": queryset.filter(
+                is_active=True, 
+                is_blocked=False
+            ).exclude(last_heartbeat__gte=five_minutes_ago).count(),
+            "blocked": queryset.filter(is_blocked=True).count(),
+            "inactive": queryset.filter(is_active=False).count(),
+        }
+        return Response(stats)
 
 
 class ClaimRegistrationView(APIView):

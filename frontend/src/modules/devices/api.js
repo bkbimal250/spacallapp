@@ -6,4 +6,5 @@ export const devicesAPI = {
     createDevice: (data) => axiosInstance.post('/devices/', data),
     updateDevice: (id, data) => axiosInstance.put(`/devices/${id}/`, data),
     deleteDevice: (id) => axiosInstance.delete(`/devices/${id}/`),
+    getDeviceStats: () => axiosInstance.get('/devices/stats/'),
 };

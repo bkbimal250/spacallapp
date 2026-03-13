@@ -8,6 +8,7 @@ import DeviceFilter from '../components/DeviceFilter';
 import Pagination from '../../../shared/components/Pagination';
 import { Edit, Trash2, Plus, Smartphone } from 'lucide-react';
 import { formatDate } from '../../../shared/utils/formatDate';
+import StatsCard from '../components/StatsCard';
 
 const DeviceList = () => {
 
@@ -263,6 +264,9 @@ const DeviceList = () => {
                 </Button>
 
             </div>
+
+            {/* STATS */}
+            <StatsCard />
 
             {/* FILTER */}
 
