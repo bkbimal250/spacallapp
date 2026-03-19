@@ -8,12 +8,14 @@ ALLOWED_HOSTS = env.list("ALLOWED_HOSTS", default=['apibackend.mastercall.in', '
 # Temporarily allowing all origins to debug the "Network Error" on login
 CORS_ALLOW_ALL_ORIGINS = True
 CORS_ALLOWED_ORIGINS = env.list("CORS_ALLOWED_ORIGINS", default=[
-    'https://spacallapp.dishaonlinesolution.in',
+    'https://crm.mastercall.in',
 ])
 
 CSRF_TRUSTED_ORIGINS = env.list("CSRF_TRUSTED_ORIGINS", default=[
     'https://apibackend.mastercall.in',
-    'https://spacallapp.dishaonlinesolution.in',
+    'https://mastercall.in',
+    'https://crm.mastercall.in',
+
 ])
 
 # Use WhiteNoise for static files in production
