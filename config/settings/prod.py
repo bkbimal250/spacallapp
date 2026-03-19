@@ -3,7 +3,7 @@ from .base import *
 DEBUG = False
 
 # Pull allowed hosts from .env (comma-separated list)
-ALLOWED_HOSTS = env.list("ALLOWED_HOSTS", default=['api.spa.branch.call.workspa.in', 'localhost', '127.0.0.1'])
+ALLOWED_HOSTS = env.list("ALLOWED_HOSTS", default=['apibackend.mastercall.in', 'localhost', '127.0.0.1'])
 
 # Temporarily allowing all origins to debug the "Network Error" on login
 CORS_ALLOW_ALL_ORIGINS = True
@@ -12,7 +12,7 @@ CORS_ALLOWED_ORIGINS = env.list("CORS_ALLOWED_ORIGINS", default=[
 ])
 
 CSRF_TRUSTED_ORIGINS = env.list("CSRF_TRUSTED_ORIGINS", default=[
-    'https://api.spa.branch.call.workspa.in',
+    'https://apibackend.mastercall.in',
     'https://spacallapp.dishaonlinesolution.in',
 ])
 

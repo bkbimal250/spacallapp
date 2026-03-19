@@ -66,7 +66,7 @@ Represents Android smartphone units assigned to branches:
 
 ## 🔌 REST API Architecture
 
-**Base URL**: `https://api.spa.branch.call.workspa.in/api/v1/`
+**Base URL**: `https://apibackend.mastercall.in/api/v1/`
 
 ### 1. Authentication & Accounts (`/auth/`)
 | Method | Endpoint | Description |

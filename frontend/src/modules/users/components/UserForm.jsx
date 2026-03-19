@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import Input from '../../../shared/components/Input';
 import Button from '../../../shared/components/Button';
 import Modal from '../../../shared/components/Modal';
+import SearchableSelect from '../../../shared/components/SearchableSelect';
 import { branchesAPI } from '../../branches/api';
 
 const UserForm = ({ isOpen, onClose, onSubmit, initialData }) => {
@@ -140,33 +141,19 @@ const UserForm = ({ isOpen, onClose, onSubmit, initialData }) => {
                 </div>
 
                 {formData.role === 'branch_manager' && (
-
                     <div>
-
-                        <label className="block text-sm text-text-secondary mb-1">
-                            Assign Branch
-                        </label>
-
-                        <select
-                            name="branch"
+                        <SearchableSelect
+                            label="Assign Branch"
+                            options={branches.map(branch => ({
+                                value: branch.id,
+                                label: `${branch.spa_name} ${branch.city ? `(${branch.city})` : ''}`
+                            }))}
                             value={formData.branch}
-                            onChange={handleChange}
-                            required
-                            className="w-full px-3 py-2 bg-card border border-border rounded-md text-text-primary focus:border-primary"
-                        >
-
-                            <option value="">Select Branch</option>
-
-                            {branches.map(branch => (
-                                <option key={branch.id} value={branch.id}>
-                                    {branch.spa_name} {branch.city ? `(${branch.city})` : ''}
-                                </option>
-                            ))}
-
-                        </select>
-
+                            onChange={(value) => setFormData(prev => ({ ...prev, branch: value }))}
+                            placeholder="Search & select branch..."
+                            className="mt-1"
+                        />
                     </div>
-
                 )}
 
                 {!initialData && (
