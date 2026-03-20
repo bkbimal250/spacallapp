@@ -15,11 +15,18 @@ class AuthService:
 
     @staticmethod
     def send_otp(email):
+        # Normalize and trim email
+        email = (email or "").strip().lower()
+
         user = User.objects.filter(email=email).first()
         if not user:
-            raise AuthenticationFailed("User not found")
+            # We raise a ValueError here to be handled by the caller as a validation failure
+            raise ValueError(f"No active account found with email: {email}")
 
         otp_code = AuthService.generate_otp()
+        
+        # Clean up old OTPs for this user
+        EmailOTP.objects.filter(user=user).delete()
 
         EmailOTP.objects.create(
             user=user,
@@ -36,9 +43,13 @@ class AuthService:
 
     @staticmethod
     def verify_otp(email, otp):
+        # Normalize and trim email
+        email = (email or "").strip().lower()
+        otp = (otp or "").strip()
+
         user = User.objects.filter(email=email).first()
         if not user:
-            raise AuthenticationFailed("User not found")
+            raise ValueError(f"No account found with email: {email}")
 
         otp_obj = (
             EmailOTP.objects.filter(user=user, otp=otp, is_verified=False)
@@ -47,10 +58,10 @@ class AuthService:
         )
 
         if not otp_obj:
-            raise AuthenticationFailed("Invalid OTP")
+            raise ValueError("Invalid verification code. Please try again.")
 
         if otp_obj.is_expired():
-            raise AuthenticationFailed("OTP expired")
+            raise ValueError("This verification code has expired. Please request a new one.")
 
         otp_obj.is_verified = True
         otp_obj.save()

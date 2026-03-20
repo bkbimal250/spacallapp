@@ -89,8 +89,14 @@ class RequestOTPView(APIView):
         serializer = OTPRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        AuthService.send_otp(serializer.validated_data["email"])
-        return Response({"message": "OTP sent to your email address."})
+        try:
+            AuthService.send_otp(serializer.validated_data["email"])
+            return Response({"message": "OTP sent to your email address."})
+        except ValueError as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            # Handle any other server-side errors
+            return Response({"error": f"Failed to send OTP: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 class VerifyOTPView(APIView):
@@ -103,18 +109,23 @@ class VerifyOTPView(APIView):
         serializer = OTPVerifySerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        user = AuthService.verify_otp(
-            serializer.validated_data["email"],
-            serializer.validated_data["otp"],
-        )
+        try:
+            user = AuthService.verify_otp(
+                serializer.validated_data["email"],
+                serializer.validated_data["otp"],
+            )
 
-        refresh = RefreshToken.for_user(user)
+            refresh = RefreshToken.for_user(user)
 
-        return Response({
-            "refresh": str(refresh),
-            "access": str(refresh.access_token),
-            "user": UserSerializer(user).data
-        })
+            return Response({
+                "refresh": str(refresh),
+                "access": str(refresh.access_token),
+                "user": UserSerializer(user).data
+            })
+        except ValueError as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            return Response({"error": str(e)}, status=status.HTTP_401_UNAUTHORIZED)
 
 
 # ─── User Management Views ────────────────────────────────────────────────────
