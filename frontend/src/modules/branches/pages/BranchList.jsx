@@ -5,6 +5,7 @@ import Table from '../../../shared/components/Table';
 import Button from '../../../shared/components/Button';
 import BranchForm from '../components/BranchForm';
 import BranchFilter from '../components/BranchFilter';
+import BranchStats from '../components/BranchStats';
 import Pagination from '../../../shared/components/Pagination';
 
 import {
@@ -27,6 +28,7 @@ const BranchList = () => {
     const [filters, setFilters] = useState({});
     const [page, setPage] = useState(1);
     const [totalCount, setTotalCount] = useState(0);
+    const [stats, setStats] = useState({ total: 0, active: 0, inactive: 0 });
 
     const pageSize = 50;
 
@@ -64,8 +66,25 @@ const BranchList = () => {
         }
     };
 
+    const fetchStats = async () => {
+        try {
+            const response = await branchesAPI.getBranches({ all: true });
+            const allBranches = response.data.results || response.data || [];
+
+            const total = allBranches.length;
+            const active = allBranches.filter(b => b.is_active).length;
+            const inactive = total - active;
+
+            setStats({ total, active, inactive });
+
+        } catch (error) {
+            console.error("Failed to fetch branch stats", error);
+        }
+    };
+
     useEffect(() => {
         fetchBranches(filters, page);
+        fetchStats();
     }, [filters, page]);
 
     const handleFilter = (newFilters) => {
@@ -95,6 +114,7 @@ const BranchList = () => {
 
                 await branchesAPI.deleteBranch(id);
                 fetchBranches(filters, page);
+                fetchStats();
 
             } catch (error) {
 
@@ -118,6 +138,7 @@ const BranchList = () => {
 
             setIsModalOpen(false);
             fetchBranches(filters, page);
+            fetchStats();
 
         } catch (error) {
 
@@ -228,6 +249,9 @@ const BranchList = () => {
                 </Button>
 
             </div>
+
+            {/* STATS */}
+            <BranchStats stats={stats} />
 
             {/* FILTER */}
 

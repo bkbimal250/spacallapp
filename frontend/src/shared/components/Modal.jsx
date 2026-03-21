@@ -7,7 +7,7 @@ const Modal = ({ isOpen, onClose, title, children }) => {
 
     return (
         <div
-            className="fixed inset-0 z-50 flex items-center justify-center px-4"
+            className="fixed inset-0 z-40 flex items-center justify-center px-2"
             role="dialog"
             aria-modal="true"
         >
@@ -20,12 +20,11 @@ const Modal = ({ isOpen, onClose, title, children }) => {
 
             {/* MODAL */}
             <div
-                className="relative w-full max-w-lg bg-card border border-border rounded-xl shadow-xl"
+                className="relative w-full max-w-4xl h-[80vh] bg-card border border-border rounded-xl shadow-xl flex flex-col"
             >
 
                 {/* HEADER */}
                 <div className="px-6 py-4 border-b border-border flex items-center justify-between">
-
                     <h3 className="text-lg font-semibold text-text-primary">
                         {title}
                     </h3>
@@ -36,31 +35,27 @@ const Modal = ({ isOpen, onClose, title, children }) => {
                     >
                         ✕
                     </button>
-
                 </div>
 
-                {/* BODY */}
-                <div className="px-6 py-5 text-text-primary">
+                {/* BODY (Scrollable) */}
+                <div className="px-6 py-5 text-text-primary overflow-y-auto flex-1">
                     {children}
                 </div>
 
                 {/* FOOTER */}
                 <div className="px-6 py-4 border-t border-border flex justify-end">
-
                     <button
                         onClick={onClose}
                         className="px-4 py-2 rounded-lg bg-primary text-white hover:bg-primary-hover transition"
                     >
                         Close
                     </button>
-
                 </div>
 
             </div>
 
         </div>
     );
-
 };
 
 export default Modal;

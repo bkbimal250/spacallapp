@@ -12,49 +12,78 @@ const SearchableSelect = ({
 
     const [isOpen, setIsOpen] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
+    const [activeIndex, setActiveIndex] = useState(0);
 
     const wrapperRef = useRef(null);
+    const inputRef = useRef(null);
 
     const selectedOption = options.find(opt => opt.value === value);
 
     useEffect(() => {
-
         function handleClickOutside(event) {
-
             if (wrapperRef.current && !wrapperRef.current.contains(event.target)) {
                 setIsOpen(false);
             }
-
         }
 
         document.addEventListener("mousedown", handleClickOutside);
-
         return () => document.removeEventListener("mousedown", handleClickOutside);
-
     }, []);
 
     const filteredOptions = options.filter(opt =>
         opt.label.toLowerCase().includes(searchTerm.toLowerCase())
     );
 
-    const handleSelect = (option) => {
+    // 🔥 Highlight search text
+    const highlightText = (text) => {
+        if (!searchTerm) return text;
 
+        const parts = text.split(new RegExp(`(${searchTerm})`, "gi"));
+
+        return parts.map((part, i) =>
+            part.toLowerCase() === searchTerm.toLowerCase() ? (
+                <span key={i} className="bg-yellow-200 text-black px-1 rounded">
+                    {part}
+                </span>
+            ) : part
+        );
+    };
+
+    const handleSelect = (option) => {
         onChange(option.value);
         setIsOpen(false);
         setSearchTerm('');
-
     };
 
     const clearSelection = (e) => {
-
         e.stopPropagation();
         onChange('');
         setSearchTerm('');
+    };
 
+    // 🔥 Keyboard navigation
+    const handleKeyDown = (e) => {
+        if (!isOpen) return;
+
+        if (e.key === "ArrowDown") {
+            e.preventDefault();
+            setActiveIndex(prev => (prev + 1) % filteredOptions.length);
+        }
+
+        if (e.key === "ArrowUp") {
+            e.preventDefault();
+            setActiveIndex(prev => (prev - 1 + filteredOptions.length) % filteredOptions.length);
+        }
+
+        if (e.key === "Enter") {
+            e.preventDefault();
+            if (filteredOptions[activeIndex]) {
+                handleSelect(filteredOptions[activeIndex]);
+            }
+        }
     };
 
     return (
-
         <div className={`relative ${className}`} ref={wrapperRef}>
 
             {label && (
@@ -65,25 +94,22 @@ const SearchableSelect = ({
 
             {/* SELECT BOX */}
             <div
-                className={`relative w-full cursor-pointer bg-background border border-border rounded-lg py-2.5 pl-4 pr-10 text-left transition ${isOpen
-                    ? 'border-primary ring-2 ring-primary/20'
-                    : 'hover:border-border/80'
-                    }`}
-                onClick={() => setIsOpen(!isOpen)}
+                className={`relative w-full cursor-pointer bg-background border border-border rounded-lg py-2.5 pl-4 pr-10 text-left transition
+                ${isOpen ? 'border-primary ring-2 ring-primary/20 shadow-md' : 'hover:border-border/80'}`}
+                onClick={() => {
+                    setIsOpen(!isOpen);
+                    setTimeout(() => inputRef.current?.focus(), 100);
+                }}
             >
 
-                <span
-                    className={`block truncate text-sm ${!selectedOption ? 'text-text-muted' : 'text-text-primary font-medium'
-                        }`}
-                >
+                <span className={`block truncate text-sm ${!selectedOption ? 'text-text-muted' : 'text-text-primary font-medium'}`}>
                     {selectedOption ? selectedOption.label : placeholder}
                 </span>
 
                 {/* ARROW */}
                 <span className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3">
                     <ChevronDown
-                        className={`h-4 w-4 text-text-secondary transition-transform ${isOpen ? 'rotate-180 text-primary' : ''
-                            }`}
+                        className={`h-4 w-4 text-text-secondary transition-transform ${isOpen ? 'rotate-180 text-primary' : ''}`}
                     />
                 </span>
 
@@ -96,84 +122,75 @@ const SearchableSelect = ({
                         <X className="h-4 w-4 text-text-muted group-hover:text-danger transition-colors" />
                     </button>
                 )}
-
             </div>
 
             {/* DROPDOWN */}
             {isOpen && (
-
-                <div className="absolute z-30 mt-2 max-h-60 w-full overflow-hidden rounded-lg bg-card border border-border shadow-xl">
+                <div className="absolute z-50 mt-2 w-full rounded-xl bg-card border border-border shadow-2xl overflow-hidden animate-fadeIn">
 
                     {/* SEARCH */}
-                    <div className="sticky top-0 z-10 bg-background px-3 py-2 border-b border-border">
-
+                    <div className="sticky top-0 bg-background px-3 py-2 border-b border-border">
                         <div className="relative">
-
                             <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-text-muted" />
 
                             <input
+                                ref={inputRef}
                                 type="text"
-                                className="w-full rounded-md border border-border bg-background pl-8 pr-3 py-1.5 text-sm text-text-primary focus:border-primary focus:ring-1 focus:ring-primary placeholder:text-text-muted"
+                                className="w-full rounded-md border border-border bg-background pl-8 pr-3 py-1.5 text-sm focus:border-primary focus:ring-1 focus:ring-primary"
                                 placeholder="Search..."
                                 value={searchTerm}
-                                onChange={(e) => setSearchTerm(e.target.value)}
+                                onChange={(e) => {
+                                    setSearchTerm(e.target.value);
+                                    setActiveIndex(0);
+                                }}
+                                onKeyDown={handleKeyDown}
                                 onClick={(e) => e.stopPropagation()}
                                 autoFocus
                             />
-
                         </div>
-
                     </div>
 
                     {/* OPTIONS */}
-                    <div className="overflow-auto max-h-[220px]">
+                    <div className="max-h-60 overflow-y-auto">
 
+                        {/* NONE OPTION */}
                         <div
-                            className="cursor-pointer py-2.5 pl-4 pr-9 text-text-secondary hover:bg-background transition border-b border-border"
+                            className="cursor-pointer py-2.5 pl-4 pr-9 text-text-secondary hover:bg-background border-b border-border"
                             onClick={() => handleSelect({ value: '', label: '' })}
                         >
                             None / All
                         </div>
 
                         {filteredOptions.length === 0 ? (
-
                             <div className="py-8 px-4 text-text-muted italic text-center text-sm">
                                 No results for "{searchTerm}"
                             </div>
-
                         ) : (
-
-                            filteredOptions.map(option => (
-
+                            filteredOptions.map((option, index) => (
                                 <div
                                     key={option.value}
-                                    className={`cursor-pointer py-2.5 pl-4 pr-9 transition ${value === option.value
-                                        ? 'bg-primary text-white'
-                                        : 'text-text-primary hover:bg-background'
+                                    className={`cursor-pointer py-2.5 pl-4 pr-9 transition-all
+                                    ${value === option.value
+                                            ? 'bg-primary text-white'
+                                            : index === activeIndex
+                                                ? 'bg-primary/10'
+                                                : 'hover:bg-background'
                                         }`}
                                     onClick={() => handleSelect(option)}
                                 >
-
                                     <span className="block truncate font-medium">
-                                        {option.label}
+                                        {highlightText(option.label)}
                                     </span>
-
                                 </div>
-
                             ))
-
                         )}
 
                     </div>
-
                 </div>
-
             )}
 
         </div>
-
     );
-
 };
 
 export default SearchableSelect;

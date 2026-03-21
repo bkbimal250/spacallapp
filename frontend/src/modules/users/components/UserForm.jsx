@@ -20,7 +20,7 @@ const UserForm = ({ isOpen, onClose, onSubmit, initialData }) => {
     useEffect(() => {
         const fetchBranches = async () => {
             try {
-                const response = await branchesAPI.getBranches({ page_size: 100 });
+                const response = await branchesAPI.getBranches({ all: true });
                 setBranches(response.data.results || response.data);
             } catch (error) {
                 console.error("Failed to fetch branches", error);

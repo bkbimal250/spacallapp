@@ -68,7 +68,7 @@ const CallLogList = () => {
         const fetchBranches = async () => {
             if (!isAdmin) return;
             try {
-                const response = await branchesAPI.getBranches();
+                const response = await branchesAPI.getBranches({ all: true });
                 const data = response.data.results || response.data;
                 setBranches(data);
             } catch (err) {

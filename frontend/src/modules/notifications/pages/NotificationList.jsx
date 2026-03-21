@@ -40,7 +40,7 @@ const NotificationList = () => {
 
     const fetchBranches = async () => {
         try {
-            const res = await branchesAPI.getBranches();
+            const res = await branchesAPI.getBranches({ all: true });
             setBranches(res.data.results || res.data || []);
         } catch (err) {
             console.error('Failed to fetch branches:', err);

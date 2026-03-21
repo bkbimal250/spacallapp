@@ -85,6 +85,16 @@ class DeviceViewSet(viewsets.ModelViewSet):
         if branch:
             queryset = queryset.filter(branch_id=branch)
 
+        # Filter by branch city
+        city = self.request.query_params.get("city", None)
+        if city:
+            queryset = queryset.filter(branch__city__icontains=city)
+
+        # Filter by branch state
+        state = self.request.query_params.get("state", None)
+        if state:
+            queryset = queryset.filter(branch__state__icontains=state)
+
         # Filter by registration status (accepts 'true' or 'false' string)
         is_registered = self.request.query_params.get("is_registered", None)
         if is_registered is not None:

@@ -24,7 +24,7 @@ const DeviceForm = ({ isOpen, onClose, onSubmit, initialData }) => {
 
             try {
 
-                const response = await branchesAPI.getBranches();
+                const response = await branchesAPI.getBranches({ all: true });
 
                 setBranches(
                     response.data?.results ||
@@ -107,7 +107,7 @@ const DeviceForm = ({ isOpen, onClose, onSubmit, initialData }) => {
 
             <form
                 onSubmit={handleSubmit}
-                className="space-y-4"
+                className="space-y-6"
             >
 
                 {/* REGISTRATION INFO */}
@@ -148,9 +148,9 @@ const DeviceForm = ({ isOpen, onClose, onSubmit, initialData }) => {
 
                 {/* BRANCH + STATUS */}
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-4">
 
-                    <div>
+                    <div >
 
                         <SearchableSelect
                             label="Assigned Branch"

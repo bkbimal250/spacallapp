@@ -6,6 +6,7 @@ const BranchFilter = ({ onFilter }) => {
 
     const [search, setSearch] = useState('');
     const [city, setCity] = useState('');
+    const [state, setState] = useState('');
     const [status, setStatus] = useState('');
 
     const handleFilter = () => {
@@ -14,6 +15,7 @@ const BranchFilter = ({ onFilter }) => {
 
         if (search) filters.search = search;
         if (city) filters.city = city;
+        if (state) filters.state = state;
         if (status !== '') filters.status = status;
 
         onFilter(filters);
@@ -23,6 +25,7 @@ const BranchFilter = ({ onFilter }) => {
 
         setSearch('');
         setCity('');
+        setState('');
         setStatus('');
 
         onFilter({});
@@ -44,6 +47,23 @@ const BranchFilter = ({ onFilter }) => {
                     placeholder="Search branches..."
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
+                />
+
+            </div>
+
+
+            {/* States */}
+
+            <div>
+
+                <label className="block text-sm font-medium text-text-secondary mb-1">
+                    States
+                </label>
+
+                <Input
+                    placeholder="Filter by state..."
+                    value={state}
+                    onChange={(e) => setState(e.target.value)}
                 />
 
             </div>
@@ -104,7 +124,7 @@ const BranchFilter = ({ onFilter }) => {
                     onClick={handleFilter}
                     className="w-1/2"
                 >
-                    Filter
+                    Apply Filter
                 </Button>
 
             </div>

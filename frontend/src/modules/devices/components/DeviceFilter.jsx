@@ -8,6 +8,8 @@ const DeviceFilter = ({ onFilter }) => {
 
     const [search, setSearch] = useState('');
     const [selectedBranch, setSelectedBranch] = useState('');
+    const [city, setCity] = useState('');
+    const [state, setState] = useState('');
     const [registrationStatus, setRegistrationStatus] = useState('');
     const [branches, setBranches] = useState([]);
 
@@ -17,7 +19,7 @@ const DeviceFilter = ({ onFilter }) => {
 
             try {
 
-                const response = await branchesAPI.getBranches();
+                const response = await branchesAPI.getBranches({ all: true });
                 const branchData = response.data.results || response.data;
 
                 setBranches(
@@ -45,6 +47,8 @@ const DeviceFilter = ({ onFilter }) => {
 
         if (search) filters.search = search;
         if (selectedBranch) filters.branch = selectedBranch;
+        if (city) filters.city = city;
+        if (state) filters.state = state;
         if (registrationStatus !== '') filters.is_registered = registrationStatus;
 
         onFilter(filters);
@@ -55,6 +59,8 @@ const DeviceFilter = ({ onFilter }) => {
 
         setSearch('');
         setSelectedBranch('');
+        setCity('');
+        setState('');
         setRegistrationStatus('');
 
         onFilter({});
@@ -63,79 +69,107 @@ const DeviceFilter = ({ onFilter }) => {
 
     return (
 
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+        <div className="space-y-6">
 
-            {/* SEARCH */}
+            <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4 items-end">
 
-            <div>
+                {/* SEARCH */}
 
-                <label className="block text-sm font-medium text-text-secondary mb-1">
-                    Search ID / Token
-                </label>
+                <div>
 
-                <Input
-                    placeholder="e.g. SPA-..."
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                />
+                    <label className="block text-sm font-medium text-text-secondary mb-1">
+                        Search ID / Token
+                    </label>
 
-            </div>
+                    <Input
+                        placeholder="e.g. SPA-..."
+                        value={search}
+                        onChange={(e) => setSearch(e.target.value)}
+                    />
 
-            {/* BRANCH SELECT */}
+                </div>
 
-            <div>
+                {/* BRANCH SELECT */}
 
-                <SearchableSelect
-                    label="Branch"
-                    placeholder="All Branches"
-                    options={branches}
-                    value={selectedBranch}
-                    onChange={setSelectedBranch}
-                />
+                <div>
 
-            </div>
+                    <SearchableSelect
+                        label="Branch"
+                        placeholder="All Branches"
+                        options={branches}
+                        value={selectedBranch}
+                        onChange={setSelectedBranch}
+                    />
 
-            {/* REGISTRATION STATUS */}
+                </div>
 
-            <div>
+                {/* STATE */}
+                <div>
+                    <label className="block text-sm font-medium text-text-secondary mb-1">
+                        State
+                    </label>
+                    <Input
+                        placeholder="Branch state..."
+                        value={state}
+                        onChange={(e) => setState(e.target.value)}
+                    />
+                </div>
 
-                <label className="block text-sm font-medium text-text-secondary mb-1">
-                    Reg. Status
-                </label>
+                {/* CITY */}
+                <div>
+                    <label className="block text-sm font-medium text-text-secondary mb-1">
+                        City
+                    </label>
+                    <Input
+                        placeholder="Branch city..."
+                        value={city}
+                        onChange={(e) => setCity(e.target.value)}
+                    />
+                </div>
 
-                <select
-                    className="block w-full px-3 py-2 bg-background border border-border rounded-md
-                               text-text-primary text-sm
-                               focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary"
-                    value={registrationStatus}
-                    onChange={(e) => setRegistrationStatus(e.target.value)}
-                >
+                {/* REGISTRATION STATUS */}
 
-                    <option value="">All</option>
-                    <option value="true">Registered</option>
-                    <option value="false">Pending</option>
+                <div>
 
-                </select>
+                    <label className="block text-sm font-medium text-text-secondary mb-1">
+                        Reg. Status
+                    </label>
+
+                    <select
+                        className="block w-full px-3 py-2 bg-background border border-border rounded-md
+                                text-text-primary text-sm
+                                focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary"
+                        value={registrationStatus}
+                        onChange={(e) => setRegistrationStatus(e.target.value)}
+                    >
+
+                        <option value="">All</option>
+                        <option value="true">Registered</option>
+                        <option value="false">Pending</option>
+
+                    </select>
+
+                </div>
 
             </div>
 
             {/* BUTTONS */}
 
-            <div className="flex gap-2">
+            <div className="flex justify-end gap-3 pt-4 border-t border-border/50">
 
                 <Button
                     variant="secondary"
                     onClick={handleClear}
-                    className="w-1/2"
+                    className="w-full md:w-32"
                 >
                     Clear
                 </Button>
 
                 <Button
                     onClick={handleFilter}
-                    className="w-1/2"
+                    className="w-full md:w-32"
                 >
-                    Filter
+                    Apply Filter
                 </Button>
 
             </div>

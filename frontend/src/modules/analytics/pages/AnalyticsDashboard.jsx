@@ -38,7 +38,7 @@ const AnalyticsDashboard = () => {
         const fetchBranches = async () => {
             try {
 
-                const response = await branchesAPI.getBranches();
+                const response = await branchesAPI.getBranches({ all: true });
                 const branchData = response.data.results || response.data;
 
                 setBranches(

@@ -15,6 +15,7 @@ Access Control:
 Filters:
     ?search=<name_or_code>  → Search by spa_name or branch code.
     ?city=<city>            → Filter by city.
+    ?state=<state>          → Filter by state.
     ?status=true|false      → Filter by is_active status.
 """
 
@@ -24,6 +25,7 @@ from rest_framework.response import Response
 
 from .models import Branch
 from .serializers import BranchSerializer
+from core.pagination import StandardResultsSetPagination
 from apps.common.permissions import IsAdminOrSuperAdmin
 
 
@@ -38,6 +40,7 @@ class BranchViewSet(viewsets.ModelViewSet):
     """
     serializer_class = BranchSerializer
     permission_classes = [permissions.IsAuthenticated]
+    pagination_class = StandardResultsSetPagination
 
     def get_permissions(self):
         """
@@ -46,6 +49,14 @@ class BranchViewSet(viewsets.ModelViewSet):
         if self.action in ["create", "update", "partial_update", "destroy"]:
             return [permissions.IsAuthenticated(), IsAdminOrSuperAdmin()]
         return [permissions.IsAuthenticated()]
+
+    def list(self, request, *args, **kwargs):
+        """
+        Optionally disable pagination if ?all=true is passed.
+        """
+        if request.query_params.get("all", "false").lower() == "true":
+            self.pagination_class = None
+        return super().list(request, *args, **kwargs)
 
     def get_queryset(self):
         """
@@ -81,6 +92,11 @@ class BranchViewSet(viewsets.ModelViewSet):
         city = self.request.query_params.get("city", None)
         if city:
             queryset = queryset.filter(city__icontains=city)
+
+        # Filter by state
+        state = self.request.query_params.get("state", None)
+        if state:
+            queryset = queryset.filter(state__icontains=state)
 
         # Filter by active status (accepts 'true' or 'false' string)
         is_active = self.request.query_params.get("status", None)
