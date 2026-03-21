@@ -35,6 +35,7 @@ const CallLogList = () => {
 
     const queryParams = new URLSearchParams(location.search);
     const initialBranch = queryParams.get('branch') || '';
+    const initialDevice = queryParams.get('device') || '';
     const initialSearch = queryParams.get('search') || '';
 
     const [logs, setLogs] = useState([]);
@@ -43,6 +44,7 @@ const CallLogList = () => {
     const [statsLoading, setStatsLoading] = useState(true);
     const [filters, setFilters] = useState({
         branch: initialBranch,
+        device: initialDevice,
         search: initialSearch
     });
 
@@ -89,7 +91,8 @@ const CallLogList = () => {
         setFilters(prev => ({
             ...prev,
             search: queryParams.get('search') || '',
-            branch: queryParams.get('branch') || ''
+            branch: queryParams.get('branch') || '',
+            device: queryParams.get('device') || ''
         }));
 
         setPage(1);
@@ -350,6 +353,7 @@ const CallLogList = () => {
                 <CallLogFilter
                     onFilter={handleFilter}
                     initialBranch={initialBranch}
+                    initialDevice={initialDevice}
                     initialSearch={initialSearch}
                 />
             </div>

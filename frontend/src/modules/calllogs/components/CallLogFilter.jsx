@@ -4,8 +4,9 @@ import Input from '../../../shared/components/Input';
 import Button from '../../../shared/components/Button';
 import SearchableSelect from '../../../shared/components/SearchableSelect';
 import { branchesAPI } from '../../branches/api';
+import { devicesAPI } from '../../devices/api';
 
-const CallLogFilter = ({ onFilter, initialBranch = '', initialSearch = '' }) => {
+const CallLogFilter = ({ onFilter, initialBranch = '', initialDevice = '', initialSearch = '' }) => {
 
     const { user } = useSelector(state => state.auth);
 
@@ -13,12 +14,16 @@ const CallLogFilter = ({ onFilter, initialBranch = '', initialSearch = '' }) => 
     const [dateRange, setDateRange] = useState({ startDate: '', endDate: '' });
     const [branches, setBranches] = useState([]);
     const [selectedBranch, setSelectedBranch] = useState(initialBranch);
+    const [devices, setDevices] = useState([]);
+    const [selectedDevice, setSelectedDevice] = useState('');
     const [selectedCallType, setSelectedCallType] = useState('');
+    const [loadingDevices, setLoadingDevices] = useState(false);
 
     useEffect(() => {
         setSearch(initialSearch);
         setSelectedBranch(initialBranch);
-    }, [initialSearch, initialBranch]);
+        setSelectedDevice(initialDevice);
+    }, [initialSearch, initialBranch, initialDevice]);
 
     const isRestrictedManager =
         user?.role === 'branch_manager' ||
@@ -48,6 +53,38 @@ const CallLogFilter = ({ onFilter, initialBranch = '', initialSearch = '' }) => 
         fetchBranches();
     }, [isRestrictedManager]);
 
+    useEffect(() => {
+        const fetchDevices = async () => {
+            const branchId = isRestrictedManager ? user?.branch : selectedBranch;
+
+            if (!branchId) {
+                setDevices([]);
+                setSelectedDevice('');
+                return;
+            }
+
+            setLoadingDevices(true);
+            try {
+                const response = await devicesAPI.getDevices({ branch: branchId, all: true });
+                const deviceData = response.data.results || response.data;
+
+                setDevices(
+                    deviceData.map(d => ({
+                        value: d.device_id,
+                        label: `${d.device_id} (${d.sim_1_number || 'No SIM'})`,
+                        title: d.device_id
+                    }))
+                );
+            } catch (error) {
+                console.error("Failed to fetch devices for branch", error);
+            } finally {
+                setLoadingDevices(false);
+            }
+        };
+
+        fetchDevices();
+    }, [selectedBranch, isRestrictedManager, user?.branch]);
+
     const handleFilter = () => {
         const filters = {};
 
@@ -55,6 +92,7 @@ const CallLogFilter = ({ onFilter, initialBranch = '', initialSearch = '' }) => 
         if (dateRange.startDate) filters.start_date = dateRange.startDate;
         if (dateRange.endDate) filters.end_date = dateRange.endDate;
         if (selectedBranch && !isRestrictedManager) filters.branch = selectedBranch;
+        if (selectedDevice) filters.device = selectedDevice;
         if (selectedCallType) filters.call_type = selectedCallType;
 
         onFilter(filters);
@@ -64,6 +102,7 @@ const CallLogFilter = ({ onFilter, initialBranch = '', initialSearch = '' }) => 
         setSearch('');
         setDateRange({ startDate: '', endDate: '' });
         setSelectedBranch('');
+        setSelectedDevice('');
         setSelectedCallType('');
         onFilter({});
     };
@@ -74,6 +113,17 @@ const CallLogFilter = ({ onFilter, initialBranch = '', initialSearch = '' }) => 
             {/* 🔥 FILTER GRID */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4 items-end">
 
+                {/* 🔥 SEARCH */}
+                <div className="space-y-1 lg:col-span-2">
+                    <Input
+                        label="Search Number / Name"
+                        placeholder="Search By Number / Name"
+                        value={search}
+                        onChange={(e) => setSearch(e.target.value)}
+                        className="bg-card border-border w-full"
+                    />
+                </div>
+
                 {/* 🔥 BRANCH (WIDER) */}
                 {!isRestrictedManager && (
                     <div className="space-y-1 lg:col-span-2">
@@ -82,11 +132,27 @@ const CallLogFilter = ({ onFilter, initialBranch = '', initialSearch = '' }) => 
                             placeholder="All Branches"
                             options={branches}
                             value={selectedBranch}
-                            onChange={setSelectedBranch}
+                            onChange={(val) => {
+                                setSelectedBranch(val);
+                                setSelectedDevice(''); // Reset device when branch changes
+                            }}
                             className="bg-card border-border w-full"
                         />
                     </div>
                 )}
+
+                {/* 🔥 DEVICE */}
+                <div className="space-y-1 lg:col-span-1">
+                    <SearchableSelect
+                        label="Device"
+                        placeholder={loadingDevices ? "Loading..." : "All Devices"}
+                        options={devices}
+                        value={selectedDevice}
+                        onChange={setSelectedDevice}
+                        disabled={!selectedBranch && !isRestrictedManager}
+                        className="bg-card border-border w-full"
+                    />
+                </div>
 
                 {/* 🔥 CALL TYPE */}
                 <div className="space-y-1 lg:col-span-1">
