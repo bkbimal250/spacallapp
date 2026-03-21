@@ -124,8 +124,8 @@ const DeviceHealth = () => {
         },
         { header: 'Description', accessor: 'description' },
         {
-            header: 'Time',
-            render: (row) => row.created_at ? formatDate(row.created_at) : 'N/A'
+            header: 'Created Time',
+            render: (row) => row.created_at ? formatDate(row.created_at, 'MMM dd, yyyy HH:mm:ss') : 'N/A'
         },
         {
             header: 'Status',
@@ -236,7 +236,7 @@ const DeviceHealth = () => {
                                         header: 'Last Heartbeat',
                                         render: (row) =>
                                             row.last_heartbeat
-                                                ? <span className="text-xs font-mono">{formatDate(row.last_heartbeat, 'HH:mm:ss')}</span>
+                                                ? <span className="text-xs font-mono">{formatDate(row.last_heartbeat, 'MMM dd, yyyy HH:mm:ss')}</span>
                                                 : <span className="text-xs text-text-muted italic">Never</span>
                                     }
                                 ]}
@@ -287,7 +287,7 @@ const DeviceHealth = () => {
                                     key={alert.id}
                                     deviceName={alert.device_uid}
                                     location={alert.branch_name}
-                                    lastSeen={formatDate(alert.created_at)}
+                                    lastSeen={formatDate(alert.created_at, 'MMM dd, yyyy HH:mm:ss')}
                                 />
                             ))
                         ) : (

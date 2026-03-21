@@ -279,8 +279,12 @@ const CallLogList = () => {
                 accessor: "device_uid"
             },
             {
-                header: "Time",
-                render: (row) => formatDate(row.call_time)
+                header: "Call Time",
+                render: (row) => formatDate(row.call_time, 'MMM dd, yyyy HH:mm:ss')
+            },
+            {
+                header: "Created Time",
+                render: (row) => formatDate(row.created_at, 'MMM dd, yyyy HH:mm:ss')
             },
             {
                 header: "Status",
