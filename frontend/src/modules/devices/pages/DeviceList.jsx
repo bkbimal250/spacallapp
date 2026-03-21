@@ -146,6 +146,15 @@ const DeviceList = () => {
                 </div>
             )
         },
+        {
+            header: 'Phone Name',
+            accessor: 'phone_name',
+            render: (row) => (
+                <span className="font-semibold text-text-primary capitalize">
+                    {row.phone_name || "—"}
+                </span>
+            )
+        },
 
         {
             header: 'Reg. Token',

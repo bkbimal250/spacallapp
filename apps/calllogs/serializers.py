@@ -3,7 +3,9 @@ from .models import CallLog
 
 class CallLogSerializer(serializers.ModelSerializer):
     branch_name = serializers.CharField(source='branch.spa_name', read_only=True)
+    branch_code = serializers.CharField(source='branch.code', read_only=True)
     device_uid = serializers.CharField(source='device.device_id', read_only=True)
+    phone_name = serializers.CharField(source='device.phone_name', read_only=True)
     contact_name = serializers.CharField(source='contact.name', read_only=True)
     lead_status = serializers.SerializerMethodField()
     lead_id = serializers.SerializerMethodField()
@@ -12,8 +14,8 @@ class CallLogSerializer(serializers.ModelSerializer):
     class Meta:
         model = CallLog
         fields = [
-            'id', 'branch', 'branch_name', 'device', 'device_uid', 
-            'contact', 'contact_name', 'phone_number', 'call_type', 
+            'id', 'branch', 'branch_name', 'branch_code', 'device', 'device_uid', 
+            'phone_name', 'contact', 'contact_name', 'phone_number', 'call_type', 
             'duration', 'sim_slot', 'receiver_number', 'call_time', 
             'call_hash', 'lead_status', 'lead_id', 'created_at'
         ]

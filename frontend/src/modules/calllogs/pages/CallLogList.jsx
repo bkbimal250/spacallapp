@@ -275,11 +275,25 @@ const CallLogList = () => {
             },
             {
                 header: "Branch",
-                accessor: "branch_name"
+                render: (row) => (
+                    <div className="flex flex-col">
+                        <span className="font-semibold text-text-primary">{row.branch_name}</span>
+                        <span className="text-xs text-text-secondary">Code: {row.branch_code}</span>
+                    </div>
+                )
             },
             {
                 header: "Device",
-                accessor: "device_uid"
+                render: (row) => (
+                    <div className="flex flex-col">
+                        {row.phone_name && (
+                            <span className="font-semibold text-primary text-xs uppercase tracking-wider">
+                                {row.phone_name}
+                            </span>
+                        )}
+                        <span className="font-mono text-xs text-text-secondary">{row.device_uid}</span>
+                    </div>
+                )
             },
             {
                 header: "Call Time",

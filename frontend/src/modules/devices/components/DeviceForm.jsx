@@ -11,6 +11,7 @@ const DeviceForm = ({ isOpen, onClose, onSubmit, initialData }) => {
 
     const [formData, setFormData] = useState({
         device_id: '',
+        phone_name: '',
         branch: '',
         sim_1_number: '',
         sim_2_number: '',
@@ -50,6 +51,7 @@ const DeviceForm = ({ isOpen, onClose, onSubmit, initialData }) => {
 
             setFormData({
                 device_id: initialData.device_id || '',
+                phone_name: initialData.phone_name || '',
                 branch: initialData.branch || '',
                 sim_1_number: initialData.sim_1_number || '',
                 sim_2_number: initialData.sim_2_number || '',
@@ -61,6 +63,7 @@ const DeviceForm = ({ isOpen, onClose, onSubmit, initialData }) => {
 
             setFormData({
                 device_id: '',
+                phone_name: '',
                 branch: '',
                 sim_1_number: '',
                 sim_2_number: '',
@@ -138,12 +141,20 @@ const DeviceForm = ({ isOpen, onClose, onSubmit, initialData }) => {
                 {/* DEVICE ID */}
 
                 <Input
-                    label="Device ID (Auto-generated after registration)"
+                    label="Device ID"
                     name="device_id"
                     value={formData.device_id}
                     onChange={handleChange}
                     placeholder="Pending activation..."
                     disabled
+                />
+
+                <Input
+                    label="Phone Name (e.g. Reception Desk)"
+                    name="phone_name"
+                    value={formData.phone_name}
+                    onChange={handleChange}
+                    placeholder="Enter phone name..."
                 />
 
                 {/* BRANCH + STATUS */}

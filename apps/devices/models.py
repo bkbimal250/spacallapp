@@ -80,6 +80,14 @@ class Device(BaseModel, TimeStampedModel, SoftDeleteModel):
     sim_1_number = models.CharField(max_length=20, blank=True, null=True)
     sim_2_number = models.CharField(max_length=20, blank=True, null=True)
 
+    # Human-readable name for the device
+    phone_name = models.CharField(
+        max_length=255, 
+        blank=True, 
+        null=True, 
+        help_text="Custom name for the phone (e.g. 'Reception Desk')."
+    )
+
     # Firebase Cloud Messaging token for push notifications
     fcm_token = models.TextField(
         null=True, 

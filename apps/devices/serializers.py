@@ -7,7 +7,7 @@ class DeviceSerializer(serializers.ModelSerializer):
     class Meta:
         model = Device
         fields = (
-            "id", "branch", "branch_name", "device_id", "registration_token", "sim_1_number", "sim_2_number",
+            "id", "branch", "branch_name", "phone_name", "device_id", "registration_token", "sim_1_number", "sim_2_number",
             "last_sync", "last_heartbeat", "is_registered", "is_active", "is_blocked",
             "status", "is_online", "created_at"
         )

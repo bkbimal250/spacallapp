@@ -71,8 +71,8 @@ const CallLogFilter = ({ onFilter, initialBranch = '', initialDevice = '', initi
                 setDevices(
                     deviceData.map(d => ({
                         value: d.device_id,
-                        label: `${d.device_id} (${d.sim_1_number || 'No SIM'})`,
-                        title: d.device_id
+                        label: d.phone_name ? `${d.phone_name} (${d.device_id})` : `${d.device_id} (${d.sim_1_number || 'No SIM'})`,
+                        title: d.phone_name || d.device_id
                     }))
                 );
             } catch (error) {
