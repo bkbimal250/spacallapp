@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useCallback, memo } from 'react';
 import { Search, ChevronDown, X } from 'lucide-react';
 
 const SearchableSelect = ({
@@ -30,39 +30,41 @@ const SearchableSelect = ({
         return () => document.removeEventListener("mousedown", handleClickOutside);
     }, []);
 
-    const filteredOptions = options.filter(opt =>
+    const filteredOptions = useMemo(() => options.filter(opt =>
         opt.label.toLowerCase().includes(searchTerm.toLowerCase())
-    );
+    ), [options, searchTerm]);
 
     // 🔥 Highlight search text
-    const highlightText = (text) => {
+    const highlightText = useCallback((text) => {
         if (!searchTerm) return text;
 
-        const parts = text.split(new RegExp(`(${searchTerm})`, "gi"));
-
+        // Escape special characters to prevent regex errors
+        const escapedSearch = searchTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const parts = text.split(new RegExp(`(${escapedSearch})`, "gi"));
+        
         return parts.map((part, i) =>
             part.toLowerCase() === searchTerm.toLowerCase() ? (
-                <span key={i} className="bg-yellow-200 text-black px-1 rounded">
+                <span key={i} className="bg-yellow-200 text-black px-1 rounded font-bold">
                     {part}
                 </span>
             ) : part
         );
-    };
+    }, [searchTerm]);
 
-    const handleSelect = (option) => {
+    const handleSelect = useCallback((option) => {
         onChange(option.value);
         setIsOpen(false);
         setSearchTerm('');
-    };
+    }, [onChange]);
 
-    const clearSelection = (e) => {
+    const clearSelection = useCallback((e) => {
         e.stopPropagation();
         onChange('');
         setSearchTerm('');
-    };
+    }, [onChange]);
 
     // 🔥 Keyboard navigation
-    const handleKeyDown = (e) => {
+    const handleKeyDown = useCallback((e) => {
         if (!isOpen) return;
 
         if (e.key === "ArrowDown") {
@@ -81,7 +83,7 @@ const SearchableSelect = ({
                 handleSelect(filteredOptions[activeIndex]);
             }
         }
-    };
+    }, [isOpen, filteredOptions, activeIndex, handleSelect]);
 
     return (
         <div className={`relative ${className}`} ref={wrapperRef}>
@@ -193,4 +195,4 @@ const SearchableSelect = ({
     );
 };
 
-export default SearchableSelect;
+export default memo(SearchableSelect);

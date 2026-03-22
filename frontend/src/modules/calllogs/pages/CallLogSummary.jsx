@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo, useCallback, memo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { callLogsAPI } from '../api';
 import Table from '../../../shared/components/Table';
@@ -70,7 +70,7 @@ const CallLogSummary = () => {
 
     };
 
-    const fetchSummary = async () => {
+    const fetchSummary = useCallback(async () => {
 
         setLoading(true);
 
@@ -107,13 +107,21 @@ const CallLogSummary = () => {
 
         }
 
-    };
+    }, [filterPeriod, page, activeFilters]);
 
     useEffect(() => {
         fetchSummary();
-    }, [filterPeriod, activeFilters, page]);
+    }, [fetchSummary]);
 
-    const handleFilter = () => {
+    const handleSearchChange = useCallback((e) => setSearch(e.target.value), []);
+    const handleCityChange = useCallback((e) => setCity(e.target.value), []);
+    const handleStatusSelectChange = useCallback((e) => setStatus(e.target.value), []);
+    const handlePeriodChange = useCallback((e) => {
+        setFilterPeriod(e.target.value);
+        setPage(1);
+    }, []);
+
+    const handleFilter = useCallback(() => {
 
         const newFilters = {};
 
@@ -124,9 +132,9 @@ const CallLogSummary = () => {
         setActiveFilters(newFilters);
         setPage(1);
 
-    };
+    }, [search, city, status]);
 
-    const handleClear = () => {
+    const handleClear = useCallback(() => {
 
         setSearch('');
         setCity('');
@@ -134,21 +142,21 @@ const CallLogSummary = () => {
         setActiveFilters({});
         setPage(1);
 
-    };
+    }, []);
 
-    const handlePageChange = (newPage) => {
+    const handlePageChange = useCallback((newPage) => {
         setPage(newPage);
-    };
+    }, []);
 
-    const handleDetails = (branchId) => {
+    const handleDetails = useCallback((branchId) => {
         navigate(`${ROUTES.CALLLOG_DETAILS}?branch=${branchId}`);
-    };
+    }, [navigate]);
 
-    const handleAnalytics = (branchId) => {
+    const handleAnalytics = useCallback((branchId) => {
         navigate(`${ROUTES.ANALYTICS}?branch=${branchId}`);
-    };
+    }, [navigate]);
 
-    const columns = [
+    const columns = useMemo(() => [
 
         {
             header: 'Branch Name',
@@ -246,7 +254,7 @@ const CallLogSummary = () => {
             )
         }
 
-    ];
+    ], [handleDetails, handleAnalytics]);
 
     return (
 
@@ -270,10 +278,7 @@ const CallLogSummary = () => {
 
                             <select
                                 value={filterPeriod}
-                                onChange={(e) => {
-                                    setFilterPeriod(e.target.value);
-                                    setPage(1);
-                                }}
+                                onChange={handlePeriodChange}
                                 className="block w-full px-3 py-2 bg-background border border-border rounded-md text-text-primary focus:ring-primary focus:border-primary sm:text-sm cursor-pointer"
                             >
 
@@ -300,7 +305,7 @@ const CallLogSummary = () => {
                             <Input
                                 placeholder="Search branches..."
                                 value={search}
-                                onChange={(e) => setSearch(e.target.value)}
+                                onChange={handleSearchChange}
                                 onKeyDown={(e) => { if (e.key === 'Enter') handleFilter(); }}
                             />
 
@@ -315,7 +320,7 @@ const CallLogSummary = () => {
                             <Input
                                 placeholder="Filter by city..."
                                 value={city}
-                                onChange={(e) => setCity(e.target.value)}
+                                onChange={handleCityChange}
                                 onKeyDown={(e) => { if (e.key === 'Enter') handleFilter(); }}
                             />
 
@@ -330,7 +335,7 @@ const CallLogSummary = () => {
                             <select
                                 className="block w-full px-3 py-2 bg-background border border-border rounded-md text-text-primary focus:ring-primary focus:border-primary sm:text-sm"
                                 value={status}
-                                onChange={(e) => setStatus(e.target.value)}
+                                onChange={handleStatusSelectChange}
                             >
 
                                 <option value="">All Statuses</option>
@@ -413,4 +418,4 @@ const CallLogSummary = () => {
 
 };
 
-export default CallLogSummary;
+export default memo(CallLogSummary);

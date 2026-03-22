@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, memo, useCallback } from 'react';
 import Input from '../../../shared/components/Input';
 import Button from '../../../shared/components/Button';
 
@@ -9,7 +9,12 @@ const BranchFilter = ({ onFilter }) => {
     const [state, setState] = useState('');
     const [status, setStatus] = useState('');
 
-    const handleFilter = () => {
+    const handleSearchChange = useCallback((e) => setSearch(e.target.value), []);
+    const handleCityChange = useCallback((e) => setCity(e.target.value), []);
+    const handleStateChange = useCallback((e) => setState(e.target.value), []);
+    const handleStatusChange = useCallback((e) => setStatus(e.target.value), []);
+
+    const handleFilter = useCallback(() => {
 
         const filters = {};
 
@@ -19,9 +24,9 @@ const BranchFilter = ({ onFilter }) => {
         if (status !== '') filters.status = status;
 
         onFilter(filters);
-    };
+    }, [search, city, state, status, onFilter]);
 
-    const handleClear = () => {
+    const handleClear = useCallback(() => {
 
         setSearch('');
         setCity('');
@@ -29,7 +34,7 @@ const BranchFilter = ({ onFilter }) => {
         setStatus('');
 
         onFilter({});
-    };
+    }, [onFilter]);
 
     return (
 
@@ -46,7 +51,7 @@ const BranchFilter = ({ onFilter }) => {
                 <Input
                     placeholder="Search branches..."
                     value={search}
-                    onChange={(e) => setSearch(e.target.value)}
+                    onChange={handleSearchChange}
                 />
 
             </div>
@@ -63,7 +68,7 @@ const BranchFilter = ({ onFilter }) => {
                 <Input
                     placeholder="Filter by state..."
                     value={state}
-                    onChange={(e) => setState(e.target.value)}
+                    onChange={handleStateChange}
                 />
 
             </div>
@@ -79,7 +84,7 @@ const BranchFilter = ({ onFilter }) => {
                 <Input
                     placeholder="Filter by city..."
                     value={city}
-                    onChange={(e) => setCity(e.target.value)}
+                    onChange={handleCityChange}
                 />
 
             </div>
@@ -97,7 +102,7 @@ const BranchFilter = ({ onFilter }) => {
                                text-text-primary text-sm
                                focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary"
                     value={status}
-                    onChange={(e) => setStatus(e.target.value)}
+                    onChange={handleStatusChange}
                 >
 
                     <option value="">All Statuses</option>
@@ -134,4 +139,4 @@ const BranchFilter = ({ onFilter }) => {
     );
 };
 
-export default BranchFilter;
+export default memo(BranchFilter);

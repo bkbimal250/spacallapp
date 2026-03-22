@@ -1,8 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { callLogsAPI } from '../api';
 import Table from '../../../shared/components/Table';
 import CallLogFilter from '../components/CallLogFilter';
+import CallLogStats from '../components/CallLogStats';
 import Badge from '../../../shared/components/Badge';
 import Pagination from '../../../shared/components/Pagination';
 import Button from '../../../shared/components/Button';
@@ -98,7 +99,7 @@ const CallLogList = () => {
         setPage(1);
     }, [location.search]);
 
-    const fetchLogs = async (currentFilters = {}, currentPage = 1, background = false) => {
+    const fetchLogs = useCallback(async (currentFilters = {}, currentPage = 1, background = false) => {
         if (!background) setLoading(true);
 
         try {
@@ -115,9 +116,9 @@ const CallLogList = () => {
         } finally {
             if (!background) setLoading(false);
         }
-    };
+    }, [pageSize]);
 
-    const fetchStats = async (currentFilters = {}, background = false) => {
+    const fetchStats = useCallback(async (currentFilters = {}, background = false) => {
         if (!background) setStatsLoading(true);
 
         try {
@@ -128,7 +129,7 @@ const CallLogList = () => {
         } finally {
             if (!background) setStatsLoading(false);
         }
-    };
+    }, []);
 
     useEffect(() => {
         fetchLogs(filters, page);
@@ -141,18 +142,18 @@ const CallLogList = () => {
 
         return () => clearInterval(interval);
 
-    }, [filters, page]);
+    }, [filters, page, fetchLogs, fetchStats]);
 
-    const handleFilter = (newFilters) => {
+    const handleFilter = useCallback((newFilters) => {
         setFilters(newFilters);
         setPage(1);
-    };
+    }, []);
 
-    const handlePageChange = (newPage) => {
+    const handlePageChange = useCallback((newPage) => {
         setPage(newPage);
-    };
+    }, []);
 
-    const handleDelete = async (id) => {
+    const handleDelete = useCallback(async (id) => {
         if (!window.confirm("Delete this call log?")) return;
 
         try {
@@ -161,9 +162,9 @@ const CallLogList = () => {
         } catch (err) {
             console.error(err);
         }
-    };
+    }, [filters, page, fetchLogs]);
 
-    const handleBulkDelete = async () => {
+    const handleBulkDelete = useCallback(async () => {
         if (!window.confirm("Delete selected logs?")) return;
 
         try {
@@ -173,17 +174,17 @@ const CallLogList = () => {
         } catch (err) {
             console.error(err);
         }
-    };
+    }, [selectedLogs, filters, page, fetchLogs]);
 
-    const handleQuickContact = (row) => {
+    const handleQuickContact = useCallback((row) => {
         setQuickContactData({
             phone_number: row.phone_number,
             name: ''
         });
         setIsContactFormOpen(true);
-    };
+    }, []);
 
-    const handleContactSubmit = async (data) => {
+    const handleContactSubmit = useCallback(async (data) => {
         try {
             await contactApi.createContact(data);
             setIsContactFormOpen(false);
@@ -191,9 +192,9 @@ const CallLogList = () => {
         } catch (err) {
             console.error(err);
         }
-    };
+    }, [filters, page, fetchLogs]);
 
-    const handleExport = async () => {
+    const handleExport = useCallback(async () => {
         setExporting(true);
 
         try {
@@ -214,9 +215,9 @@ const CallLogList = () => {
         } finally {
             setExporting(false);
         }
-    };
+    }, [filters]);
 
-    const getCallIcon = (type) => {
+    const getCallIcon = useCallback((type) => {
         switch (type) {
             case "incoming": return <PhoneIncoming size={16} className="text-success" />;
             case "outgoing": return <PhoneOutgoing size={16} className="text-info" />;
@@ -224,7 +225,7 @@ const CallLogList = () => {
             case "rejected": return <PhoneForwarded size={16} className="text-warning" />;
             default: return null;
         }
-    };
+    }, []);
 
     const columns = React.useMemo(() => {
         const cols = [
@@ -328,7 +329,7 @@ const CallLogList = () => {
             });
         }
         return cols;
-    }, [isSuperAdmin, navigate]);
+    }, [isSuperAdmin, navigate, handleQuickContact, handleDelete, getCallIcon]);
 
     return (
         <div className="space-y-6 text-text-primary">
@@ -371,6 +372,11 @@ const CallLogList = () => {
                     initialSearch={initialSearch}
                 />
             </div>
+
+            <CallLogStats 
+                stats={stats} 
+                loading={statsLoading} 
+            />
 
             <div className="bg-card border border-border rounded-lg overflow-hidden">
 

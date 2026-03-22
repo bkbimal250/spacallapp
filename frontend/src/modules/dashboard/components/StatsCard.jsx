@@ -1,18 +1,18 @@
-import React from 'react';
+import React, { memo } from 'react';
 
 const StatsCard = ({ title, value, icon, change, isNegative, className = "" }) => {
     return (
-        <div className={`bg-card border border-border rounded-2xl p-5 flex flex-col justify-between transition hover:border-primary/40 hover:bg-background ${className}`}>
+        <div className={`bg-card border border-border rounded-xl p-4 flex flex-col justify-between transition hover:border-primary/40 hover:bg-background ${className}`}>
 
             {/* TOP */}
             <div className="flex items-center justify-between">
 
-                <p className="text-sm text-text-secondary font-medium">
+                <p className="text-xs text-text-secondary font-medium">
                     {title}
                 </p>
 
                 {icon && (
-                    <div className="p-2 rounded-lg bg-background text-primary">
+                    <div className="p-1.5 rounded-md bg-background text-primary">
                         {icon}
                     </div>
                 )}
@@ -20,17 +20,17 @@ const StatsCard = ({ title, value, icon, change, isNegative, className = "" }) =
             </div>
 
             {/* VALUE */}
-            <div className="mt-3">
+            <div className="mt-2">
 
-                <p className="text-3xl font-bold text-text-primary">
+                <p className="text-2xl font-semibold text-text-primary">
                     {value}
                 </p>
 
                 {change && (
-                    <div className={`mt-2 text-xs font-semibold ${isNegative ? "text-danger" : "text-success"}`}>
+                    <div className={`mt-1 text-[11px] font-medium ${isNegative ? "text-danger" : "text-success"}`}>
                         {change}
-                        <span className="ml-2 text-text-muted font-medium">
-                            from last period
+                        <span className="ml-1 text-text-muted">
+                            from last
                         </span>
                     </div>
                 )}
@@ -41,4 +41,4 @@ const StatsCard = ({ title, value, icon, change, isNegative, className = "" }) =
     );
 };
 
-export default StatsCard;
+export default memo(StatsCard);

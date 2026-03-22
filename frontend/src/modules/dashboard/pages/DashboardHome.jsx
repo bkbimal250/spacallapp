@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo, useCallback, memo } from 'react';
 import StatsCard from '../components/StatsCard';
 import BranchPerformanceTable from '../components/BranchPerformanceTable';
 import { dashboardAPI } from '../api';
@@ -62,39 +62,38 @@ const DashboardHome = () => {
         fetchBranches();
     }, [isAdmin]);
 
-    useEffect(() => {
+    const fetchStats = useCallback(async (isBackground = false) => {
 
-        const fetchStats = async (isBackground = false) => {
+        if (!isBackground) setLoading(true);
 
-            if (!isBackground) setLoading(true);
+        try {
 
-            try {
+            const params = {};
 
-                const params = {};
+            if (leadSource !== 'all') params.lead_source = leadSource;
+            if (selectedBranch) params.branch = selectedBranch;
 
-                if (leadSource !== 'all') params.lead_source = leadSource;
-                if (selectedBranch) params.branch = selectedBranch;
+            const response = await dashboardAPI.getStats(params);
+            const payload = response.data?.data || response.data;
 
-                const response = await dashboardAPI.getStats(params);
-                const payload = response.data?.data || response.data;
+            if (payload) {
+                setStats(payload);
 
-                if (payload) {
-                    setStats(payload);
+                if (payload.call_volume_trends)
+                    setChartData(payload.call_volume_trends);
 
-                    if (payload.call_volume_trends)
-                        setChartData(payload.call_volume_trends);
-
-                    if (payload.branch_performance)
-                        setBranchData(payload.branch_performance);
-                }
-
-            } catch (error) {
-                console.error("Failed to fetch dashboard stats", error);
-            } finally {
-                if (!isBackground) setLoading(false);
+                if (payload.branch_performance)
+                    setBranchData(payload.branch_performance);
             }
-        };
 
+        } catch (error) {
+            console.error("Failed to fetch dashboard stats", error);
+        } finally {
+            if (!isBackground) setLoading(false);
+        }
+    }, [leadSource, selectedBranch]);
+
+    useEffect(() => {
         fetchStats();
 
         const interval = setInterval(() => {
@@ -103,7 +102,18 @@ const DashboardHome = () => {
 
         return () => clearInterval(interval);
 
-    }, [leadSource, selectedBranch]);
+    }, [fetchStats]);
+
+    const statCards = useMemo(() => [
+        { title: "Total Users", value: stats.total_users, icon: Users, color: "text-primary", bg: "bg-primary/10" },
+        { title: "Total Devices", value: stats.total_devices, icon: Smartphone, color: "text-accent-purple", bg: "bg-accent-purple/10" },
+        { title: "Active Devices", value: stats.active_devices, icon: Zap, color: "text-warning", bg: "bg-warning/10" },
+        { title: "Total Leads", value: stats.total_leads, icon: Target, color: "text-success", bg: "bg-success/10" },
+        { title: "Total Branches", value: stats.total_branches, icon: Building2, color: "text-info", bg: "bg-info/10" },
+        { title: "Total Contacts", value: stats.total_contacts, icon: UserPlus, color: "text-cyan-400", bg: "bg-cyan-500/10" },
+        { title: "Total Exports", value: stats.total_exports, icon: FileJson, color: "text-danger", bg: "bg-danger/10" },
+        { title: "Total Calls", value: stats.total_calls, icon: PhoneCall, color: "text-primary", bg: "bg-primary/10" },
+    ], [stats]);
 
     if (loading)
         return (
@@ -113,17 +123,6 @@ const DashboardHome = () => {
 
             </div>
         );
-
-    const statCards = [
-        { title: "Total Users", value: stats.total_users, icon: Users, color: "text-primary", bg: "bg-primary/10" },
-        { title: "Total Devices", value: stats.total_devices, icon: Smartphone, color: "text-accent-purple", bg: "bg-accent-purple/10" },
-        { title: "Active Devices", value: stats.active_devices, icon: Zap, color: "text-warning", bg: "bg-warning/10" },
-        { title: "Total Leads", value: stats.total_leads, icon: Target, color: "text-success", bg: "bg-success/10" },
-        { title: "Total Branches", value: stats.total_branches, icon: Building2, color: "text-info", bg: "bg-info/10" },
-        { title: "Total Contacts", value: stats.total_contacts, icon: UserPlus, color: "text-cyan-400", bg: "bg-cyan-500/10" },
-        { title: "Total Exports", value: stats.total_exports, icon: FileJson, color: "text-danger", bg: "bg-danger/10" },
-        { title: "Total Calls", value: stats.total_calls, icon: PhoneCall, color: "text-primary", bg: "bg-primary/10" },
-    ];
 
     return (
 
@@ -201,4 +200,4 @@ const DashboardHome = () => {
     );
 };
 
-export default DashboardHome;
+export default memo(DashboardHome);

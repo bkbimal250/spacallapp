@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { memo } from 'react';
 import clsx from 'clsx';
 
 const Badge = ({ children, variant = 'gray', className }) => {
@@ -24,4 +24,4 @@ const Badge = ({ children, variant = 'gray', className }) => {
     );
 };
 
-export default Badge;
+export default memo(Badge);

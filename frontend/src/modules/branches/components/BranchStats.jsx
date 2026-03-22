@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { memo } from 'react';
 import StatsCard from '../../dashboard/components/StatsCard';
 import { 
     Layout, 
@@ -36,4 +36,4 @@ const BranchStats = ({ stats }) => {
     );
 };
 
-export default BranchStats;
+export default memo(BranchStats);

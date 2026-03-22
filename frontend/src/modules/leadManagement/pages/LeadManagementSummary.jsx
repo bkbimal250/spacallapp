@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo, useCallback, memo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { leadManagementAPI } from '../api';
 import Table from '../../../shared/components/Table';
@@ -30,7 +30,7 @@ const LeadManagementSummary = () => {
         not_interested: 0
     });
 
-    const fetchSummary = async () => {
+    const fetchSummary = useCallback(async () => {
         setLoading(true);
         try {
             const params = { page, ...activeFilters };
@@ -62,13 +62,17 @@ const LeadManagementSummary = () => {
         } finally {
             setLoading(false);
         }
-    };
+    }, [page, activeFilters]);
 
     useEffect(() => {
         fetchSummary();
-    }, [activeFilters, page]);
+    }, [fetchSummary]);
 
-    const handleFilter = () => {
+    const handleSearchChange = useCallback((e) => setSearch(e.target.value), []);
+    const handleCityChange = useCallback((e) => setCity(e.target.value), []);
+    const handleStatusSelectChange = useCallback((e) => setStatus(e.target.value), []);
+
+    const handleFilter = useCallback(() => {
         const newFilters = {};
         if (search.trim()) newFilters.branch_search = search.trim();
         if (city.trim()) newFilters.city = city.trim();
@@ -76,27 +80,27 @@ const LeadManagementSummary = () => {
 
         setActiveFilters(newFilters);
         setPage(1);
-    };
+    }, [search, city, status]);
 
-    const handleClear = () => {
+    const handleClear = useCallback(() => {
         setSearch('');
         setCity('');
         setStatus('');
         setActiveFilters({});
         setPage(1);
-    };
+    }, []);
 
-    const handlePageChange = (newPage) => {
+    const handlePageChange = useCallback((newPage) => {
         setPage(newPage);
-    };
+    }, []);
 
-    const handleDetails = (branchId, status = '') => {
+    const handleDetails = useCallback((branchId, statusVal = '') => {
         let url = `${ROUTES.LEAD_MANAGEMENT_LIST}?branch=${branchId}`;
-        if (status) url += `&status=${status}`;
+        if (statusVal) url += `&status=${statusVal}`;
         navigate(url);
-    };
+    }, [navigate]);
 
-    const columns = [
+    const columns = useMemo(() => [
         {
             header: 'Branch Name',
             render: (row) => (
@@ -195,7 +199,7 @@ const LeadManagementSummary = () => {
                 </button>
             )
         }
-    ];
+    ], [handleDetails]);
 
     return (
         <div className="space-y-6 text-text-primary">
@@ -251,7 +255,7 @@ const LeadManagementSummary = () => {
                             placeholder="Branch name..."
                             className="bg-card border-border text-text-primary"
                             value={search}
-                            onChange={(e) => setSearch(e.target.value)}
+                            onChange={handleSearchChange}
                             onKeyDown={(e) => { if (e.key === 'Enter') handleFilter(); }}
                         />
 
@@ -259,14 +263,14 @@ const LeadManagementSummary = () => {
                             placeholder="City..."
                             className="bg-card border-border text-text-primary"
                             value={city}
-                            onChange={(e) => setCity(e.target.value)}
+                            onChange={handleCityChange}
                             onKeyDown={(e) => { if (e.key === 'Enter') handleFilter(); }}
                         />
 
                         <select
                             className="px-3 py-2 bg-card border border-border rounded text-text-primary"
                             value={status}
-                            onChange={(e) => setStatus(e.target.value)}
+                            onChange={handleStatusSelectChange}
                         >
                             <option value="">All Statuses</option>
                             <option value="active">Active</option>
@@ -322,4 +326,4 @@ const LeadManagementSummary = () => {
     );
 };
 
-export default LeadManagementSummary;
+export default memo(LeadManagementSummary);

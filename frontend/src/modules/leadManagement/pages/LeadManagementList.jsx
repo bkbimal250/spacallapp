@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo, useCallback, memo } from 'react';
 import { useLocation } from 'react-router-dom';
 import { leadManagementAPI } from '../api';
 import Table from '../../../shared/components/Table';
@@ -8,10 +8,8 @@ import Button from '../../../shared/components/Button';
 import Input from '../../../shared/components/Input';
 import { formatDate } from '../../../shared/utils/formatDate';
 import { useAuth } from '../../../shared/hooks/useAuth';
-import { Edit, Trash2, Search, Filter, Target } from 'lucide-react';
-import LeadForm from '../components/LeadForm';
-import SearchableSelect from '../../../shared/components/SearchableSelect';
 import { branchesAPI } from '../../branches/api';
+import LeadFilter from '../components/LeadFilter';
 import StatsCard from '../../dashboard/components/StatsCard';
 
 const LeadManagementList = () => {
@@ -20,6 +18,7 @@ const LeadManagementList = () => {
     const queryParams = new URLSearchParams(location.search);
     const initialBranch = queryParams.get('branch') || '';
     const initialStatus = queryParams.get('status') || '';
+    const initialSearch = queryParams.get('search') || '';
 
     const [leads, setLeads] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -30,7 +29,7 @@ const LeadManagementList = () => {
     const [filters, setFilters] = useState({
         branch: initialBranch,
         status: initialStatus,
-        search: ''
+        search: initialSearch
     });
 
     const [isFormOpen, setIsFormOpen] = useState(false);
@@ -55,22 +54,7 @@ const LeadManagementList = () => {
         fetchBranches();
     }, [isAdmin]);
 
-    useEffect(() => {
-        const queryParams = new URLSearchParams(location.search);
-        const branchVal = queryParams.get('branch') || '';
-        const statusVal = queryParams.get('status') || '';
-        const searchVal = queryParams.get('search') || '';
-
-        setFilters(prev => ({
-            ...prev,
-            branch: branchVal,
-            status: statusVal,
-            search: searchVal
-        }));
-        setPage(1);
-    }, [location.search]);
-
-    const fetchLeads = async (currentFilters = {}, currentPage = 1, isBackground = false) => {
+    const fetchLeads = useCallback(async (currentFilters = {}, currentPage = 1, isBackground = false) => {
         if (!isBackground) setLoading(true);
         try {
             const apiFilters = { page: currentPage };
@@ -94,7 +78,7 @@ const LeadManagementList = () => {
         } finally {
             if (!isBackground) setLoading(false);
         }
-    };
+    }, []); // Removed pageSize from dependency array as it's a constant
 
     useEffect(() => {
         fetchLeads(filters, page);
@@ -104,23 +88,23 @@ const LeadManagementList = () => {
         }, 10000);
 
         return () => clearInterval(intervalId);
-    }, [filters, page]);
+    }, [filters, page, fetchLeads]);
 
-    const handleFilterChange = (field, value) => {
-        setFilters(prev => ({ ...prev, [field]: value }));
+    const handleFilterChange = useCallback((newFilters) => {
+        setFilters(newFilters);
         setPage(1);
-    };
+    }, []);
 
-    const handlePageChange = (newPage) => {
+    const handlePageChange = useCallback((newPage) => {
         setPage(newPage);
-    };
+    }, []);
 
-    const handleEditLead = (lead) => {
+    const handleEditLead = useCallback((lead) => {
         setSelectedLead(lead);
         setIsFormOpen(true);
-    };
+    }, []);
 
-    const handleDeleteLead = async (id) => {
+    const handleDeleteLead = useCallback(async (id) => {
         if (window.confirm('Are you sure you want to delete this lead?')) {
             try {
                 await leadManagementAPI.deleteLead(id);
@@ -130,9 +114,9 @@ const LeadManagementList = () => {
                 alert("Failed to delete lead.");
             }
         }
-    };
+    }, [filters, page, fetchLeads]);
 
-    const handleFormSubmit = async (data) => {
+    const handleFormSubmit = useCallback(async (data) => {
         try {
             if (selectedLead) {
                 await leadManagementAPI.updateLead(selectedLead.id, data);
@@ -146,9 +130,9 @@ const LeadManagementList = () => {
             console.error("Failed to save lead", error);
             alert("Failed to save lead.");
         }
-    };
+    }, [selectedLead, filters, page, fetchLeads]);
 
-    const handleUpdateStatus = async (id, newStatus) => {
+    const handleUpdateStatus = useCallback(async (id, newStatus) => {
         setUpdatingId(id);
         try {
             await leadManagementAPI.updateLead(id, { status: newStatus });
@@ -159,7 +143,7 @@ const LeadManagementList = () => {
         } finally {
             setUpdatingId(null);
         }
-    };
+    }, [filters, page, fetchLeads]);
 
     const getStatusColor = React.useCallback((status) => {
         switch (status) {
@@ -273,9 +257,9 @@ const LeadManagementList = () => {
                 </div>
             )
         }
-    ], [isSuperAdmin, updatingId, getStatusColor]);
+    ], [isSuperAdmin, updatingId, getStatusColor, handleUpdateStatus, handleEditLead, handleDeleteLead]);
 
-    const leadStats = [
+    const leadStats = useMemo(() => [
         {
             title: "Total Leads",
             value: totalCount,
@@ -286,7 +270,7 @@ const LeadManagementList = () => {
             value: leads.length,
             icon: <Filter className="text-info" size={20} />
         }
-    ];
+    ], [totalCount, leads.length]);
 
     return (
         <div className="space-y-6 text-text-primary">
@@ -314,79 +298,16 @@ const LeadManagementList = () => {
                 ))}
             </div>
 
-            <div className="bg-card border border-border rounded-2xl p-6 shadow-lg">
+            <LeadFilter
+                filters={filters}
+                onFilter={handleFilterChange}
+                isAdmin={isAdmin}
+                branches={branches}
+            />
 
-                <div className="flex flex-col mb-6 p-5 bg-background rounded-xl border border-border">
-
-                    <div className="flex items-center gap-2 mb-6">
-                        <Search size={18} className="text-primary" />
-                        <h2 className="text-lg font-semibold text-text-primary">
-                            Search & Filter
-                        </h2>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-6 items-end">
-
-                        <div className="space-y-2">
-                            <label className="text-xs font-semibold text-text-secondary uppercase">
-                                Search Contact
-                            </label>
-                            <Input
-                                placeholder="Name or number..."
-                                className="!bg-card h-11 border-border text-text-primary focus:border-primary rounded-lg"
-                                value={filters.search}
-                                onChange={(e) => handleFilterChange('search', e.target.value)}
-                            />
-                        </div>
-
-                        {isAdmin && (
-                            <div className="space-y-2">
-                                <label className="text-xs font-semibold text-text-secondary uppercase">
-                                    Branch
-                                </label>
-                                <SearchableSelect
-                                    placeholder="Filter by branch..."
-                                    options={branches}
-                                    value={filters.branch}
-                                    onChange={(val) => handleFilterChange('branch', val)}
-                                    className="!bg-card border-border"
-                                />
-                            </div>
-                        )}
-
-                        <div className="space-y-2">
-                            <label className="text-xs font-semibold text-text-secondary uppercase">
-                                Lead Status
-                            </label>
-
-                            <select
-                                className="block w-full px-3 py-2 bg-card border border-border rounded-lg text-sm text-text-primary focus:border-primary outline-none h-11"
-                                value={filters.status}
-                                onChange={(e) => handleFilterChange('status', e.target.value)}
-                            >
-                                <option value="">All Statuses</option>
-                                <option value="pending">Pending</option>
-                                <option value="ringing">Ringing</option>
-                                <option value="coming">Coming</option>
-                                <option value="interested">Interested</option>
-                                <option value="not_interested">Not Interested</option>
-                            </select>
-                        </div>
-
-                        <div className="flex gap-2">
-                            <Button
-                                variant="outline"
-                                onClick={() => setFilters({ branch: '', status: '', search: '' })}
-                                className="flex-1 h-11 rounded-lg border-border text-text-secondary hover:bg-cardHover"
-                            >
-                                Clear
-                            </Button>
-                        </div>
-
-                    </div>
-                </div>
-
-                <div className="max-h-[600px] overflow-y-auto border border-border rounded-xl">
+            <div className="bg-card border border-border rounded-2xl shadow-lg overflow-hidden">
+                
+                <div className="max-h-[700px] overflow-y-auto">
 
                     {loading ? (
                         <div className="p-12 text-center text-text-secondary">
@@ -422,4 +343,4 @@ const LeadManagementList = () => {
     );
 };
 
-export default LeadManagementList;
+export default memo(LeadManagementList);

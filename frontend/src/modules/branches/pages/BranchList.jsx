@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { branchesAPI } from '../api';
 import Table from '../../../shared/components/Table';
@@ -32,41 +32,29 @@ const BranchList = () => {
 
     const pageSize = 50;
 
-    const fetchBranches = async (currentFilters = {}, currentPage = 1) => {
-
+    const fetchBranches = useCallback(async (currentFilters = {}, currentPage = 1) => {
         setLoading(true);
-
         try {
-
             const response = await branchesAPI.getBranches({
                 ...currentFilters,
                 page: currentPage
             });
 
             if (response.data.results) {
-
                 setBranches(response.data.results);
                 setTotalCount(response.data.count);
-
             } else {
-
                 setBranches(response.data);
                 setTotalCount(response.data.length);
-
             }
-
         } catch (error) {
-
             console.error("Failed to fetch branches", error);
-
         } finally {
-
             setLoading(false);
-
         }
-    };
+    }, [pageSize]);
 
-    const fetchStats = async () => {
+    const fetchStats = useCallback(async () => {
         try {
             const response = await branchesAPI.getBranches({ all: true });
             const allBranches = response.data.results || response.data || [];
@@ -80,21 +68,24 @@ const BranchList = () => {
         } catch (error) {
             console.error("Failed to fetch branch stats", error);
         }
-    };
+    }, []);
+
+    useEffect(() => {
+        fetchStats();
+    }, [fetchStats]);
 
     useEffect(() => {
         fetchBranches(filters, page);
-        fetchStats();
-    }, [filters, page]);
+    }, [filters, page, fetchBranches]);
 
-    const handleFilter = (newFilters) => {
+    const handleFilter = useCallback((newFilters) => {
         setFilters(newFilters);
         setPage(1);
-    };
+    }, []);
 
-    const handlePageChange = (newPage) => {
+    const handlePageChange = useCallback((newPage) => {
         setPage(newPage);
-    };
+    }, []);
 
     const handleCreate = () => {
         setEditingBranch(null);
@@ -148,7 +139,7 @@ const BranchList = () => {
 
     };
 
-    const columns = [
+    const columns = useMemo(() => [
 
         { header: 'Spa Name', accessor: 'spa_name' },
         { header: 'Branch Code', accessor: 'code' },
@@ -226,7 +217,7 @@ const BranchList = () => {
             )
         }
 
-    ];
+    ], [navigate]);
 
     return (
 
