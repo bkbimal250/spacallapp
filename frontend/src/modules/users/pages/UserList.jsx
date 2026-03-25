@@ -6,7 +6,7 @@ import Badge from '../../../shared/components/Badge';
 import UserForm from '../components/UserForm';
 import UserFilter from '../components/UserFilter';
 import Pagination from '../../../shared/components/Pagination';
-import { Edit, Trash2, Plus } from 'lucide-react';
+import { Edit, Trash2, Plus, Copy } from 'lucide-react';
 import { formatDate } from '../../../shared/utils/formatDate';
 
 const UserList = () => {
@@ -101,9 +101,20 @@ const UserList = () => {
         {
             header: 'Email',
             render: (row) => (
-                <span className="text-text-secondary">
-                    {row.email}
-                </span>
+                <div className="flex items-center gap-2 group">
+                    <span className="text-text-secondary whitespace-nowrap">
+                        {row.email}
+                    </span>
+                    <button
+                        onClick={() => {
+                            navigator.clipboard.writeText(row.email);
+                        }}
+                        className="p-1 rounded text-text-muted hover:text-primary hover:bg-primary/10 opacity-0 group-hover:opacity-100 transition-opacity"
+                        title="Copy Email"
+                    >
+                        <Copy size={14} />
+                    </button>
+                </div>
             )
         },
         {
