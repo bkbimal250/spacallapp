@@ -19,7 +19,7 @@ const CallLogSummary = () => {
     const [page, setPage] = useState(1);
     const [totalCount, setTotalCount] = useState(0);
 
-    const pageSize = 50;
+    const pageSize = 100;
 
     const [search, setSearch] = useState('');
     const [city, setCity] = useState('');
@@ -394,7 +394,7 @@ const CallLogSummary = () => {
 
                     </div>
 
-                    {!loading && totalCount > 0 && Math.ceil(totalCount / pageSize) > 1 && (
+                    {!loading && totalCount > 0 && (
 
                         <div className="mt-4">
 
@@ -402,6 +402,8 @@ const CallLogSummary = () => {
                                 currentPage={page}
                                 totalPages={Math.ceil(totalCount / pageSize)}
                                 onPageChange={handlePageChange}
+                                totalCount={totalCount}
+                                pageSize={pageSize}
                             />
 
                         </div>

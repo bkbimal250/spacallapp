@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useSelector } from 'react-redux';
 import Input from '../../../shared/components/Input';
 import Button from '../../../shared/components/Button';
 import Modal from '../../../shared/components/Modal';
@@ -6,6 +7,7 @@ import SearchableSelect from '../../../shared/components/SearchableSelect';
 import { branchesAPI } from '../../branches/api';
 
 const UserForm = ({ isOpen, onClose, onSubmit, initialData }) => {
+    const { user } = useSelector(state => state.auth);
     const [branches, setBranches] = useState([]);
 
     const [formData, setFormData] = useState({
@@ -146,7 +148,7 @@ const UserForm = ({ isOpen, onClose, onSubmit, initialData }) => {
                             label="Assign Branch"
                             options={branches.map(branch => ({
                                 value: branch.id,
-                                label: `${branch.spa_name} ${branch.city ? `(${branch.city})` : ''}`
+                                label: `${branch.spa_name}${branch.code ? ` (${branch.code})` : ''} ${branch.city ? `(${branch.city})` : ''}`
                             }))}
                             value={formData.branch}
                             onChange={(value) => setFormData(prev => ({ ...prev, branch: value }))}
@@ -156,18 +158,17 @@ const UserForm = ({ isOpen, onClose, onSubmit, initialData }) => {
                     </div>
                 )}
 
-                {!initialData && (
-
+                {(user?.role === 'super_admin' || !initialData) && (
                     <Input
-                        label="Password"
+                        label={initialData ? "New Password (leave blank to keep current)" : "Password"}
                         name="password"
                         type="password"
                         value={formData.password}
                         onChange={handleChange}
-                        required
+                        required={!initialData}
+                        placeholder={initialData ? "••••••••" : "Create a password"}
                         className="bg-card border-border text-text-primary"
                     />
-
                 )}
 
                 <div className="flex justify-end gap-2 mt-6">

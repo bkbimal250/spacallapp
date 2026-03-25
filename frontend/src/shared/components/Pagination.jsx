@@ -1,7 +1,7 @@
 import React, { memo } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 
-const Pagination = ({ currentPage, totalPages, onPageChange }) => {
+const Pagination = ({ currentPage, totalPages, onPageChange, totalCount, pageSize }) => {
 
     if (totalPages <= 1) return null;
 
@@ -24,6 +24,9 @@ const Pagination = ({ currentPage, totalPages, onPageChange }) => {
         return pages;
 
     };
+
+    const startRecord = (currentPage - 1) * pageSize + 1;
+    const endRecord = Math.min(currentPage * pageSize, totalCount);
 
     return (
 
@@ -54,20 +57,30 @@ const Pagination = ({ currentPage, totalPages, onPageChange }) => {
             <div className="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
 
                 {/* PAGE INFO */}
-                <p className="text-sm text-text-secondary">
-
-                    Showing page
-                    <span className="font-semibold text-primary mx-1">
-                        {currentPage}
-                    </span>
-
-                    of
-
-                    <span className="font-semibold text-text-primary ml-1">
-                        {totalPages}
-                    </span>
-
-                </p>
+                <div className="flex flex-col">
+                    <p className="text-sm text-text-secondary">
+                        Showing page
+                        <span className="font-semibold text-primary mx-1">
+                            {currentPage}
+                        </span>
+                        of
+                        <span className="font-semibold text-text-primary ml-1">
+                            {totalPages}
+                        </span>
+                    </p>
+                    {totalCount > 0 && pageSize > 0 && (
+                        <p className="text-xs text-text-secondary mt-0.5">
+                            Showing records
+                            <span className="font-medium text-text-primary mx-1">
+                                {startRecord}-{endRecord}
+                            </span>
+                            of
+                            <span className="font-medium text-text-primary ml-1">
+                                {totalCount}
+                            </span>
+                        </p>
+                    )}
+                </div>
 
                 {/* PAGE BUTTONS */}
                 <nav className="inline-flex rounded-lg border border-border overflow-hidden">
@@ -90,8 +103,8 @@ const Pagination = ({ currentPage, totalPages, onPageChange }) => {
                             key={number}
                             onClick={() => onPageChange(number)}
                             className={`px-4 py-2 text-sm font-medium transition ${currentPage === number
-                                    ? 'bg-primary text-white'
-                                    : 'bg-background text-text-secondary hover:bg-background/70'
+                                ? 'bg-primary text-white'
+                                : 'bg-background text-text-secondary hover:bg-background/70'
                                 }`}
                         >
 

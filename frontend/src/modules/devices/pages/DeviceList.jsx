@@ -20,7 +20,7 @@ const DeviceList = () => {
     const [page, setPage] = useState(1);
     const [totalCount, setTotalCount] = useState(0);
 
-    const pageSize = 50;
+    const pageSize = 100;
 
     const fetchDevices = async (currentFilters = {}, currentPage = 1, isBackground = false) => {
 
@@ -312,12 +312,14 @@ const DeviceList = () => {
 
                 </div>
 
-                {!loading && totalCount > 0 && Math.ceil(totalCount / pageSize) > 1 && (
+                {!loading && totalCount > 0 && (
 
                     <Pagination
                         currentPage={page}
                         totalPages={Math.ceil(totalCount / pageSize)}
                         onPageChange={handlePageChange}
+                        totalCount={totalCount}
+                        pageSize={pageSize}
                     />
 
                 )}

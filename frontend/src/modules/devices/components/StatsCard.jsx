@@ -41,6 +41,18 @@ const StatsCard = () => {
             bg: "border-primary/20",
         },
         {
+            title: "Registered",
+            value: stats.registered,
+            icon: <Smartphone size={18} className="text-success" />,
+            bg: "border-success/20",
+        },
+        {
+            title: "Pending",
+            value: stats.unregistered,
+            icon: <Smartphone size={18} className="text-warning" />,
+            bg: "border-warning/20",
+        },
+        {
             title: "Online",
             value: stats.online,
             icon: <Zap size={18} className="text-success" />,
@@ -62,8 +74,8 @@ const StatsCard = () => {
 
     if (loading && stats.total === 0) {
         return (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-                {[1, 2, 3, 4].map(i => (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4 mb-6">
+                {[1, 2, 3, 4, 5, 6].map(i => (
                     <div key={i} className="h-32 bg-card animate-pulse rounded-2xl border border-border"></div>
                 ))}
             </div>
@@ -71,7 +83,7 @@ const StatsCard = () => {
     }
 
     return (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4 mb-6">
             {cards.map((card, idx) => (
                 <DashboardStatsCard
                     key={idx}

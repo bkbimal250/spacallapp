@@ -7,14 +7,15 @@ import {
     PhoneOutgoing, 
     PhoneMissed,
     PhoneForwarded,
-    Clock
+    Clock,
+    Users
 } from 'lucide-react';
 
 const CallLogStats = ({ stats, loading }) => {
     if (loading || !stats) {
         return (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 animate-pulse">
-                {[1, 2, 3, 4].map((i) => (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 animate-pulse">
+                {[1, 2, 3, 4, 5].map((i) => (
                     <div key={i} className="h-32 bg-card border border-border rounded-2xl"></div>
                 ))}
             </div>
@@ -22,13 +23,21 @@ const CallLogStats = ({ stats, loading }) => {
     }
 
     const missedAndRejected = (stats.missed || 0) + (stats.rejected || 0);
+    const uniqueCount = stats.unique_count || stats.unique || 0;
 
     return (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
             <StatsCard 
                 title="Total Calls"
                 value={stats.total || 0}
                 icon={<Phone size={20} />}
+            />
+
+            <StatsCard 
+                title="Unique Records"
+                value={uniqueCount}
+                icon={<Users size={20} className="text-primary" />}
+                className="hover:border-primary/40 border-primary/20 bg-primary/5"
             />
 
             <StatsCard 

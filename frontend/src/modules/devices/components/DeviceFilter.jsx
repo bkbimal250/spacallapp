@@ -18,7 +18,7 @@ const DeviceFilter = ({ onFilter }) => {
                 setBranches(
                     branchData.map(b => ({
                         value: b.id,
-                        label: b.spa_name,
+                        label: b.code ? `${b.spa_name} (${b.code})` : b.spa_name,
                         title: b.spa_name
                     }))
                 );

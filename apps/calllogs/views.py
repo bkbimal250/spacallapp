@@ -239,6 +239,15 @@ class CallLogViewSet(viewsets.ModelViewSet):
         if call_type:
             queryset = queryset.filter(call_type=call_type)
 
+        # Unique Records Filter: Show only the most recent call for each phone number
+        is_unique = params.get("is_unique") == "true"
+        if is_unique:
+            # We use a subquery approach to maintain compatibility with ordering and aggregation
+            # First, get the IDs of the latest call for each unique phone number within the current filtered set
+            latest_ids = queryset.order_by('phone_number', '-call_time').distinct('phone_number').values_list('id', flat=True)
+            # Re-filter the current queryset using these IDs to preserve select_related
+            queryset = queryset.filter(id__in=latest_ids).order_by('-call_time')
+
         # Branch filter (only meaningful for admin/super_admin — managers are already filtered)
         branch = params.get("branch", None)
         if branch:
@@ -328,6 +337,10 @@ class CallLogViewSet(viewsets.ModelViewSet):
             total_duration=Sum("duration"),
             avg_duration=Avg("duration"),
         )
+        
+        # Calculate unique count separately to avoid aggregate + distinct(fields) conflict
+        # We respect all currently applied filters (branch, date, etc)
+        stats["unique_count"] = queryset.values("phone_number").distinct().count() or 0
         return response.Response(stats)
 
     @action(detail=False, methods=["get"])

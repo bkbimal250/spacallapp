@@ -16,7 +16,7 @@ const LeadManagementSummary = () => {
 
     const [page, setPage] = useState(1);
     const [totalCount, setTotalCount] = useState(0);
-    const pageSize = 50;
+    const pageSize = 100;
 
     const [search, setSearch] = useState('');
     const [city, setCity] = useState('');
@@ -316,6 +316,8 @@ const LeadManagementSummary = () => {
                             currentPage={page}
                             totalPages={Math.ceil(totalCount / pageSize)}
                             onPageChange={handlePageChange}
+                            totalCount={totalCount}
+                            pageSize={pageSize}
                         />
                     </div>
                 )}

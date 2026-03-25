@@ -9,6 +9,7 @@ import Input from '../../../shared/components/Input';
 import { formatDate } from '../../../shared/utils/formatDate';
 import { useAuth } from '../../../shared/hooks/useAuth';
 import { branchesAPI } from '../../branches/api';
+import { Target, Filter, Edit, Trash2 } from 'lucide-react';
 import LeadFilter from '../components/LeadFilter';
 import StatsCard from '../../dashboard/components/StatsCard';
 
@@ -24,7 +25,7 @@ const LeadManagementList = () => {
     const [loading, setLoading] = useState(true);
     const [page, setPage] = useState(1);
     const [totalCount, setTotalCount] = useState(0);
-    const pageSize = 50;
+    const pageSize = 100;
 
     const [filters, setFilters] = useState({
         branch: initialBranch,
@@ -326,6 +327,8 @@ const LeadManagementList = () => {
                             currentPage={page}
                             totalPages={Math.ceil(totalCount / pageSize)}
                             onPageChange={handlePageChange}
+                            totalCount={totalCount}
+                            pageSize={pageSize}
                         />
                     </div>
                 )}

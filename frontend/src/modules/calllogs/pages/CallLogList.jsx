@@ -46,7 +46,8 @@ const CallLogList = () => {
     const [filters, setFilters] = useState({
         branch: initialBranch,
         device: initialDevice,
-        search: initialSearch
+        search: initialSearch,
+        is_unique: queryParams.get('is_unique') === 'true'
     });
 
     const [page, setPage] = useState(1);
@@ -62,7 +63,7 @@ const CallLogList = () => {
 
     const [branches, setBranches] = useState([]);
 
-    const pageSize = 50;
+    const pageSize = 100;
 
     const isSuperAdmin = user?.role === 'super_admin';
     const isAdmin = user?.role === 'admin' || isSuperAdmin;
@@ -93,7 +94,8 @@ const CallLogList = () => {
             ...prev,
             search: queryParams.get('search') || '',
             branch: queryParams.get('branch') || '',
-            device: queryParams.get('device') || ''
+            device: queryParams.get('device') || '',
+            is_unique: queryParams.get('is_unique') === 'true'
         }));
 
         setPage(1);
@@ -370,6 +372,7 @@ const CallLogList = () => {
                     initialBranch={initialBranch}
                     initialDevice={initialDevice}
                     initialSearch={initialSearch}
+                    initialUnique={filters.is_unique}
                 />
             </div>
 
@@ -399,6 +402,8 @@ const CallLogList = () => {
                         currentPage={page}
                         totalPages={Math.ceil(totalCount / pageSize)}
                         onPageChange={handlePageChange}
+                        totalCount={totalCount}
+                        pageSize={pageSize}
                     />
                 )}
 

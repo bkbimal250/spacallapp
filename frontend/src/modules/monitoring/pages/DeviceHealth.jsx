@@ -23,7 +23,7 @@ const DeviceHealth = () => {
     const [error, setError] = useState(null);
     const [page, setPage] = useState(1);
     const [totalCount, setTotalCount] = useState(0);
-    const pageSize = 10;
+    const pageSize = 100;
 
     const fetchData = useCallback(async (isBackground = false) => {
         if (!isBackground) setLoading(true);
@@ -256,12 +256,14 @@ const DeviceHealth = () => {
                                 data={alerts}
                             />
                         </div>
-                        {totalCount > pageSize && (
+                        {totalCount > 0 && (
                             <div className="px-6 py-4 border-t border-border flex justify-end">
                                 <Pagination
                                     currentPage={page}
                                     totalPages={Math.ceil(totalCount / pageSize)}
                                     onPageChange={handlePageChange}
+                                    totalCount={totalCount}
+                                    pageSize={pageSize}
                                 />
                             </div>
                         )}

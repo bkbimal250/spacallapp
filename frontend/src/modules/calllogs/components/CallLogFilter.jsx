@@ -6,7 +6,7 @@ import SearchableSelect from '../../../shared/components/SearchableSelect';
 import { branchesAPI } from '../../branches/api';
 import { devicesAPI } from '../../devices/api';
 
-const CallLogFilter = ({ onFilter, initialBranch = '', initialDevice = '', initialSearch = '' }) => {
+const CallLogFilter = ({ onFilter, initialBranch = '', initialDevice = '', initialSearch = '', initialUnique = false }) => {
 
     const { user } = useSelector(state => state.auth);
 
@@ -17,13 +17,15 @@ const CallLogFilter = ({ onFilter, initialBranch = '', initialDevice = '', initi
     const [devices, setDevices] = useState([]);
     const [selectedDevice, setSelectedDevice] = useState('');
     const [selectedCallType, setSelectedCallType] = useState('');
+    const [isUnique, setIsUnique] = useState(initialUnique);
     const [loadingDevices, setLoadingDevices] = useState(false);
 
     useEffect(() => {
         setSearch(initialSearch);
         setSelectedBranch(initialBranch);
         setSelectedDevice(initialDevice);
-    }, [initialSearch, initialBranch, initialDevice]);
+        setIsUnique(initialUnique);
+    }, [initialSearch, initialBranch, initialDevice, initialUnique]);
 
     const isRestrictedManager =
         user?.role === 'branch_manager' ||
@@ -40,7 +42,7 @@ const CallLogFilter = ({ onFilter, initialBranch = '', initialDevice = '', initi
                 setBranches(
                     branchData.map(b => ({
                         value: b.id,
-                        label: b.spa_name,
+                        label: b.code ? `${b.spa_name} (${b.code})` : b.spa_name,
                         title: b.spa_name // 👈 for tooltip
                     }))
                 );
@@ -121,6 +123,7 @@ const CallLogFilter = ({ onFilter, initialBranch = '', initialDevice = '', initi
         if (selectedBranch && !isRestrictedManager) filters.branch = selectedBranch;
         if (selectedDevice) filters.device = selectedDevice;
         if (selectedCallType) filters.call_type = selectedCallType;
+        if (isUnique) filters.is_unique = true;
 
         onFilter(filters);
     }, [search, dateRange, selectedBranch, selectedDevice, selectedCallType, isRestrictedManager, onFilter]);
@@ -131,6 +134,7 @@ const CallLogFilter = ({ onFilter, initialBranch = '', initialDevice = '', initi
         setSelectedBranch('');
         setSelectedDevice('');
         setSelectedCallType('');
+        setIsUnique(false);
         onFilter({});
     }, [onFilter]);
 
@@ -224,7 +228,29 @@ const CallLogFilter = ({ onFilter, initialBranch = '', initialDevice = '', initi
                             onChange={handleEndDateChange}
                         />
 
-                        {/* Buttons */}
+                    </div>
+                </div>
+
+                {/* 🔥 UNIQUE FILTER & ACTION BUTTONS */}
+                <div className="flex items-center justify-between lg:col-span-2 gap-4">
+
+                    <label className="flex items-center cursor-pointer group">
+                        <div className="relative">
+                            <input
+                                type="checkbox"
+                                className="sr-only"
+                                checked={isUnique}
+                                onChange={(e) => setIsUnique(e.target.checked)}
+                            />
+                            <div className={`w-10 h-6 rounded-full transition-colors ${isUnique ? 'bg-primary' : 'bg-border'}`}></div>
+                            <div className={`absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform ${isUnique ? 'translate-x-4' : 'translate-x-0'}`}></div>
+                        </div>
+                        <span className="ml-3 text-sm font-medium text-text-secondary group-hover:text-primary transition-colors">
+                            Unique Record
+                        </span>
+                    </label>
+
+                    <div className="flex items-center gap-2">
                         <Button
                             variant="outline"
                             onClick={handleClear}
@@ -239,8 +265,8 @@ const CallLogFilter = ({ onFilter, initialBranch = '', initialDevice = '', initi
                         >
                             Apply
                         </Button>
-
                     </div>
+
                 </div>
 
             </div>

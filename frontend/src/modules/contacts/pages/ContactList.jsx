@@ -29,7 +29,7 @@ const ContactList = () => {
     const [page, setPage] = useState(1);
     const [totalCount, setTotalCount] = useState(0);
 
-    const pageSize = 50;
+    const pageSize = 100;
 
     const fetchContacts = async (currentFilters = {}, currentPage = 1) => {
 
@@ -316,19 +316,15 @@ const ContactList = () => {
 
                 </div>
 
-                {!loading &&
-                    totalCount > 0 &&
-                    Math.ceil(totalCount / pageSize) > 1 && (
-
-                        <Pagination
-                            currentPage={page}
-                            totalPages={Math.ceil(
-                                totalCount / pageSize
-                            )}
-                            onPageChange={handlePageChange}
-                        />
-
-                    )}
+                {!loading && totalCount > 0 && (
+                    <Pagination
+                        currentPage={page}
+                        totalPages={Math.ceil(totalCount / pageSize)}
+                        onPageChange={handlePageChange}
+                        totalCount={totalCount}
+                        pageSize={pageSize}
+                    />
+                )}
 
             </div>
 
