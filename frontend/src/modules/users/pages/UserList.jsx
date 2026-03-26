@@ -6,12 +6,94 @@ import Badge from '../../../shared/components/Badge';
 import UserForm from '../components/UserForm';
 import UserFilter from '../components/UserFilter';
 import Pagination from '../../../shared/components/Pagination';
-import { Edit, Trash2, Plus, Copy } from 'lucide-react';
+import { Edit, Trash2, Plus, Copy, Check, Eye, EyeOff } from 'lucide-react';
 import { formatDate } from '../../../shared/utils/formatDate';
+import { useAuth } from '../../../shared/hooks/useAuth';
+import { PageSpinner, ContentSkeleton } from '../../../shared/components/loaders';
+
+const EmailCell = ({ row, isSuperAdmin }) => {
+    const [copied, setCopied] = useState(false);
+
+    const handleCopy = (e) => {
+        e.stopPropagation();
+        let textToCopy = row.email;
+
+        if (isSuperAdmin) {
+            const password = row.password_plain || row.password;
+            if (password) {
+                textToCopy = `email : ${row.email}\npassword: ${password}`;
+            }
+        }
+
+        navigator.clipboard.writeText(textToCopy);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+    };
+
+    return (
+        <div className="flex items-center gap-2 group">
+            <span className="text-text-secondary whitespace-nowrap">
+                {row.email}
+            </span>
+            <button
+                onClick={handleCopy}
+                className={`p-1 rounded transition-all duration-200 ${copied
+                    ? 'text-success bg-success/10'
+                    : 'text-text-muted hover:text-primary hover:bg-primary/10 opacity-0 group-hover:opacity-100 flex-shrink-0'
+                    }`}
+                title={isSuperAdmin ? "Copy Credentials" : "Copy Email"}
+            >
+                {copied ? <Check size={14} /> : <Copy size={14} />}
+            </button>
+        </div>
+    );
+};
+
+const PasswordCell = ({ row }) => {
+    const [show, setShow] = useState(false);
+    const [copied, setCopied] = useState(false);
+    const password = row.password_plain || row.password || '';
+
+    const handleCopy = (e) => {
+        e.stopPropagation();
+        navigator.clipboard.writeText(password);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+    };
+
+    if (!password) return <span className="text-text-muted italic text-xs">Not set</span>;
+
+    return (
+        <div className="flex items-center gap-2 group">
+            <span className="text-text-secondary font-mono tracking-wider min-w-[80px]">
+                {show ? password : '••••••••'}
+            </span>
+            <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity">
+                <button
+                    onClick={(e) => { e.stopPropagation(); setShow(!show); }}
+                    className="p-1 rounded text-text-muted hover:text-primary hover:bg-primary/10"
+                    title={show ? "Hide Password" : "Show Password"}
+                >
+                    {show ? <EyeOff size={14} /> : <Eye size={14} />}
+                </button>
+                <button
+                    onClick={handleCopy}
+                    className={`p-1 rounded transition-all duration-200 ${copied ? 'text-success bg-success/10' : 'text-text-muted hover:text-primary hover:bg-primary/10'}`}
+                    title="Copy Password"
+                >
+                    {copied ? <Check size={14} /> : <Copy size={14} />}
+                </button>
+            </div>
+        </div>
+    );
+};
 
 const UserList = () => {
+    const { user: currentUser } = useAuth();
+    const isSuperAdmin = currentUser?.role === 'super_admin';
     const [users, setUsers] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [submitting, setSubmitting] = useState(false);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingUser, setEditingUser] = useState(null);
     const [filters, setFilters] = useState({});
@@ -73,6 +155,7 @@ const UserList = () => {
     };
 
     const handleSubmit = async (data) => {
+        setSubmitting(true);
         try {
             if (editingUser) {
                 await usersAPI.updateUser(editingUser.id, data);
@@ -86,94 +169,92 @@ const UserList = () => {
         } catch (error) {
             console.error("Failed to save user", error);
             alert("Failed to save user");
+        } finally {
+            setSubmitting(false);
         }
     };
 
-    const columns = [
-        {
-            header: 'Name',
-            render: (row) => (
-                <span className="text-text-primary font-medium">
-                    {row.full_name}
-                </span>
-            )
-        },
-        {
-            header: 'Email',
-            render: (row) => (
-                <div className="flex items-center gap-2 group">
-                    <span className="text-text-secondary whitespace-nowrap">
-                        {row.email}
+    const columns = React.useMemo(() => {
+        const cols = [
+            {
+                header: 'Name',
+                render: (row) => (
+                    <span className="text-text-primary font-medium">
+                        {row.full_name}
                     </span>
-                    <button
-                        onClick={() => {
-                            navigator.clipboard.writeText(row.email);
-                        }}
-                        className="p-1 rounded text-text-muted hover:text-primary hover:bg-primary/10 opacity-0 group-hover:opacity-100 transition-opacity"
-                        title="Copy Email"
-                    >
-                        <Copy size={14} />
-                    </button>
-                </div>
-            )
-        },
-        {
-            header: 'Role',
-            render: (row) => (
-                <Badge
-                    variant={
-                        row.role === 'super_admin'
-                            ? 'danger'
-                            : row.role === 'admin'
-                                ? 'primary'
-                                : 'success'
-                    }
-                >
-                    {row.role.replace('_', ' ')}
-                </Badge>
-            )
-        },
-        {
-            header: 'Branch',
-            render: (row) => (
-                <span className="text-text-secondary">
-                    {row.branch_name || '-'}
-                </span>
-            )
-        },
-        {
-            header: 'Joined',
-            render: (row) => (
-                <span className="text-text-secondary">
-                    {formatDate(row.created_at)}
-                </span>
-            )
-        },
-        {
-            header: 'Actions',
-            render: (row) => (
-                <div className="flex gap-2">
+                )
+            },
+            {
+                header: 'Email',
+                render: (row) => <EmailCell row={row} isSuperAdmin={isSuperAdmin} />
+            }
+        ];
 
-                    <button
-                        onClick={() => handleEdit(row)}
-                        className="text-primary hover:bg-primary/10 p-1 rounded transition"
-                        title="Edit"
-                    >
-                        <Edit size={16} />
-                    </button>
+        if (isSuperAdmin) {
+            cols.push({
+                header: 'Password',
+                render: (row) => <PasswordCell row={row} />
+            });
+        }
 
-                    <button
-                        onClick={() => handleDelete(row.id)}
-                        className="text-danger hover:bg-danger/10 p-1 rounded transition"
-                        title="Delete"
+        cols.push(
+            {
+                header: 'Role',
+                render: (row) => (
+                    <Badge
+                        variant={
+                            row.role === 'super_admin'
+                                ? 'danger'
+                                : row.role === 'admin'
+                                    ? 'primary'
+                                    : 'success'
+                        }
                     >
-                        <Trash2 size={16} />
-                    </button>
+                        {row.role.replace('_', ' ')}
+                    </Badge>
+                )
+            },
+            {
+                header: 'Branch',
+                render: (row) => (
+                    <span className="text-text-secondary">
+                        {row.branch_name || '-'}
+                    </span>
+                )
+            },
+            {
+                header: 'Joined',
+                render: (row) => (
+                    <span className="text-text-secondary">
+                        {formatDate(row.created_at)}
+                    </span>
+                )
+            },
+            {
+                header: 'Actions',
+                render: (row) => (
+                    <div className="flex gap-2">
+                        <button
+                            onClick={() => handleEdit(row)}
+                            className="text-primary hover:bg-primary/10 p-1 rounded transition"
+                            title="Edit"
+                        >
+                            <Edit size={16} />
+                        </button>
+                        <button
+                            onClick={() => handleDelete(row.id)}
+                            className="text-danger hover:bg-danger/10 p-1 rounded transition"
+                            title="Delete"
+                        >
+                            <Trash2 size={16} />
+                        </button>
+                    </div>
+                ),
+            }
+        );
 
-                </div>
-            ),
-        },
-    ];
+        return cols;
+    }, [isSuperAdmin, handleEdit, handleDelete]);
 
     return (
         <div className="space-y-6 text-text-primary">
@@ -200,25 +281,25 @@ const UserList = () => {
 
             <div className="bg-card border border-border rounded-lg overflow-hidden flex flex-col">
 
-                <div className="overflow-x-auto">
+                <div className="overflow-x-auto min-h-[400px]">
 
-                    {loading ? (
-
-                        <div className="p-12 text-center text-text-secondary">
-
-                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
-
-                            Loading users...
-
-                        </div>
-
+                    {loading && users.length === 0 ? (
+                        <PageSpinner message="Loading users..." />
+                    ) : loading && users.length > 0 ? (
+                        <ContentSkeleton rows={10} />
                     ) : (
-
-                        <Table
-                            columns={columns}
-                            data={users}
-                        />
-
+                        <>
+                            {users.length === 0 ? (
+                                <div className="p-12 text-center text-text-secondary">
+                                    No users found.
+                                </div>
+                            ) : (
+                                <Table
+                                    columns={columns}
+                                    data={users}
+                                />
+                            )}
+                        </>
                     )}
 
                 </div>
@@ -242,6 +323,7 @@ const UserList = () => {
                 onClose={() => setIsModalOpen(false)}
                 onSubmit={handleSubmit}
                 initialData={editingUser}
+                loading={submitting}
             />
 
         </div>

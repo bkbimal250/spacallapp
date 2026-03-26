@@ -6,7 +6,7 @@ import Modal from '../../../shared/components/Modal';
 import SearchableSelect from '../../../shared/components/SearchableSelect';
 import { branchesAPI } from '../../branches/api';
 
-const UserForm = ({ isOpen, onClose, onSubmit, initialData }) => {
+const UserForm = ({ isOpen, onClose, onSubmit, initialData, loading = false }) => {
     const { user } = useSelector(state => state.auth);
     const [branches, setBranches] = useState([]);
 
@@ -184,7 +184,8 @@ const UserForm = ({ isOpen, onClose, onSubmit, initialData }) => {
 
                     <Button
                         type="submit"
-                        className="bg-primary text-white hover:bg-primary-hover"
+                        className="bg-primary text-white hover:bg-primary-hover min-w-[100px]"
+                        loading={loading}
                     >
                         {initialData ? 'Update' : 'Create'}
                     </Button>

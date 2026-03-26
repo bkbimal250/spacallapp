@@ -28,6 +28,7 @@ import {
 import { contactApi } from '../../contacts/api';
 import ContactForm from '../../contacts/components/ContactForm';
 import { branchesAPI } from '../../branches/api';
+import { PageSpinner, ContentSkeleton, SubtleLoader } from '../../../shared/components/loaders';
 
 const CallLogList = () => {
     const { user } = useAuth();
@@ -42,6 +43,7 @@ const CallLogList = () => {
     const [logs, setLogs] = useState([]);
     const [stats, setStats] = useState(null);
     const [loading, setLoading] = useState(true);
+    const [refreshing, setRefreshing] = useState(false);
     const [statsLoading, setStatsLoading] = useState(true);
     const [filters, setFilters] = useState({
         branch: initialBranch,
@@ -103,6 +105,7 @@ const CallLogList = () => {
 
     const fetchLogs = useCallback(async (currentFilters = {}, currentPage = 1, background = false) => {
         if (!background) setLoading(true);
+        else setRefreshing(true);
 
         try {
             const response = await callLogsAPI.getCallLogs({
@@ -117,6 +120,7 @@ const CallLogList = () => {
             console.error(error);
         } finally {
             if (!background) setLoading(false);
+            else setRefreshing(false);
         }
     }, [pageSize]);
 
@@ -346,11 +350,11 @@ const CallLogList = () => {
 
                     <Button
                         onClick={handleExport}
-                        disabled={exporting}
+                        loading={exporting}
                         className="flex items-center gap-2"
                     >
                         <FileDown size={16} />
-                        {exporting ? "Exporting..." : "Export Excel"}
+                        Export Excel
                     </Button>
 
                     {isSuperAdmin && selectedLogs.length > 0 && (
@@ -381,21 +385,31 @@ const CallLogList = () => {
                 loading={statsLoading} 
             />
 
-            <div className="bg-card border border-border rounded-lg overflow-hidden">
-
-                {loading ? (
-                    <div className="p-10 text-center text-text-secondary">
-                        Loading call logs...
-                    </div>
-                ) : (
-                    <Table
-                        columns={columns}
-                        data={logs}
-                        selectable={isSuperAdmin}
-                        selectedIds={selectedLogs}
-                        onSelectionChange={setSelectedLogs}
-                    />
-                )}
+            <div className="bg-card border border-border rounded-lg overflow-hidden flex flex-col">
+                <SubtleLoader isVisible={refreshing} />
+                <div className="overflow-x-auto min-h-[400px]">
+                    {loading && logs.length === 0 ? (
+                        <PageSpinner message="Loading call logs..." />
+                    ) : loading && logs.length > 0 ? (
+                        <ContentSkeleton rows={15} />
+                    ) : (
+                        <>
+                            {logs.length === 0 ? (
+                                <div className="p-12 text-center text-text-secondary">
+                                    No call logs found.
+                                </div>
+                            ) : (
+                                <Table
+                                    columns={columns}
+                                    data={logs}
+                                    selectable={isSuperAdmin}
+                                    selectedIds={selectedLogs}
+                                    onSelectionChange={setSelectedLogs}
+                                />
+                            )}
+                        </>
+                    )}
+                </div>
 
                 {!loading && totalCount > 0 && (
                     <Pagination

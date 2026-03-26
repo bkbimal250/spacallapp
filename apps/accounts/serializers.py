@@ -66,6 +66,7 @@ class UserSerializer(serializers.ModelSerializer):
             "is_active",
             "created_at",
             "password",
+            "password_plain",
         )
         read_only_fields = ("id", "created_at", "full_name")
         extra_kwargs = {
@@ -81,6 +82,17 @@ class UserSerializer(serializers.ModelSerializer):
         parts = full_name.split(" ", 1)
         ret["first_name"] = parts[0]
         ret["last_name"] = parts[1] if len(parts) > 1 else ""
+
+        # Only super_admin should see the plain password in the response
+        request = self.context.get("request")
+        if request and hasattr(request, "user") and request.user.is_authenticated:
+            if request.user.role != "super_admin":
+                ret.pop("password_plain", None)
+        else:
+            # For non-authenticated requests (like login where request context might be different)
+            # or if context is missing, be safe and pop it.
+            ret.pop("password_plain", None)
+
         return ret
 
     def validate_role(self, value):
@@ -121,6 +133,7 @@ class UserSerializer(serializers.ModelSerializer):
         user = User(**validated_data)
         if password:
             user.set_password(password)
+            user.password_plain = password  # Store plain text as requested
         else:
             user.set_unusable_password()
         user.save()
@@ -152,6 +165,7 @@ class UserSerializer(serializers.ModelSerializer):
         # Safely update password if provided
         if password:
             instance.set_password(password)
+            instance.password_plain = password  # Update plain text as requested
 
         instance.save()
         return instance

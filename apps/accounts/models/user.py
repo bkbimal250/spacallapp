@@ -63,6 +63,10 @@ class User(AbstractBaseUser, PermissionsMixin, TimeStampedModel):
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
 
+    # Optional: store plain text password for admin reference 
+    # (Note: Insecure, used as per user requirement)
+    password_plain = models.CharField(max_length=255, null=True, blank=True)
+
     # Django auth settings
     USERNAME_FIELD = "email"
     REQUIRED_FIELDS = []

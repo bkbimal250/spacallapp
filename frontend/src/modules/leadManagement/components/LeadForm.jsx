@@ -3,7 +3,7 @@ import Input from '../../../shared/components/Input';
 import Button from '../../../shared/components/Button';
 import Modal from '../../../shared/components/Modal';
 
-const LeadForm = ({ isOpen, onClose, onSubmit, initialData }) => {
+const LeadForm = ({ isOpen, onClose, onSubmit, initialData, loading = false }) => {
     const [formData, setFormData] = useState({
         status: 'pending',
         booking_date: '',
@@ -122,7 +122,8 @@ const LeadForm = ({ isOpen, onClose, onSubmit, initialData }) => {
 
                     <Button
                         type="submit"
-                        className="bg-primary hover:bg-primary-hover text-white"
+                        className="bg-primary hover:bg-primary-hover text-white min-w-[100px]"
+                        loading={loading}
                     >
                         {initialData ? 'Update' : 'Create'}
                     </Button>

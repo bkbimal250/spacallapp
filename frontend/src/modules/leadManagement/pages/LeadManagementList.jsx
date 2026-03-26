@@ -4,14 +4,14 @@ import { leadManagementAPI } from '../api';
 import Table from '../../../shared/components/Table';
 import Badge from '../../../shared/components/Badge';
 import Pagination from '../../../shared/components/Pagination';
-import Button from '../../../shared/components/Button';
-import Input from '../../../shared/components/Input';
 import { formatDate } from '../../../shared/utils/formatDate';
 import { useAuth } from '../../../shared/hooks/useAuth';
 import { branchesAPI } from '../../branches/api';
 import { Target, Filter, Edit, Trash2 } from 'lucide-react';
 import LeadFilter from '../components/LeadFilter';
 import StatsCard from '../../dashboard/components/StatsCard';
+import LeadForm from '../components/LeadForm'
+import { PageSpinner, ContentSkeleton, SubtleLoader, ButtonSpinner } from '../../../shared/components/loaders';
 
 const LeadManagementList = () => {
     const { user } = useAuth();
@@ -23,6 +23,7 @@ const LeadManagementList = () => {
 
     const [leads, setLeads] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [refreshing, setRefreshing] = useState(false);
     const [page, setPage] = useState(1);
     const [totalCount, setTotalCount] = useState(0);
     const pageSize = 100;
@@ -35,6 +36,7 @@ const LeadManagementList = () => {
 
     const [isFormOpen, setIsFormOpen] = useState(false);
     const [selectedLead, setSelectedLead] = useState(null);
+    const [submitting, setSubmitting] = useState(false);
     const [updatingId, setUpdatingId] = useState(null);
     const [branches, setBranches] = useState([]);
 
@@ -57,6 +59,7 @@ const LeadManagementList = () => {
 
     const fetchLeads = useCallback(async (currentFilters = {}, currentPage = 1, isBackground = false) => {
         if (!isBackground) setLoading(true);
+        else setRefreshing(true);
         try {
             const apiFilters = { page: currentPage };
 
@@ -78,6 +81,7 @@ const LeadManagementList = () => {
             console.error("Failed to fetch leads", error);
         } finally {
             if (!isBackground) setLoading(false);
+            else setRefreshing(false);
         }
     }, []); // Removed pageSize from dependency array as it's a constant
 
@@ -118,6 +122,7 @@ const LeadManagementList = () => {
     }, [filters, page, fetchLeads]);
 
     const handleFormSubmit = useCallback(async (data) => {
+        setSubmitting(true);
         try {
             if (selectedLead) {
                 await leadManagementAPI.updateLead(selectedLead.id, data);
@@ -130,6 +135,8 @@ const LeadManagementList = () => {
         } catch (error) {
             console.error("Failed to save lead", error);
             alert("Failed to save lead.");
+        } finally {
+            setSubmitting(false);
         }
     }, [selectedLead, filters, page, fetchLeads]);
 
@@ -307,16 +314,24 @@ const LeadManagementList = () => {
             />
 
             <div className="bg-card border border-border rounded-2xl shadow-lg overflow-hidden">
-                
+
+                <SubtleLoader isVisible={refreshing} />
                 <div className="max-h-[700px] overflow-y-auto">
 
-                    {loading ? (
-                        <div className="p-12 text-center text-text-secondary">
-                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
-                            Loading leads...
-                        </div>
+                    {loading && leads.length === 0 ? (
+                        <PageSpinner message="Loading leads..." />
+                    ) : loading && leads.length > 0 ? (
+                        <ContentSkeleton rows={10} />
                     ) : (
-                        <Table columns={columns} data={leads} />
+                        <>
+                            {leads.length === 0 ? (
+                                <div className="p-12 text-center text-text-secondary">
+                                    No leads found.
+                                </div>
+                            ) : (
+                                <Table columns={columns} data={leads} />
+                            )}
+                        </>
                     )}
 
                 </div>
@@ -340,6 +355,7 @@ const LeadManagementList = () => {
                 onClose={() => setIsFormOpen(false)}
                 onSubmit={handleFormSubmit}
                 initialData={selectedLead}
+                loading={submitting}
             />
 
         </div>
