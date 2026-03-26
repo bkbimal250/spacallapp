@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import Input from '../../../shared/components/Input';
 import Button from '../../../shared/components/Button';
 import Modal from '../../../shared/components/Modal';
+import { branchesAPI } from '../api';
 
 const BranchForm = ({ isOpen, onClose, onSubmit, initialData }) => {
 
@@ -14,7 +15,24 @@ const BranchForm = ({ isOpen, onClose, onSubmit, initialData }) => {
         postal_code: '',
         address: '',
         is_active: true,
+        branch_group: '',
     });
+
+    const [groups, setGroups] = useState([]);
+
+    useEffect(() => {
+        const fetchGroups = async () => {
+            try {
+                const response = await branchesAPI.getGroups({ all: true });
+                setGroups(response.data.results || response.data || []);
+            } catch (error) {
+                console.error("Failed to fetch branch groups", error);
+            }
+        };
+        if (isOpen) {
+            fetchGroups();
+        }
+    }, [isOpen]);
 
     useEffect(() => {
 
@@ -29,6 +47,7 @@ const BranchForm = ({ isOpen, onClose, onSubmit, initialData }) => {
                 postal_code: initialData.postal_code || '',
                 address: initialData.address || '',
                 is_active: initialData.is_active !== undefined ? initialData.is_active : true,
+                branch_group: initialData.branch_group || '',
             });
 
         } else {
@@ -42,6 +61,7 @@ const BranchForm = ({ isOpen, onClose, onSubmit, initialData }) => {
                 postal_code: '',
                 address: '',
                 is_active: true,
+                branch_group: '',
             });
 
         }
@@ -131,13 +151,10 @@ const BranchForm = ({ isOpen, onClose, onSubmit, initialData }) => {
                 </div>
 
                 {/* ADDRESS */}
-
                 <div>
-
                     <label className="block text-sm font-medium text-text-secondary mb-1">
                         Address
                     </label>
-
                     <textarea
                         name="address"
                         value={formData.address}
@@ -148,7 +165,27 @@ const BranchForm = ({ isOpen, onClose, onSubmit, initialData }) => {
                                    text-text-primary text-sm
                                    focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary"
                     />
-
+                </div>
+                {/* BRANCH GROUP */}
+                <div>
+                    <label className="block text-sm font-medium text-text-secondary mb-1">
+                        Branch Group
+                    </label>
+                    <select
+                        name="branch_group"
+                        value={formData.branch_group}
+                        onChange={handleChange}
+                        className="w-full px-3 py-2 bg-background border border-border rounded-md
+                                   text-text-primary text-sm
+                                   focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary"
+                    >
+                        <option value="">Select Group (Optional)</option>
+                        {groups.map(group => (
+                            <option key={group.id} value={group.id}>
+                                {group.name}
+                            </option>
+                        ))}
+                    </select>
                 </div>
 
                 {/* STATUS */}

@@ -1,8 +1,9 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from .views import BranchViewSet
+from .views import BranchViewSet, BranchGroupViewSet
 
 router = DefaultRouter()
+router.register(r'groups', BranchGroupViewSet, basename='branchgroup')
 router.register(r'', BranchViewSet, basename='branch')
 
 urlpatterns = [

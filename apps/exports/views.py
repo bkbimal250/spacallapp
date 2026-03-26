@@ -28,6 +28,7 @@ class GenerateExportView(views.APIView):
             # We use error_message as a temporary storage for filters as JSON string to avoid migration
             error_message=str({
                 'branch': request.data.get('branch'),
+                'group': request.data.get('group'),
                 'start_date': request.data.get('start_date'),
                 'end_date': request.data.get('end_date'),
             })
@@ -40,11 +41,14 @@ class GenerateExportView(views.APIView):
                 
                 # Apply filters
                 branch = request.data.get('branch')
+                group = request.data.get('group')
                 start_date = request.data.get('start_date')
                 end_date = request.data.get('end_date')
                 
                 if branch:
                     queryset = queryset.filter(branch_id=branch)
+                elif group:
+                    queryset = queryset.filter(branch__branch_group_id=group)
                 if start_date:
                     queryset = queryset.filter(call_time__date__gte=start_date)
                 if end_date:
@@ -54,7 +58,7 @@ class GenerateExportView(views.APIView):
                 worksheet = workbook.active
                 worksheet.title = "Call Logs"
                 
-                headers = ['Type', 'Number', 'Duration (s)', 'SIM Slot', 'Branch', 'Device ID', 'Time']
+                headers = ['Type', 'Number', 'Duration (s)', 'SIM Slot', 'Branch Group', 'Branch', 'Device ID', 'Time']
                 header_font = Font(bold=True)
                 for col_num, header_title in enumerate(headers, 1):
                     cell = worksheet.cell(row=1, column=col_num)
@@ -66,10 +70,11 @@ class GenerateExportView(views.APIView):
                     worksheet.cell(row=row_num, column=2).value = log.phone_number
                     worksheet.cell(row=row_num, column=3).value = log.duration
                     worksheet.cell(row=row_num, column=4).value = log.sim_slot
-                    worksheet.cell(row=row_num, column=5).value = log.branch.spa_name if log.branch else "N/A"
-                    worksheet.cell(row=row_num, column=6).value = log.device.device_id if log.device else "N/A"
+                    worksheet.cell(row=row_num, column=5).value = log.branch.branch_group.name if log.branch and log.branch.branch_group else "N/A"
+                    worksheet.cell(row=row_num, column=6).value = log.branch.spa_name if log.branch else "N/A"
+                    worksheet.cell(row=row_num, column=7).value = log.device.device_id if log.device else "N/A"
                     if log.call_time:
-                        worksheet.cell(row=row_num, column=7).value = log.call_time.strftime("%Y-%m-%d %H:%M:%S")
+                        worksheet.cell(row=row_num, column=8).value = log.call_time.strftime("%Y-%m-%d %H:%M:%S")
                 
                 # We could save this to a file or storage, but for "direct" we can store in memory 
                 # or just mark as completed. Since we need a later download, let's actually 
@@ -110,11 +115,14 @@ class DownloadExportView(views.APIView):
                 import ast
                 filters = ast.literal_eval(job.error_message) if job.error_message else {}
                 branch = filters.get('branch')
+                group = filters.get('group')
                 start_date = filters.get('start_date')
                 end_date = filters.get('end_date')
                 
                 if branch:
                     queryset = queryset.filter(branch_id=branch)
+                elif group:
+                    queryset = queryset.filter(branch__branch_group_id=group)
                 if start_date:
                     queryset = queryset.filter(call_time__date__gte=start_date)
                 if end_date:
@@ -126,7 +134,7 @@ class DownloadExportView(views.APIView):
             worksheet = workbook.active
             worksheet.title = "Call Logs"
             
-            headers = ['Type', 'Number', 'Duration (s)', 'SIM Slot', 'Branch', 'Device ID', 'Time']
+            headers = ['Type', 'Number', 'Duration (s)', 'SIM Slot', 'Branch Group', 'Branch', 'Device ID', 'Time']
             for col_num, header_title in enumerate(headers, 1):
                 worksheet.cell(row=1, column=col_num).value = header_title
             
@@ -135,10 +143,11 @@ class DownloadExportView(views.APIView):
                 worksheet.cell(row=row_num, column=2).value = log.phone_number
                 worksheet.cell(row=row_num, column=3).value = log.duration
                 worksheet.cell(row=row_num, column=4).value = log.sim_slot
-                worksheet.cell(row=row_num, column=5).value = log.branch.spa_name if log.branch else "N/A"
-                worksheet.cell(row=row_num, column=6).value = log.device.device_id if log.device else "N/A"
+                worksheet.cell(row=row_num, column=5).value = log.branch.branch_group.name if log.branch and log.branch.branch_group else "N/A"
+                worksheet.cell(row=row_num, column=6).value = log.branch.spa_name if log.branch else "N/A"
+                worksheet.cell(row=row_num, column=7).value = log.device.device_id if log.device else "N/A"
                 if log.call_time:
-                    worksheet.cell(row=row_num, column=7).value = log.call_time.strftime("%Y-%m-%d %H:%M:%S")
+                    worksheet.cell(row=row_num, column=8).value = log.call_time.strftime("%Y-%m-%d %H:%M:%S")
 
             output = io.BytesIO()
             workbook.save(output)

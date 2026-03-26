@@ -1,6 +1,7 @@
-import React, { useState, memo, useCallback } from 'react';
+import React, { useState, memo, useCallback, useEffect } from 'react';
 import Input from '../../../shared/components/Input';
 import Button from '../../../shared/components/Button';
+import { branchesAPI } from '../api';
 
 const BranchFilter = ({ onFilter }) => {
 
@@ -8,6 +9,22 @@ const BranchFilter = ({ onFilter }) => {
     const [city, setCity] = useState('');
     const [state, setState] = useState('');
     const [status, setStatus] = useState('');
+    const [group, setGroup] = useState('');
+    const [groups, setGroups] = useState([]);
+
+    useEffect(() => {
+        const fetchGroups = async () => {
+            try {
+                const response = await branchesAPI.getGroups({ all: true });
+                setGroups(response.data.results || response.data || []);
+            } catch (error) {
+                console.error("Failed to fetch groups", error);
+            }
+        };
+        fetchGroups();
+    }, []);
+
+    const handleGroupChange = useCallback((e) => setGroup(e.target.value), []);
 
     const handleSearchChange = useCallback((e) => setSearch(e.target.value), []);
     const handleCityChange = useCallback((e) => setCity(e.target.value), []);
@@ -22,9 +39,10 @@ const BranchFilter = ({ onFilter }) => {
         if (city) filters.city = city;
         if (state) filters.state = state;
         if (status !== '') filters.status = status;
+        if (group) filters.group = group;
 
         onFilter(filters);
-    }, [search, city, state, status, onFilter]);
+    }, [search, city, state, status, group, onFilter]);
 
     const handleClear = useCallback(() => {
 
@@ -32,13 +50,14 @@ const BranchFilter = ({ onFilter }) => {
         setCity('');
         setState('');
         setStatus('');
+        setGroup('');
 
         onFilter({});
     }, [onFilter]);
 
     return (
 
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-4 items-end">
 
             {/* SEARCH */}
 
@@ -89,14 +108,10 @@ const BranchFilter = ({ onFilter }) => {
 
             </div>
 
-            {/* STATUS */}
-
             <div>
-
                 <label className="block text-sm font-medium text-text-secondary mb-1">
                     Status
                 </label>
-
                 <select
                     className="block w-full px-3 py-2 bg-background border border-border rounded-md
                                text-text-primary text-sm
@@ -104,10 +119,32 @@ const BranchFilter = ({ onFilter }) => {
                     value={status}
                     onChange={handleStatusChange}
                 >
-
                     <option value="">All Statuses</option>
                     <option value="true">Active</option>
                     <option value="false">Inactive</option>
+                </select>
+            </div>
+
+            {/* GROUP */}
+
+            <div>
+
+                <label className="block text-sm font-medium text-text-secondary mb-1">
+                    Branch Group
+                </label>
+
+                <select
+                    className="block w-full px-3 py-2 bg-background border border-border rounded-md
+                               text-text-primary text-sm
+                               focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary"
+                    value={group}
+                    onChange={handleGroupChange}
+                >
+
+                    <option value="">All Groups</option>
+                    {groups.map(g => (
+                        <option key={g.id} value={g.id}>{g.name}</option>
+                    ))}
 
                 </select>
 

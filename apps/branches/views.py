@@ -22,9 +22,11 @@ Filters:
 from django.db import models
 from rest_framework import viewsets, permissions, status
 from rest_framework.response import Response
+from rest_framework.decorators import action
+from django.db import transaction
 
-from .models import Branch
-from .serializers import BranchSerializer
+from .models import Branch, BranchGroups
+from .serializers import BranchSerializer, BranchGroupSerializer
 from core.pagination import StandardResultsSetPagination
 from apps.common.permissions import IsAdminOrSuperAdmin
 
@@ -103,4 +105,39 @@ class BranchViewSet(viewsets.ModelViewSet):
         if is_active is not None:
             queryset = queryset.filter(is_active=is_active.lower() == "true")
 
+        # Filter by branch group
+        group = self.request.query_params.get("group", None)
+        if group:
+            queryset = queryset.filter(branch_group_id=group)
+
         return queryset
+
+
+class BranchGroupViewSet(viewsets.ModelViewSet):
+    """
+    CRUD for Branch Groups.
+    """
+    queryset = BranchGroups.objects.all().order_by("name")
+    serializer_class = BranchGroupSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_permissions(self):
+        if self.action in ["create", "update", "partial_update", "destroy", "assign_branches"]:
+            return [permissions.IsAuthenticated(), IsAdminOrSuperAdmin()]
+        return [permissions.IsAuthenticated()]
+
+    @action(detail=True, methods=['post'])
+    def assign_branches(self, request, pk=None):
+        group = self.get_object()
+        branch_ids = request.data.get('branch_ids', [])
+        
+        try:
+            with transaction.atomic():
+                # Unassign branches currently in this group
+                Branch.objects.filter(branch_group=group).update(branch_group=None)
+                # Assign selected branches to this group
+                if branch_ids:
+                    Branch.objects.filter(id__in=branch_ids).update(branch_group=group)
+            return Response({"status": "Branches assigned successfully"})
+        except Exception as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)

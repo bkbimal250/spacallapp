@@ -2,6 +2,8 @@ export const ROUTES = {
     LOGIN: '/login',
     DASHBOARD: '/',
     BRANCHES: '/branches',
+    BRANCH_LIST: '/branches/list',
+    BRANCH_GROUPS: '/branches/groups',
     DEVICES: '/devices',
     CALLLOGS: '/calllogs',
     CALLLOG_DETAILS: '/calllogs/details',

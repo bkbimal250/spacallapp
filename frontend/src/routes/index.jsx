@@ -11,6 +11,8 @@ const Login = lazy(() => import('../modules/auth/pages/Login'));
 const DashboardHome = lazy(() => import('../modules/dashboard/pages/DashboardHome'));
 const UserList = lazy(() => import('../modules/users/pages/UserList'));
 const BranchList = lazy(() => import('../modules/branches/pages/BranchList'));
+const GroupList = lazy(() => import('../modules/branches/pages/GroupList'));
+const Branch = lazy(() => import('../modules/branches/pages/Branch'));
 const DeviceList = lazy(() => import('../modules/devices/pages/DeviceList'));
 const CallLogSummary = lazy(() => import('../modules/calllogs/pages/CallLogSummary'));
 const CallLogList = lazy(() => import('../modules/calllogs/pages/CallLogList'));
@@ -39,7 +41,12 @@ export const AppRoutes = () => {
                 <Route element={<PrivateRoute />}>
                     <Route element={<DashboardLayout />}>
                         <Route path={ROUTES.DASHBOARD} element={<DashboardHome />} />
-                        <Route path={ROUTES.BRANCHES} element={<BranchList />} />
+                        {/* BRANCH SUB-MODULE WITH NESTED TABS */}
+                        <Route path={ROUTES.BRANCHES} element={<Branch />}>
+                            <Route index element={<BranchList />} />
+                            <Route path="groups" element={<GroupList />} />
+                        </Route>
+
                         <Route path={ROUTES.DEVICES} element={<DeviceList />} />
                         <Route path={ROUTES.CALLLOGS} element={<CallLogSummary />} />
                         <Route path={ROUTES.CALLLOG_DETAILS} element={<CallLogList />} />

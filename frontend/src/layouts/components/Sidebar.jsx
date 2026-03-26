@@ -8,6 +8,7 @@ import { removeToken, removeUser } from '../../shared/services/tokenService';
 import {
     LayoutDashboard,
     GitBranch,
+    Layers,
     Smartphone,
     PhoneCall,
     Activity,
@@ -37,6 +38,7 @@ const Sidebar = () => {
     const navItems = [
         { to: ROUTES.DASHBOARD, label: 'Dashboard', icon: LayoutDashboard },
         { to: ROUTES.BRANCHES, label: 'Branches', icon: GitBranch },
+        { to: ROUTES.BRANCH_GROUPS, label: 'Branch Groups', icon: Layers },
         { to: ROUTES.DEVICES, label: 'Devices', icon: Smartphone },
         { to: ROUTES.CALLLOGS, label: 'Call Logs', icon: PhoneCall },
         { to: ROUTES.MONITORING, label: 'Monitoring', icon: Activity },

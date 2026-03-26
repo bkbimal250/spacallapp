@@ -4,9 +4,11 @@ import { branchesAPI } from '../api';
 import Table from '../../../shared/components/Table';
 import Button from '../../../shared/components/Button';
 import BranchForm from '../components/BranchForm';
+import GroupForm from '../components/GroupForm';
 import BranchFilter from '../components/BranchFilter';
 import BranchStats from '../components/BranchStats';
 import Pagination from '../../../shared/components/Pagination';
+import BranchTabs from '../components/BranchTabs';
 
 import {
     Edit,
@@ -24,6 +26,7 @@ const BranchList = () => {
     const [branches, setBranches] = useState([]);
     const [loading, setLoading] = useState(true);
     const [isModalOpen, setIsModalOpen] = useState(false);
+    const [isGroupModalOpen, setIsGroupModalOpen] = useState(false);
     const [editingBranch, setEditingBranch] = useState(null);
     const [filters, setFilters] = useState({});
     const [page, setPage] = useState(1);
@@ -118,9 +121,7 @@ const BranchList = () => {
     };
 
     const handleSubmit = async (data) => {
-
         try {
-
             if (editingBranch) {
                 await branchesAPI.updateBranch(editingBranch.id, data);
             } else {
@@ -130,18 +131,33 @@ const BranchList = () => {
             setIsModalOpen(false);
             fetchBranches(filters, page);
             fetchStats();
-
         } catch (error) {
-
             console.error("Failed to save branch", error);
-
         }
+    };
 
+    const handleGroupSubmit = async (data) => {
+        try {
+            await branchesAPI.createGroup(data);
+            setIsGroupModalOpen(false);
+            // Re-fetch branches as groups might be updated/added
+            fetchBranches(filters, page);
+        } catch (error) {
+            console.error("Failed to save branch group", error);
+        }
     };
 
     const columns = useMemo(() => [
 
         { header: 'Spa Name', accessor: 'spa_name' },
+        {
+            header: 'Group',
+            render: (row) => (
+                <span className="px-2 py-0.5 text-xs font-semibold rounded-md bg-primary/10 text-primary">
+                    {row.branch_group_name || 'Unassigned'}
+                </span>
+            )
+        },
         { header: 'Branch Code', accessor: 'code' },
         { header: 'Area', accessor: 'area' },
         { header: 'Postal Code', accessor: 'postal_code' },
@@ -220,27 +236,25 @@ const BranchList = () => {
     ], [navigate]);
 
     return (
-
         <div className="space-y-6">
-
-            {/* HEADER */}
-
-            <div className="flex justify-between items-center">
-
-                <h1 className="text-2xl font-semibold text-text-primary">
-                    Branches
-                </h1>
+            <div className="flex justify-end gap-3">
+                <Button
+                    variant="secondary"
+                    onClick={() => setIsGroupModalOpen(true)}
+                    className="flex items-center gap-2 text-sm"
+                >
+                    <Plus size={14} />
+                    Add Group
+                </Button>
 
                 <Button
                     onClick={handleCreate}
-                    className="flex items-center gap-2"
+                    className="flex items-center gap-2 text-sm"
                 >
-                    <Plus size={16} />
+                    <Plus size={14} />
                     Add Branch
                 </Button>
-
             </div>
-
             {/* STATS */}
             <BranchStats stats={stats} />
 
@@ -300,6 +314,14 @@ const BranchList = () => {
                 onClose={() => setIsModalOpen(false)}
                 onSubmit={handleSubmit}
                 initialData={editingBranch}
+            />
+
+            {/* GROUP FORM MODAL */}
+
+            <GroupForm
+                isOpen={isGroupModalOpen}
+                onClose={() => setIsGroupModalOpen(false)}
+                onSubmit={handleGroupSubmit}
             />
 
         </div>

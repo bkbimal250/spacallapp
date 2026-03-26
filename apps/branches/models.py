@@ -53,6 +53,16 @@ class Branch(BaseModel, TimeStampedModel, SoftDeleteModel):
     # Active flag — inactive branches won't receive new call logs
     is_active = models.BooleanField(default=True)
 
+    # ✅ IMPORTANT: One branch → one group
+    branch_group = models.ForeignKey(
+        "BranchGroups",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="branches",
+        help_text="Each branch belongs to only one group"
+    )
+
     class Meta:
         db_table = "branches"
         indexes = [
@@ -65,3 +75,25 @@ class Branch(BaseModel, TimeStampedModel, SoftDeleteModel):
 
     def __str__(self):
         return f"{self.spa_name} ({self.code})"
+
+
+
+class BranchGroups(BaseModel, TimeStampedModel, SoftDeleteModel):
+    """
+    Represents a group of branches.
+
+    One group can have multiple branches,
+    but each branch belongs to only one group.
+    """
+
+    name = models.CharField(max_length=255, unique=True)
+
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        db_table = "branch_groups"
+        verbose_name = "Branch Group"
+        verbose_name_plural = "Branch Groups"
+
+    def __str__(self):
+        return self.name
