@@ -84,191 +84,144 @@ const Login = () => {
     };
 
     return (
-        <div className="w-full max-w-lg px-4 flex flex-col items-center">
-            {/* Logo/Icon */}
-            <div className="mb-8 p-4 bg-primary/10 rounded-2xl animate-in">
-                <ShieldCheck className="h-10 w-10 text-primary" />
-            </div>
+        <div className="w-full max-w-md px-4 flex flex-col items-center">
 
-            <div className="w-full glass shadow-2xl rounded-[2rem] p-8 md:p-12 border border-white/40 animate-in">
-                {/* Header */}
-                <div className="text-center mb-10">
-                    <h1 className="text-3xl font-bold text-text-primary tracking-tight">
-                        Welcome Back
-                    </h1>
-                    <p className="text-text-secondary mt-2 font-medium">
-                        Secure access to your management dashboard
-                    </p>
-                </div>
+            {/* Card */}
+            <div className="w-full bg-card border border-border rounded-2xl p-6 shadow-lg">
 
                 {/* Tabs */}
-                <div className="flex bg-slate-100/50 p-1.5 rounded-2xl mb-8 border border-slate-200">
+                <div className="flex bg-background p-1 rounded-xl mb-6">
                     <button
                         onClick={() => {
                             setLoginMode('password');
                             setOtpSent(false);
                             dispatch(loginFailure(null));
                         }}
-                        className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-sm font-semibold rounded-xl transition-all duration-300 ${loginMode === 'password'
-                            ? 'bg-white text-primary shadow-sm'
-                            : 'text-text-muted hover:text-text-secondary'
+                        className={`flex-1 py-2 text-sm font-medium rounded-lg transition ${loginMode === 'password'
+                                ? 'bg-primary text-white'
+                                : 'text-text-secondary'
                             }`}
                     >
-                        <Lock className="h-4 w-4" />
                         Password
                     </button>
+
                     <button
                         onClick={() => {
                             setLoginMode('otp');
                             dispatch(loginFailure(null));
                         }}
-                        className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-sm font-semibold rounded-xl transition-all duration-300 ${loginMode === 'otp'
-                            ? 'bg-white text-primary shadow-sm'
-                            : 'text-text-muted hover:text-text-secondary'
+                        className={`flex-1 py-2 text-sm font-medium rounded-lg transition ${loginMode === 'otp'
+                                ? 'bg-primary text-white'
+                                : 'text-text-secondary'
                             }`}
                     >
-                        <Mail className="h-4 w-4" />
-                        OTP Flow
+                        OTP
                     </button>
                 </div>
 
-                {/* Error Alert */}
+                {/* Error */}
                 {error && (
-                    <div className="mb-6 p-4 text-sm bg-danger/5 border border-danger/20 text-danger rounded-2xl flex items-start gap-3 animate-in">
-                        <div className="mt-0.5">⚠️</div>
-                        <span className="font-medium">{error}</span>
+                    <div className="mb-4 px-3 py-2 text-sm bg-danger/10 border border-danger/30 text-danger rounded-lg">
+                        {error}
                     </div>
                 )}
 
-                {/* Form Sections */}
+                {/* PASSWORD LOGIN */}
                 {loginMode === 'password' ? (
-                    <form onSubmit={handlePasswordLogin} className="space-y-5">
-                        <div className="space-y-2">
-                            <label className="text-xs font-bold text-text-secondary uppercase tracking-wider ml-1">Email Address</label>
-                            <div className="relative group">
-                                <Mail className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-text-muted group-focus-within:text-primary transition-colors" />
-                                <input
-                                    type="email"
-                                    required
-                                    placeholder="admin@example.com"
-                                    value={email}
-                                    onChange={(e) => setEmail(e.target.value)}
-                                    className="w-full pl-12 pr-4 py-3.5 bg-white/50 border border-slate-200 rounded-2xl text-text-primary placeholder:text-text-muted focus:ring-4 focus:ring-primary/10 focus:border-primary outline-none transition-all"
-                                />
-                            </div>
-                        </div>
+                    <form onSubmit={handlePasswordLogin} className="space-y-4">
 
-                        <div className="space-y-2">
-                            <label className="text-xs font-bold text-text-secondary uppercase tracking-wider ml-1">Password</label>
-                            <div className="relative group">
-                                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-text-muted group-focus-within:text-primary transition-colors" />
-                                <input
-                                    type="password"
-                                    required
-                                    placeholder="••••••••"
-                                    value={password}
-                                    onChange={(e) => setPassword(e.target.value)}
-                                    className="w-full pl-12 pr-4 py-3.5 bg-white/50 border border-slate-200 rounded-2xl text-text-primary placeholder:text-text-muted focus:ring-4 focus:ring-primary/10 focus:border-primary outline-none transition-all"
-                                />
-                            </div>
-                        </div>
+                        <input
+                            type="email"
+                            placeholder="Email"
+                            value={email}
+                            onChange={(e) => setEmail(e.target.value)}
+                            className="w-full px-4 py-2.5 bg-background border border-border rounded-lg text-text-primary placeholder:text-text-muted focus:ring-2 focus:ring-primary/30 outline-none"
+                        />
+
+                        <input
+                            type="password"
+                            placeholder="Password"
+                            value={password}
+                            onChange={(e) => setPassword(e.target.value)}
+                            className="w-full px-4 py-2.5 bg-background border border-border rounded-lg text-text-primary placeholder:text-text-muted focus:ring-2 focus:ring-primary/30 outline-none"
+                        />
 
                         <button
                             type="submit"
                             disabled={loading}
-                            className="w-full py-4 bg-primary hover:bg-primary-hover text-white font-bold rounded-2xl shadow-lg shadow-primary/20 transition-all active:scale-[0.98] disabled:opacity-70 disabled:active:scale-100 flex items-center justify-center gap-2 group"
+                            className="w-full py-2.5 bg-primary hover:bg-primary-hover text-white rounded-lg font-semibold flex justify-center items-center gap-2 transition"
                         >
-                            {loading ? (
-                                <Loader2 className="h-5 w-5 animate-spin" />
-                            ) : (
-                                <>
-                                    Sign In <ArrowRight className="h-5 w-5 group-hover:translate-x-1 transition-transform" />
-                                </>
-                            )}
+                            {loading ? 'Loading...' : 'Login'}
                         </button>
+
                     </form>
                 ) : (
-                    <div className="space-y-6">
+                    <div className="space-y-4">
+
                         {!otpSent ? (
-                            <form onSubmit={handleRequestOTP} className="space-y-5 animate-in">
-                                <div className="space-y-2">
-                                    <label className="text-xs font-bold text-text-secondary uppercase tracking-wider ml-1">Secure Email</label>
-                                    <div className="relative group">
-                                        <Mail className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-text-muted group-focus-within:text-primary transition-colors" />
-                                        <input
-                                            type="email"
-                                            required
-                                            placeholder="Verify your email"
-                                            value={email}
-                                            onChange={(e) => setEmail(e.target.value)}
-                                            className="w-full pl-12 pr-4 py-3.5 bg-white/50 border border-slate-200 rounded-2xl text-text-primary focus:ring-4 focus:ring-primary/10 focus:border-primary outline-none transition-all"
-                                        />
-                                    </div>
-                                </div>
+                            <form onSubmit={handleRequestOTP} className="space-y-4">
+
+                                <input
+                                    type="email"
+                                    placeholder="Enter Email"
+                                    value={email}
+                                    onChange={(e) => setEmail(e.target.value)}
+                                    className="w-full px-4 py-2.5 bg-background border border-border rounded-lg text-text-primary focus:ring-2 focus:ring-primary/30 outline-none"
+                                />
 
                                 <button
                                     type="submit"
                                     disabled={requestLoading}
-                                    className="w-full py-4 bg-primary hover:bg-primary-hover text-white font-bold rounded-2xl shadow-lg shadow-primary/20 transition-all flex items-center justify-center gap-2"
+                                    className="w-full py-2.5 bg-primary hover:bg-primary-hover text-white rounded-lg font-semibold transition"
                                 >
-                                    {requestLoading ? (
-                                        <Loader2 className="h-5 w-5 animate-spin" />
-                                    ) : (
-                                        <>Send Security Code <Sparkles className="h-4 w-4" /></>
-                                    )}
+                                    {requestLoading ? 'Sending...' : 'Send OTP'}
                                 </button>
+
                             </form>
                         ) : (
-                            <form onSubmit={handleVerifyOTP} className="space-y-6 animate-in">
-                                <div className="text-center">
-                                    <div className="inline-block p-3 bg-info/10 text-info rounded-xl mb-4">
-                                        <Mail className="h-6 w-6" />
-                                    </div>
-                                    <p className="text-sm text-text-secondary">
-                                        We've sent a 6-digit code to <br />
-                                        <span className="font-bold text-text-primary">{email}</span>
-                                    </p>
-                                </div>
+                            <form onSubmit={handleVerifyOTP} className="space-y-4">
 
-                                <div className="space-y-4">
-                                    <input
-                                        type="text"
-                                        maxLength="6"
-                                        required
-                                        value={otp}
-                                        onChange={(e) => setOtp(e.target.value)}
-                                        placeholder="0 0 0 0 0 0"
-                                        className="w-full py-4 text-center text-3xl font-extrabold tracking-[0.5em] bg-slate-50 border border-slate-200 rounded-2xl text-primary focus:ring-4 focus:ring-primary/10 focus:border-primary outline-none transition-all placeholder:text-slate-200"
-                                    />
+                                <p className="text-sm text-text-secondary text-center">
+                                    OTP sent to <span className="text-text-primary font-semibold">{email}</span>
+                                </p>
 
-                                    <button
-                                        type="submit"
-                                        disabled={loading}
-                                        className="w-full py-4 bg-primary hover:bg-primary-hover text-white font-bold rounded-2xl shadow-lg shadow-primary/20 transition-all flex items-center justify-center gap-2"
-                                    >
-                                        {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : 'Verify & Continue'}
-                                    </button>
+                                <input
+                                    type="text"
+                                    maxLength="6"
+                                    value={otp}
+                                    onChange={(e) => setOtp(e.target.value)}
+                                    placeholder="------"
+                                    className="w-full text-center text-xl tracking-widest py-3 bg-background border border-border rounded-lg text-text-primary focus:ring-2 focus:ring-primary/30 outline-none"
+                                />
 
-                                    <button
-                                        type="button"
-                                        onClick={() => setOtpSent(false)}
-                                        className="w-full py-2 text-sm font-semibold text-text-muted hover:text-primary transition-colors"
-                                    >
-                                        Incorrect email? Go back
-                                    </button>
-                                </div>
+                                <button
+                                    type="submit"
+                                    disabled={loading}
+                                    className="w-full py-2.5 bg-primary hover:bg-primary-hover text-white rounded-lg font-semibold transition"
+                                >
+                                    {loading ? 'Verifying...' : 'Verify'}
+                                </button>
+
+                                <button
+                                    type="button"
+                                    onClick={() => setOtpSent(false)}
+                                    className="text-sm text-text-muted w-full hover:text-primary transition"
+                                >
+                                    Change Email
+                                </button>
+
                             </form>
                         )}
                     </div>
                 )}
             </div>
 
-            {/* Footer Info */}
-            <p className="mt-12 text-sm text-text-muted font-medium flex items-center gap-2">
-                <ShieldCheck className="h-4 w-4" /> Protected by CallLog Secure Access
+            {/* Footer */}
+            <p className="mt-6 text-xs text-text-muted">
+                Secure Access System
             </p>
         </div>
     );
 };
 
-export default Login;
+export default Login;
