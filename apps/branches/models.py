@@ -28,10 +28,9 @@ class Branch(BaseModel, TimeStampedModel, SoftDeleteModel):
     # Human-readable name of the spa / branch
     spa_name = models.CharField(max_length=255, help_text="Full name of the Spa location.")
 
-    # Unique short code for the branch, e.g. 'SPA-001' — used in device ID generation
+    # Unique short code for the branch, e.g. 'SPA-001'
     code = models.CharField(
         max_length=20,
-        unique=True,
         help_text="Unique short code identifying this branch (e.g. 'SPA-001')."
     )
 
@@ -65,6 +64,13 @@ class Branch(BaseModel, TimeStampedModel, SoftDeleteModel):
 
     class Meta:
         db_table = "branches"
+        constraints = [
+            models.UniqueConstraint(
+                fields=['code'], 
+                condition=models.Q(is_deleted=False),
+                name='unique_code_if_not_deleted'
+            )
+        ]
         indexes = [
             models.Index(fields=["code"]),
             models.Index(fields=["state", "city"]),
@@ -86,12 +92,19 @@ class BranchGroups(BaseModel, TimeStampedModel, SoftDeleteModel):
     but each branch belongs to only one group.
     """
 
-    name = models.CharField(max_length=255, unique=True)
+    name = models.CharField(max_length=255)
 
     is_active = models.BooleanField(default=True)
 
     class Meta:
         db_table = "branch_groups"
+        constraints = [
+            models.UniqueConstraint(
+                fields=['name'], 
+                condition=models.Q(is_deleted=False),
+                name='unique_name_if_not_deleted'
+            )
+        ]
         verbose_name = "Branch Group"
         verbose_name_plural = "Branch Groups"
 

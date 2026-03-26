@@ -81,7 +81,13 @@ const BranchForm = ({ isOpen, onClose, onSubmit, initialData }) => {
 
     const handleSubmit = (e) => {
         e.preventDefault();
-        onSubmit(formData);
+        
+        const data = {
+            ...formData,
+            branch_group: formData.branch_group === '' ? null : formData.branch_group
+        };
+        
+        onSubmit(data);
     };
 
     return (
