@@ -6,8 +6,12 @@ import { branchesAPI } from '../../branches/api';
 const DeviceFilter = ({ onFilter }) => {
 
     const [selectedBranch, setSelectedBranch] = useState('');
+    const [selectedCity, setSelectedCity] = useState('');
+    const [selectedArea, setSelectedArea] = useState('');
     const [registrationStatus, setRegistrationStatus] = useState('');
     const [branches, setBranches] = useState([]);
+    const [cities, setCities] = useState([]);
+    const [areas, setAreas] = useState([]);
 
     useEffect(() => {
         const fetchBranches = async () => {
@@ -23,6 +27,13 @@ const DeviceFilter = ({ onFilter }) => {
                     }))
                 );
 
+                // Extract unique cities and areas
+                const uniqueCities = [...new Set(branchData.map(b => b.city).filter(Boolean))];
+                const uniqueAreas = [...new Set(branchData.map(b => b.area).filter(Boolean))];
+
+                setCities(uniqueCities.map(city => ({ value: city, label: city })));
+                setAreas(uniqueAreas.map(area => ({ value: area, label: area })));
+
             } catch (error) {
                 console.error("Failed to fetch branches for filter", error);
             }
@@ -35,6 +46,8 @@ const DeviceFilter = ({ onFilter }) => {
         const filters = {};
 
         if (selectedBranch) filters.branch = selectedBranch;
+        if (selectedCity) filters.city = selectedCity;
+        if (selectedArea) filters.area = selectedArea;
         if (registrationStatus !== '') filters.is_registered = registrationStatus;
 
         onFilter(filters);
@@ -42,6 +55,8 @@ const DeviceFilter = ({ onFilter }) => {
 
     const handleClear = () => {
         setSelectedBranch('');
+        setSelectedCity('');
+        setSelectedArea('');
         setRegistrationStatus('');
         onFilter({});
     };
@@ -53,8 +68,8 @@ const DeviceFilter = ({ onFilter }) => {
             {/* 🔥 FILTER GRID */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-end">
 
-                {/* 🔥 BRANCH (WIDE) */}
-                <div className="lg:col-span-2 space-y-1">
+                {/* 🔥 BRANCH */}
+                <div className="space-y-1">
                     <SearchableSelect
                         label="Branch"
                         placeholder="All Branches"
@@ -65,8 +80,34 @@ const DeviceFilter = ({ onFilter }) => {
                     />
                 </div>
 
+                {/* city Filter */}
+                <div className="space-y-1">
+                    <SearchableSelect
+                        label="City"
+                        placeholder="All Cities"
+                        options={cities}
+                        value={selectedCity}
+                        onChange={setSelectedCity}
+                        className="w-full bg-card border-border"
+                    />
+                </div>
+
+                {/* branch Area Filter */}
+                <div className="space-y-1">
+                    <SearchableSelect
+                        label="Area"
+                        placeholder="All Areas"
+                        options={areas}
+                        value={selectedArea}
+                        onChange={setSelectedArea}
+                        className="w-full bg-card border-border"
+                    />
+                </div>
+
+
+
                 {/* 🔥 REGISTRATION STATUS */}
-                <div className="lg:col-span-2 space-y-1">
+                <div className="space-y-1">
                     <label className="text-xs font-semibold text-text-secondary uppercase tracking-wide">
                         Registration Status
                     </label>

@@ -90,6 +90,11 @@ class DeviceViewSet(viewsets.ModelViewSet):
         if city:
             queryset = queryset.filter(branch__city__icontains=city)
 
+        # Filter by branch area
+        area = self.request.query_params.get("area", None)
+        if area:
+            queryset = queryset.filter(branch__area__icontains=area)
+
         # Filter by branch state
         state = self.request.query_params.get("state", None)
         if state:
