@@ -118,6 +118,10 @@ class DashboardStatsView(APIView):
         total_users = user_qs.count()
         total_exports = export_qs.count()
 
+        # Today's total calls
+        today_start = timezone.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        today_total_calls = calls_qs.filter(call_time__gte=today_start).count()
+
         # Average call duration (formatted as "Xm Ys")
         avg_dur = calls_qs.aggregate(Avg("duration"))["duration__avg"]
         if avg_dur:
@@ -185,6 +189,7 @@ class DashboardStatsView(APIView):
             "total_contacts": total_contacts,
             "total_users": total_users,
             "total_exports": total_exports,
+            "today_total_calls": today_total_calls,
             "avg_duration": avg_duration_str,
             "call_volume_trends": chart_data,
             "branch_performance": branch_data,

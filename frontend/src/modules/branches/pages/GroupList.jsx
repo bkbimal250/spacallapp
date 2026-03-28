@@ -4,6 +4,8 @@ import Table from '../../../shared/components/Table';
 import Button from '../../../shared/components/Button';
 import GroupForm from '../components/GroupForm';
 import BranchAssignmentModal from '../components/BranchAssignmentModal';
+import ViewGroupModal from '../components/ViewGroupModal';
+import BranchGroupStats from '../components/BranchGroupStats';
 import BranchTabs from '../components/BranchTabs';
 import {
     Edit,
@@ -11,29 +13,51 @@ import {
     Plus,
     Layers,
     MapPin,
-    Users
+    Users,
+    Eye
 } from 'lucide-react';
 
 const GroupList = () => {
 
     const [groups, setGroups] = useState([]);
+    const [branches, setBranches] = useState([]);
     const [loading, setLoading] = useState(true);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
+    const [isViewModalOpen, setIsViewModalOpen] = useState(false);
     const [editingGroup, setEditingGroup] = useState(null);
+    const [viewingGroup, setViewingGroup] = useState(null);
     const [assigningGroup, setAssigningGroup] = useState(null);
 
     const fetchGroups = useCallback(async () => {
         setLoading(true);
         try {
-            const response = await branchesAPI.getGroups({ all: true });
-            setGroups(response.data.results || response.data || []);
+            const [groupRes, branchRes] = await Promise.all([
+                branchesAPI.getGroups({ all: true }),
+                branchesAPI.getBranches({ all: true })
+            ]);
+            
+            setGroups(groupRes.data.results || groupRes.data || []);
+            setBranches(branchRes.data.results || branchRes.data || []);
         } catch (error) {
-            console.error("Failed to fetch branch groups", error);
+            console.error("Failed to fetch branch data", error);
         } finally {
             setLoading(false);
         }
     }, []);
+
+    const groupStats = useMemo(() => {
+        const totalGroups = groups.length;
+        const totalBranches = branches.length;
+        const assignedBranches = branches.filter(b => b.branch_group !== null).length;
+        const unassignedBranches = totalBranches - assignedBranches;
+
+        return {
+            totalGroups,
+            assignedBranches,
+            unassignedBranches
+        };
+    }, [groups, branches]);
 
     useEffect(() => {
         fetchGroups();
@@ -47,6 +71,11 @@ const GroupList = () => {
     const handleEdit = (group) => {
         setEditingGroup(group);
         setIsModalOpen(true);
+    };
+
+    const handleView = (group) => {
+        setViewingGroup(group);
+        setIsViewModalOpen(true);
     };
 
     const handleManageBranches = (group) => {
@@ -116,6 +145,15 @@ const GroupList = () => {
             header: 'Actions',
             render: (row) => (
                 <div className="flex gap-2">
+
+                    <button
+                        onClick={() => handleView(row)}
+                        className='p-1 rounded-md text-info hover:bg-info/10 flex items-center gap-1 transition-all'
+                        title='View Group Details'
+                    >
+                        <Eye className='mr-1 text-info' size={16} />
+                        <span className="text-xs font-medium">View</span>
+                    </button>
                     <button
                         onClick={() => handleManageBranches(row)}
                         className="p-1 rounded-md text-info hover:bg-info/10 flex items-center gap-1"
@@ -145,6 +183,8 @@ const GroupList = () => {
 
     return (
         <div className="space-y-6">
+            <BranchGroupStats stats={groupStats} />
+
             <div className="flex justify-end pr-1">
                 <Button
                     onClick={handleCreate}
@@ -183,6 +223,12 @@ const GroupList = () => {
                 onClose={() => setIsAssignModalOpen(false)}
                 group={assigningGroup}
                 onAssign={fetchGroups}
+            />
+
+            <ViewGroupModal
+                isOpen={isViewModalOpen}
+                onClose={() => setIsViewModalOpen(false)}
+                group={viewingGroup}
             />
         </div>
     );

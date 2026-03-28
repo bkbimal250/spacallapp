@@ -35,6 +35,7 @@ const DashboardHome = () => {
         total_contacts: 0,
         total_users: 0,
         total_exports: 0,
+        today_total_calls: 0,
         avg_duration: '0m 0s'
     });
 
@@ -113,6 +114,7 @@ const DashboardHome = () => {
         { title: "Total Contacts", value: stats.total_contacts, icon: UserPlus, color: "text-cyan-400", bg: "bg-cyan-500/10" },
         { title: "Total Exports", value: stats.total_exports, icon: FileJson, color: "text-danger", bg: "bg-danger/10" },
         { title: "Total Calls", value: stats.total_calls, icon: PhoneCall, color: "text-primary", bg: "bg-primary/10" },
+        { title: "Today Total Calls", value: stats.today_total_calls, icon: PhoneCall, color: "text-primary", bg: "bg-primary/10" },
     ], [stats]);
 
     if (loading)
