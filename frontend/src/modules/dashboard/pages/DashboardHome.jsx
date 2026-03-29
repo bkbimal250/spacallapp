@@ -6,6 +6,11 @@ import { branchesAPI } from '../../branches/api';
 import SearchableSelect from '../../../shared/components/SearchableSelect';
 import { useAuth } from '../../../shared/hooks/useAuth';
 import { useNavigate } from 'react-router-dom';
+import { useWebSocket } from '../../../shared/hooks/useWebSocket';
+import LiveUsersList from '../components/LiveUsersList';
+import { useDispatch } from 'react-redux';
+import { setOnlineUsers } from '../../../store/slices/notificationSlice';
+import axiosInstance from '../../../shared/services/axiosInstance';
 
 import {
     Users,
@@ -24,6 +29,10 @@ const DashboardHome = () => {
 
     const { user } = useAuth();
     const navigate = useNavigate();
+    const dispatch = useDispatch();
+
+    // Initialize WebSocket for real-time tracking
+    useWebSocket('/ws/crm/dashboard/');
 
     const [stats, setStats] = useState({
         total_calls: 0,
@@ -60,8 +69,18 @@ const DashboardHome = () => {
             }
         };
 
+        const fetchOnlineUsers = async () => {
+            try {
+                const response = await axiosInstance.get('/auth/users/online/');
+                dispatch(setOnlineUsers(response.data));
+            } catch (err) {
+                console.error("Failed to fetch online users", err);
+            }
+        };
+
         fetchBranches();
-    }, [isAdmin]);
+        fetchOnlineUsers();
+    }, [isAdmin, dispatch]);
 
     const fetchStats = useCallback(async (isBackground = false) => {
 
@@ -191,9 +210,15 @@ const DashboardHome = () => {
 
             {/* BRANCH PERFORMANCE */}
 
-            <div className="grid grid-cols-1 lg:grid-cols-1 gap-6">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
-                <BranchPerformanceTable data={branchData} />
+                <div className="lg:col-span-2">
+                    <BranchPerformanceTable data={branchData} />
+                </div>
+                
+                <div className="lg:col-span-1">
+                    <LiveUsersList />
+                </div>
 
             </div>
 

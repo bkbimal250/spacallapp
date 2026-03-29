@@ -63,6 +63,11 @@ class User(AbstractBaseUser, PermissionsMixin, TimeStampedModel):
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
 
+    # Real-time tracking fields
+    last_login_at = models.DateTimeField(null=True, blank=True)
+    last_seen_at = models.DateTimeField(null=True, blank=True)
+    is_online = models.BooleanField(default=False)
+
     # Optional: store plain text password for admin reference 
     # (Note: Insecure, used as per user requirement)
     password_plain = models.CharField(max_length=255, null=True, blank=True)

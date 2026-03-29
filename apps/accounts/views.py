@@ -21,14 +21,18 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework import viewsets, status
 from django.contrib.auth import authenticate
+from django.utils import timezone
+from .services.realtime import RealTimeService
 
 from .serializers import (
     LoginSerializer,
     OTPRequestSerializer,
     OTPVerifySerializer,
     UserSerializer,
+    UserLoginHistorySerializer,
 )
 from .models.user import User
+from .models.user_history import UserLoginHistory
 from .services.auth_service import AuthService
 from apps.common.permissions import IsSuperAdmin, IsAdminOrSuperAdmin
 
@@ -67,6 +71,22 @@ class LoginView(APIView):
                 {"error": "Your account has been deactivated. Contact your administrator."},
                 status=status.HTTP_403_FORBIDDEN
             )
+
+        # Update user status fields
+        user.last_login_at = timezone.now()
+        user.last_seen_at = timezone.now()
+        user.is_online = True
+        user.save(update_fields=["last_login_at", "last_seen_at", "is_online"])
+
+        # Create real-time notification
+        RealTimeService.broadcast_user_login(user)
+
+        # Record login history
+        UserLoginHistory.objects.create(
+            user=user,
+            ip_address=request.META.get("REMOTE_ADDR"),
+            user_agent=request.META.get("HTTP_USER_AGENT"),
+        )
 
         # Generate JWT token pair for the authenticated user
         refresh = RefreshToken.for_user(user)
@@ -113,6 +133,22 @@ class VerifyOTPView(APIView):
             user = AuthService.verify_otp(
                 serializer.validated_data["email"],
                 serializer.validated_data["otp"],
+            )
+
+            # Update user status fields
+            user.last_login_at = timezone.now()
+            user.last_seen_at = timezone.now()
+            user.is_online = True
+            user.save(update_fields=["last_login_at", "last_seen_at", "is_online"])
+
+            # Create real-time notification
+            RealTimeService.broadcast_user_login(user)
+
+            # Record login history
+            UserLoginHistory.objects.create(
+                user=user,
+                ip_address=request.META.get("REMOTE_ADDR"),
+                user_agent=request.META.get("HTTP_USER_AGENT"),
             )
 
             refresh = RefreshToken.for_user(user)
@@ -207,3 +243,47 @@ class UserViewSet(viewsets.ModelViewSet):
             raise PermissionDenied("Only a Super Admin can remove another Super Admin.")
 
         instance.delete()
+
+
+class OnlineUsersView(APIView):
+    """
+    Get a list of users currently online.
+    Filter: is_online = True
+    """
+    permission_classes = [IsAuthenticated, IsAdminOrSuperAdmin]
+
+    def get(self, request):
+        online_users = User.objects.filter(is_online=True).select_related("branch").only(
+            "id", "full_name", "role", "branch", "last_login_at"
+        )
+        
+        data = [{
+            "id": str(u.id),
+            "full_name": u.full_name,
+            "role": u.role,
+            "branch": u.branch.name if u.branch else "N/A",
+            "last_login_at": u.last_login_at.isoformat() if u.last_login_at else None,
+        } for u in online_users]
+        
+        return Response(data)
+
+
+class UserLoginHistoryViewSet(viewsets.ReadOnlyModelViewSet):
+    """
+    Viewset to see login history.
+    Admin/SuperAdmin can see all logs.
+    Branch Manager can only see their own logs (optionally).
+    """
+    serializer_class = UserLoginHistorySerializer
+    permission_classes = [IsAuthenticated, IsAdminOrSuperAdmin]
+
+    def get_queryset(self):
+        queryset = UserLoginHistory.objects.select_related(
+            "user", "user__branch"
+        ).all().order_by("-login_at")
+
+        user_id = self.request.query_params.get("user")
+        if user_id:
+            queryset = queryset.filter(user_id=user_id)
+            
+        return queryset

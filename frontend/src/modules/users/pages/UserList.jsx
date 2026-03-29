@@ -9,6 +9,7 @@ import Pagination from '../../../shared/components/Pagination';
 import { Edit, Trash2, Plus, Copy, Check, Eye, EyeOff } from 'lucide-react';
 import { formatDate } from '../../../shared/utils/formatDate';
 import { useAuth } from '../../../shared/hooks/useAuth';
+import { useNavigate } from 'react-router-dom';
 import { PageSpinner, ContentSkeleton } from '../../../shared/components/loaders';
 
 const EmailCell = ({ row, isSuperAdmin }) => {
@@ -90,6 +91,7 @@ const PasswordCell = ({ row }) => {
 
 const UserList = () => {
     const { user: currentUser } = useAuth();
+    const navigate = useNavigate();
     const isSuperAdmin = currentUser?.role === 'super_admin';
     const [users, setUsers] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -174,6 +176,10 @@ const UserList = () => {
         }
     };
 
+    const handleViewDetails = (userId) => {
+        navigate(`/users/login-history?user=${userId}`);
+    };
+
     const columns = React.useMemo(() => {
         const cols = [
             {
@@ -235,6 +241,14 @@ const UserList = () => {
                 render: (row) => (
                     <div className="flex gap-2">
                         <button
+                            onClick={() => handleViewDetails(row.id)}
+                            className="bg-bg-tertiary text-text-secondary hover:bg-bg-quaternary px-2 py-1 rounded-md text-xs font-medium transition flex items-center gap-1 border border-border"
+                            title="View Details"
+                        >
+                            <Eye size={14} />
+                            Logs
+                        </button>
+                        <button
                             onClick={() => handleEdit(row)}
                             className="text-primary hover:bg-primary/10 p-1 rounded transition"
                             title="Edit"
@@ -265,13 +279,22 @@ const UserList = () => {
                     Users
                 </h1>
 
-                <Button
-                    onClick={handleCreate}
-                    className="flex items-center gap-2 bg-primary text-white hover:bg-primary-hover"
-                >
-                    <Plus size={16} />
-                    Add User
-                </Button>
+                <div className="flex gap-2">
+                    <Button
+                        onClick={() => navigate('/users/login-history')}
+                        className="flex items-center gap-2 bg-secondary text-white hover:bg-secondary/90"
+                    >
+                        <Eye size={16} />
+                        Login History
+                    </Button>
+                    <Button
+                        onClick={handleCreate}
+                        className="flex items-center gap-2 bg-primary text-white hover:bg-primary-hover"
+                    >
+                        <Plus size={16} />
+                        Add User
+                    </Button>
+                </div>
 
             </div>
 

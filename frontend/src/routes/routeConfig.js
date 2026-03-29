@@ -11,6 +11,7 @@ export const ROUTES = {
     EXPORTS: '/exports',
     MONITORING: '/monitoring',
     USERS: '/users',
+    USERS_LOGIN_HISTORY: '/users/login-history',
     CONTACTS: '/contacts',
     LEAD_MANAGEMENT: '/lead-management',
     LEAD_MANAGEMENT_LIST: '/lead-management/list',

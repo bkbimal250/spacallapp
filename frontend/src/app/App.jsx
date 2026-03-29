@@ -4,6 +4,7 @@ import { AppRoutes } from '../routes';
 import { useDispatch } from 'react-redux';
 import { getToken, getUser } from '../shared/services/tokenService';
 import { loginSuccess } from '../store/slices/authSlice';
+import RealTimeNotifications from '../modules/notifications/components/RealTimeNotifications';
 import '../assets/styles/global.css';
 
 const AppContent = () => {
@@ -31,6 +32,7 @@ const AppContent = () => {
 const App = () => {
     return (
         <AppProviders>
+            <RealTimeNotifications />
             <AppContent />
         </AppProviders>
     );

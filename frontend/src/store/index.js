@@ -3,6 +3,7 @@ import authReducer from './slices/authSlice';
 import branchReducer from './slices/branchSlice';
 import deviceReducer from './slices/deviceSlice';
 import contactReducer from './slices/contactSlice';
+import notificationReducer from './slices/notificationSlice';
 
 export const store = configureStore({
     reducer: {
@@ -10,5 +11,6 @@ export const store = configureStore({
         branch: branchReducer,
         device: deviceReducer,
         contact: contactReducer,
+        notifications: notificationReducer,
     },
 });

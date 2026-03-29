@@ -10,6 +10,7 @@ import AuthLayout from '../layouts/AuthLayout';
 const Login = lazy(() => import('../modules/auth/pages/Login'));
 const DashboardHome = lazy(() => import('../modules/dashboard/pages/DashboardHome'));
 const UserList = lazy(() => import('../modules/users/pages/UserList'));
+const LoginRecords = lazy(() => import('../modules/users/pages/LoginRecords'));
 const BranchList = lazy(() => import('../modules/branches/pages/BranchList'));
 const GroupList = lazy(() => import('../modules/branches/pages/GroupList'));
 const Branch = lazy(() => import('../modules/branches/pages/Branch'));
@@ -61,6 +62,7 @@ export const AppRoutes = () => {
                         {/* Super Admin Only Routes */}
                         <Route element={<RoleRoute allowedRoles={['super_admin']} />}>
                             <Route path={ROUTES.USERS} element={<UserList />} />
+                            <Route path={ROUTES.USERS_LOGIN_HISTORY} element={<LoginRecords />} />
                         </Route>
                     </Route>
 

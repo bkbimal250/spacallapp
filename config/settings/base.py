@@ -60,6 +60,7 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    "channels",
     # Third-party apps
     "corsheaders",
     "rest_framework",
@@ -239,6 +240,17 @@ CELERY_TIMEZONE = TIME_ZONE
 CACHES = {
     "default": env.cache("REDIS_CACHE_URL", default="redis://localhost:6379/2")
 }
+
+# CHANNEL_LAYERS Configuration
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels_redis.core.RedisChannelLayer",
+        "CONFIG": {
+            "hosts": [env("REDIS_URL", default="redis://localhost:6379/3")],
+        },
+    },
+}
+
 # Firebase Configuration
 _firebase_path = env("FIREBASE_SERVICE_ACCOUNT_KEY", default="firebase/firebase-credentials.json")
 if not os.path.isabs(_firebase_path):

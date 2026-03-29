@@ -1,0 +1,56 @@
+import json
+from channels.generic.websocket import AsyncWebsocketConsumer
+from django.utils import timezone
+from .models.user import User
+from channels.db import database_sync_to_async
+
+class CRMConsumer(AsyncWebsocketConsumer):
+    async def connect(self):
+        self.user = self.scope["user"]
+        
+        # Only allow authenticated admins and branch managers
+        if not self.user.is_authenticated or self.user.role not in ["admin", "super_admin", "branch_manager"]:
+            await self.close()
+            return
+
+        self.group_name = "crm_dashboard"
+        
+        # Join the common dashboard group
+        await self.channel_layer.group_add(
+            self.group_name,
+            self.channel_name
+        )
+        
+        await self.accept()
+
+    async def disconnect(self, close_code):
+        if hasattr(self, 'group_name'):
+            # Check if this was the last active session for this user
+            # In a real-world scenario, you might want to track this in Redis
+            # Here, we mark the user as offline on disconnect
+            await self.update_user_status(False)
+            
+            # Leave the dashboard group
+            await self.channel_layer.group_discard(
+                self.group_name,
+                self.channel_name
+            )
+
+    async def broadcast_message(self, event):
+        """
+        Handle messages sent via group_send.
+        """
+        message = event["message"]
+        await self.send(text_data=json.dumps(message))
+
+    @database_sync_to_async
+    def update_user_status(self, is_online):
+        """
+        Update is_online status in the database.
+        """
+        # In a more advanced implementation, we would check for multiple connections
+        # using Redis before setting is_online=False.
+        User.objects.filter(id=self.user.id).update(
+            is_online=is_online,
+            last_seen_at=timezone.now()
+        )

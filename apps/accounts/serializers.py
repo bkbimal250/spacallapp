@@ -11,9 +11,34 @@ from rest_framework import serializers
 
 from .models.user import User
 from .models.otp import EmailOTP
+from .models.user_history import UserLoginHistory
 
 
 # ─── Auth Serializers ─────────────────────────────────────────────────────────
+
+class UserLoginHistorySerializer(serializers.ModelSerializer):
+    """Serializer for login audit logs."""
+    user_name = serializers.CharField(source="user.full_name", read_only=True)
+    user_email = serializers.EmailField(source="user.email", read_only=True)
+    user_role = serializers.CharField(source="user.role", read_only=True)
+    branch_name = serializers.CharField(source="user.branch.spa_name", default="N/A", read_only=True)
+
+    class Meta:
+        model = UserLoginHistory
+        fields = (
+            "id",
+            "user",
+            "user_name",
+            "user_email",
+            "user_role",
+            "branch_name",
+            "ip_address",
+            "user_agent",
+            "login_at",
+            "status",
+        )
+        read_only_fields = ("id", "login_at")
+
 
 class LoginSerializer(serializers.Serializer):
     """Validates email + password for JWT login."""
