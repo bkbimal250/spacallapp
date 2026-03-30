@@ -9,109 +9,116 @@ class WebSocketService {
         this.listeners = new Set();
         this.currentPath = null;
         this.manualClose = false;
+        this.isConnecting = false;
     }
 
     /**
-     * Connect to WebSocket with token authentication.
-     * @param {string} path - WebSocket endpoint path.
+     * Connect to WebSocket with token authentication
      */
     connect(path) {
-        // Reuse existing connection if path matches and socket is not closed
-        if (this.socket && this.socket.readyState !== WebSocket.CLOSED && this.currentPath === path) {
+        // Prevent duplicate connections
+        if (
+            this.socket &&
+            (this.socket.readyState === WebSocket.OPEN ||
+                this.socket.readyState === WebSocket.CONNECTING)
+        ) {
             return;
-        }
-
-        // Close old connection if connecting to a different path
-        if (this.socket && this.currentPath !== path) {
-            this.disconnect();
         }
 
         this.currentPath = path;
         this.manualClose = false;
-        
+
         const token = getToken();
-        // If no token exists, the backend JWTAuthMiddleware will reject the connection
         if (!token) {
-            console.warn('Attempted WebSocket connection without token');
+            console.warn('⚠️ No token found. Skipping WebSocket connection.');
             return;
         }
 
         const wsUrl = `${CONFIG.WS_BASE_URL}${path}?token=${token}`;
-        console.log(`Connecting to WebSocket: ${wsUrl.replace(token, 'REDACTED')}`);
+        console.log(`🔌 Connecting WebSocket: ${wsUrl.replace(token, 'REDACTED')}`);
 
         try {
+            this.isConnecting = true;
             this.socket = new WebSocket(wsUrl);
 
             this.socket.onopen = () => {
-                console.log(`WebSocket Connected to ${this.currentPath}`);
+                console.log('✅ WebSocket Connected');
                 this.reconnectAttempts = 0;
+                this.isConnecting = false;
             };
 
             this.socket.onmessage = (event) => {
                 try {
                     const data = JSON.parse(event.data);
                     this.listeners.forEach(listener => listener(data));
-                } catch (parseError) {
-                    console.error('WebSocket parse error:', parseError);
+                } catch (error) {
+                    console.error('❌ WebSocket JSON parse error:', error);
                 }
             };
 
             this.socket.onclose = (event) => {
-                console.log(`WebSocket Disconnected (Code: ${event.code})`);
-                
-                // Only attempt reconnect if not a manual disconnect and under limit
+                console.log(`❌ WebSocket Closed (Code: ${event.code})`);
+
+                this.socket = null;
+                this.isConnecting = false;
+
+                // Reconnect logic
                 if (!this.manualClose && this.reconnectAttempts < this.maxReconnectAttempts) {
                     const delay = Math.min(10000, 3000 * (this.reconnectAttempts + 1));
-                    console.log(`Attempting reconnect in ${delay}ms...`);
-                    
+
+                    console.log(`🔄 Reconnecting in ${delay}ms...`);
+
                     setTimeout(() => {
                         this.reconnectAttempts++;
-                        this.connect(path);
+                        this.connect(this.currentPath);
                     }, delay);
                 }
             };
 
-            this.socket.onerror = (err) => {
-                console.error('WebSocket Error:', err);
+            this.socket.onerror = (error) => {
+                console.error('🚨 WebSocket Error:', error);
             };
+
         } catch (error) {
-            console.error('WebSocket connection initialization error:', error);
+            console.error('🚨 WebSocket init error:', error);
+            this.isConnecting = false;
         }
     }
 
     /**
-     * Subscribe a callback to WebSocket messages.
-     * @param {Function} listener - Callback function.
-     * @returns {Function} Unsubscribe function.
+     * Subscribe to WebSocket messages
      */
     subscribe(listener) {
         this.listeners.add(listener);
+
+        // Ensure connection exists
+        if (!this.socket && !this.isConnecting && this.currentPath) {
+            this.connect(this.currentPath);
+        }
+
         return () => {
             this.listeners.delete(listener);
-            // If no more components are listening, close the socket to save resources
-            if (this.listeners.size === 0) {
-                this.disconnect();
-            }
+            // ✅ DO NOT auto-disconnect (fixes your issue)
         };
     }
 
     /**
-     * Send data via WebSocket if connected.
-     * @param {Object} data - Payload to send.
+     * Send message
      */
     send(data) {
         if (this.socket && this.socket.readyState === WebSocket.OPEN) {
             this.socket.send(JSON.stringify(data));
         } else {
-            console.warn('Attempted to send data via WebSocket while not connected');
+            console.warn('⚠️ Cannot send, WebSocket not connected');
         }
     }
 
     /**
-     * Forcefully disconnect the WebSocket.
+     * Manual disconnect (use on logout)
      */
     disconnect() {
         if (this.socket) {
+            console.log('🔌 Manually closing WebSocket');
             this.manualClose = true;
             this.socket.close();
             this.socket = null;
@@ -120,4 +127,5 @@ class WebSocketService {
     }
 }
 
+// ✅ Singleton instance
 export const websocketService = new WebSocketService();
