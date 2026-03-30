@@ -5,22 +5,34 @@ from channels.db import database_sync_to_async
 
 class CRMConsumer(AsyncWebsocketConsumer):
     async def connect(self):
-        self.user = self.scope["user"]
-        
-        # Only allow authenticated admins and branch managers
-        if not self.user.is_authenticated or self.user.role not in ["admin", "super_admin", "branch_manager"]:
+        self.user = self.scope.get("user")
+        print("USER:", self.user)  # 🔍 DEBUG
+
+    # Safe check
+        if not self.user or not self.user.is_authenticated:
+            print("❌ Not authenticated")
+            await self.close()
+            return
+
+    # Safe role check
+        user_role = getattr(self.user, "role", None)
+
+        if user_role not in ["admin", "super_admin", "branch_manager"]:
+            print("❌ Invalid role:", user_role)
             await self.close()
             return
 
         self.group_name = "crm_dashboard"
-        
-        # Join the common dashboard group
+
         await self.channel_layer.group_add(
             self.group_name,
             self.channel_name
         )
-        
+
         await self.accept()
+        print("✅ WebSocket connected")
+
+
 
     async def disconnect(self, close_code):
         if hasattr(self, 'group_name'):
