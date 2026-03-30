@@ -1,7 +1,6 @@
 import json
 from channels.generic.websocket import AsyncWebsocketConsumer
 from django.utils import timezone
-from .models.user import User
 from channels.db import database_sync_to_async
 
 class CRMConsumer(AsyncWebsocketConsumer):
@@ -48,6 +47,8 @@ class CRMConsumer(AsyncWebsocketConsumer):
         """
         Update is_online status in the database.
         """
+        from django.contrib.auth import get_user_model
+        User = get_user_model()
         # In a more advanced implementation, we would check for multiple connections
         # using Redis before setting is_online=False.
         User.objects.filter(id=self.user.id).update(

@@ -4,10 +4,10 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AnonymousUser
 from rest_framework_simplejwt.tokens import AccessToken
 
-User = get_user_model()
-
 @database_sync_to_async
 def get_user(user_id):
+    from django.contrib.auth import get_user_model
+    User = get_user_model()
     try:
         return User.objects.get(id=user_id)
     except User.DoesNotExist:

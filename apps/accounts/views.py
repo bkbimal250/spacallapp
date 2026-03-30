@@ -261,7 +261,7 @@ class OnlineUsersView(APIView):
             "id": str(u.id),
             "full_name": u.full_name,
             "role": u.role,
-            "branch": u.branch.name if u.branch else "N/A",
+            "branch": u.branch.spa_name if u.branch else "N/A",
             "last_login_at": u.last_login_at.isoformat() if u.last_login_at else None,
         } for u in online_users]
         
