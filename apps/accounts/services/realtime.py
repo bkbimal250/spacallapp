@@ -14,7 +14,7 @@ class RealTimeService:
             "user_id": str(user.id),
             "name": user.full_name,
             "role": user.role,
-            "branch": str(user.branch.name) if user.branch else "N/A",
+            "branch": str(user.branch.spa_name) if user.branch else "N/A",
             "time": timezone.now().isoformat(),
         }
         
