@@ -32,7 +32,7 @@ axiosInstance.interceptors.response.use(
             if (refreshToken) {
                 try {
                     // Attempt to negotiate a fresh token using standard SimpleJWT route
-                    const response = await axios.post(`${CONFIG.API_BASE_URL}/api/token/refresh/`, {
+                    const response = await axios.post(`${CONFIG.API_BASE_URL}/auth/token/refresh/`, {
                         refresh: refreshToken
                     });
 

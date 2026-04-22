@@ -18,6 +18,10 @@ from .models import Contact
 from .serializers import ContactSerializer
 from .services import ContactService
 from apps.common.permissions import IsSuperAdmin
+from drf_spectacular.utils import extend_schema, OpenApiParameter, inline_serializer
+from rest_framework import serializers
+from django_filters.rest_framework import DjangoFilterBackend
+from .filters import ContactFilter
 
 
 class ContactViewSet(viewsets.ModelViewSet):
@@ -33,12 +37,41 @@ class ContactViewSet(viewsets.ModelViewSet):
     """
     serializer_class = ContactSerializer
     permission_classes = [IsAuthenticated]
+    filter_backends = [DjangoFilterBackend]
+    filterset_class = ContactFilter
 
     def get_permissions(self):
         """Delete contacts is restricted to super_admin only."""
         if self.action == "destroy":
             return [IsAuthenticated(), IsSuperAdmin()]
         return [IsAuthenticated()]
+
+    @extend_schema(
+        summary="List Contacts",
+        parameters=[]
+    )
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
+    @extend_schema(summary="Create Contact")
+    def create(self, request, *args, **kwargs):
+        return super().create(request, *args, **kwargs)
+
+    @extend_schema(summary="Retrieve Contact")
+    def retrieve(self, request, *args, **kwargs):
+        return super().retrieve(request, *args, **kwargs)
+
+    @extend_schema(summary="Update Contact")
+    def update(self, request, *args, **kwargs):
+        return super().update(request, *args, **kwargs)
+
+    @extend_schema(summary="Partial Update Contact")
+    def partial_update(self, request, *args, **kwargs):
+        return super().partial_update(request, *args, **kwargs)
+
+    @extend_schema(summary="Delete Contact (SuperAdmin Only)")
+    def destroy(self, request, *args, **kwargs):
+        return super().destroy(request, *args, **kwargs)
 
     def get_queryset(self):
         """
@@ -52,6 +85,12 @@ class ContactViewSet(viewsets.ModelViewSet):
         queryset = Contact.objects.annotate(
             total_calls=Count("call_logs")
         ).all().order_by("-created_at")
+
+        # Optimization: prune columns for the list view
+        if self.action == "list":
+            queryset = queryset.only(
+                "id", "name", "phone_number", "email", "country", "city", "created_at"
+            )
 
         # Admin and super_admin see all contacts globally
         if user.role in ["super_admin", "admin"]:
@@ -70,14 +109,8 @@ class ContactViewSet(viewsets.ModelViewSet):
                 # Branch manager with no assigned branch — return nothing
                 return queryset.none()
 
-        # Search filter
-        search = self.request.query_params.get("search", None)
-        if search:
-            queryset = queryset.filter(
-                Q(name__icontains=search) |
-                Q(phone_number__icontains=search)
-            )
-
+        # Search filter is now handled by DjangoFilterBackend via ContactFilter
+        
         return queryset
 
     def perform_create(self, serializer):

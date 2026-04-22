@@ -26,7 +26,7 @@ class Branch(BaseModel, TimeStampedModel, SoftDeleteModel):
     """
 
     # Human-readable name of the spa / branch
-    spa_name = models.CharField(max_length=255, help_text="Full name of the Spa location.")
+    spa_name = models.CharField(max_length=255, db_index=True, help_text="Full name of the Spa location.")
 
     # Unique short code for the branch, e.g. 'SPA-001'
     code = models.CharField(

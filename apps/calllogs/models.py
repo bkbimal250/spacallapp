@@ -73,6 +73,7 @@ class CallLog(BaseModel, TimeStampedModel):
     call_type = models.CharField(
         max_length=20,
         choices=CALL_TYPES,
+        db_index=True,
         help_text="Type of call: incoming, outgoing, missed, or rejected."
     )
 
@@ -99,16 +100,28 @@ class CallLog(BaseModel, TimeStampedModel):
         help_text="Unique hash for deduplication. Prevents duplicate call log entries."
     )
 
+    # Normalized phone number (last 10 digits) for robust matching
+    phone_normalized = models.CharField(
+        max_length=10, 
+        db_index=True, 
+        null=True, 
+        blank=True,
+        help_text="Stores the last 10 digits only for robust cross-format matching."
+    )
+
     def save(self, *args, **kwargs):
         """
-        Auto-match contact if not provided, by matching the last 10 digits of the phone number.
-        Uses the indexed phone_normalized field for high performance.
+        Normalize phone number and auto-match contact if possible.
         """
-        if not self.contact and self.phone_number:
+        # Store last 10 digits for fast lookup
+        if self.phone_number:
+            import re
+            clean_digits = re.sub(r'\D', '', self.phone_number)
+            self.phone_normalized = clean_digits[-10:] if len(clean_digits) >= 10 else clean_digits
+
+        if not self.contact and self.phone_normalized:
             from apps.contacts.models import Contact
-            # Extract last 10 digits for fast lookup
-            last_10 = self.phone_number[-10:] if len(self.phone_number) >= 10 else self.phone_number
-            contact = Contact.objects.filter(phone_normalized=last_10).first()
+            contact = Contact.objects.filter(phone_normalized=self.phone_normalized).first()
             if contact:
                 self.contact = contact
         
@@ -122,6 +135,7 @@ class CallLog(BaseModel, TimeStampedModel):
             models.Index(fields=["branch"]),                # Branch-based filtering
             models.Index(fields=["device"]),                # Device-based filtering
             models.Index(fields=["phone_number"]),          # Search by number
+            models.Index(fields=["phone_normalized"]),      # Faster matching logic
             models.Index(fields=["call_hash"]),             # Dedup lookups
         ]
         ordering = ["-call_time"]
@@ -131,3 +145,70 @@ class CallLog(BaseModel, TimeStampedModel):
     def __str__(self):
         branch_name = self.branch.spa_name if self.branch else "Unknown Branch"
         return f"{self.phone_number} ({self.call_type}) — {branch_name} — {self.call_time}"
+
+
+class MissedCallFollowUp(BaseModel, TimeStampedModel):
+    """
+    Tracking for missed calls that require a follow-up outgoing call.
+    Categorizes performance based on SLA windows (10m, 30m, 1h).
+    """
+
+    SLA_STATUS = (
+        ("GOOD", "Within 10 mins"),
+        ("OK", "Within 30 mins"),
+        ("LATE", "Within 1 hour"),
+        ("MISSED", "No follow-up / > 1 hour"),
+    )
+
+    # The missed call log being tracked
+    missed_call = models.OneToOneField(
+        "CallLog",
+        on_delete=models.CASCADE,
+        related_name="followup_status",
+        limit_choices_to={"call_type": "missed"},
+    )
+
+    # Branch and manager at the time of missed call (denormalized for query performance)
+    branch = models.ForeignKey(
+        "branches.Branch",
+        on_delete=models.CASCADE,
+        related_name="missed_call_followups",
+    )
+
+    # The outgoing call that served as the follow-up
+    followup_call = models.ForeignKey(
+        "CallLog",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="serves_as_followup",
+        limit_choices_to={"call_type": "outgoing"},
+    )
+
+    is_followed_up = models.BooleanField(default=False, db_index=True)
+    first_followup_time = models.DateTimeField(null=True, blank=True)
+    followup_attempt_count = models.IntegerField(default=0)
+
+    # SLA categorization
+    sla_status = models.CharField(
+        max_length=10, 
+        choices=SLA_STATUS, 
+        default="MISSED", 
+        db_index=True
+    )
+
+    # Notification tracking (steps: 0=none, 1=10m, 2=30m, 3=1h)
+    notification_step = models.IntegerField(default=0, db_index=True)
+
+    class Meta:
+        db_table = "missed_call_followups"
+        indexes = [
+            models.Index(fields=["branch", "is_followed_up"]),
+            models.Index(fields=["sla_status"]),
+            models.Index(fields=["created_at"]),
+        ]
+        verbose_name = "Missed Call Follow-Up"
+        verbose_name_plural = "Missed Call Follow-Ups"
+
+    def __str__(self):
+        return f"Follow-up for {self.missed_call.phone_number} - {self.sla_status}"

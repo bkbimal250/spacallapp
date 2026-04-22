@@ -23,6 +23,10 @@ class DeviceHealth(TimeStampedModel):
     sim_2_number = models.CharField(max_length=20, blank=True, null=True)
 
     sync_failures = models.IntegerField(default=0)
+    
+    # Notification flags to avoid duplicates
+    notified_2h = models.BooleanField(default=False)
+    notified_24h = models.BooleanField(default=False)
 
     class Meta:
         db_table = "device_health"

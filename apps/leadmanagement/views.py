@@ -23,14 +23,16 @@ Note:
     This viewset handles manual creation and status updates.
 """
 
-from rest_framework import viewsets, permissions, filters, status
+from rest_framework import viewsets, permissions, filters, status, serializers
 from rest_framework.response import Response
 from rest_framework.decorators import action
+from drf_spectacular.utils import extend_schema, OpenApiParameter, inline_serializer
 from django_filters.rest_framework import DjangoFilterBackend
 from django.db.models import Count, Q
 
 from .models import LeadManagement
-from .serializers import LeadManagementSerializer
+from .serializers import LeadManagementSerializer, LeadManagementListSerializer
+from .filters import LeadFilter
 from apps.calllogs.models import CallLog
 from apps.contacts.models import Contact
 from apps.common.permissions import IsSuperAdmin
@@ -52,13 +54,15 @@ class LeadManagementViewSet(viewsets.ModelViewSet):
         ?ordering=created_at|booking_date|status
     """
     serializer_class = LeadManagementSerializer
-    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    
+    def get_serializer_class(self):
+        """Use a lightweight serializer for the dashboard list view."""
+        if self.action == "list":
+            return LeadManagementListSerializer
+        return LeadManagementSerializer
 
-    # Auto-filter by status or branch via URL params
-    filterset_fields = {
-        "status": ["exact"],
-        "branch": ["exact"],
-    }
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_class = LeadFilter
     search_fields = ["calllog__phone_number", "remarks", "contact__name"]
     ordering_fields = ["created_at", "booking_date", "status"]
     ordering = ["-created_at"]
@@ -79,20 +83,33 @@ class LeadManagementViewSet(viewsets.ModelViewSet):
         super_admin / admin → All leads across all branches.
         branch_manager      → Only leads for their assigned branch.
         """
+        if getattr(self, "swagger_fake_view", False):
+            return LeadManagement.objects.none()
+
         user = self.request.user
         qs = LeadManagement.objects.select_related(
-            "branch", "contact", "calllog", "calllog__device", "created_by", "updated_by"
+            "branch", "contact", "calllog"
         ).all()
 
+        # Optimization: prune columns for the list view
+        if self.action == "list":
+            qs = qs.only(
+                "id", "status", "booking_date", "created_at",
+                "branch__id", "branch__spa_name",
+                "contact__id", "contact__name",
+                "calllog__id", "calllog__phone_number", "calllog__call_type"
+            )
+        else:
+            # For detail views, include audit trail related fields
+            qs = qs.select_related("created_by", "updated_by")
+
         # Branch manager: strict filter to their single assigned branch
-        if user.role == "branch_manager":
+        if user.is_authenticated and hasattr(user, 'role') and user.role == "branch_manager":
             if user.branch:
                 qs = qs.filter(branch=user.branch)
             else:
                 # No branch assigned → return nothing (prevent data leak)
                 return qs.none()
-
-        # admin and super_admin see everything
 
         return qs
 
@@ -127,10 +144,65 @@ class LeadManagementViewSet(viewsets.ModelViewSet):
 
         serializer.save(**extra_data)
 
+    @extend_schema(
+        summary="List Leads",
+        description="List all leads in the user's scope. Supports filtering and search."
+    )
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
+    @extend_schema(
+        summary="Create Lead",
+        description="Manually create a lead. Branch and contact can be auto-filled if calllog is provided."
+    )
+    def create(self, request, *args, **kwargs):
+        return super().create(request, *args, **kwargs)
+
+    @extend_schema(summary="Retrieve Lead")
+    def retrieve(self, request, *args, **kwargs):
+        return super().retrieve(request, *args, **kwargs)
+
+    @extend_schema(summary="Update Lead")
+    def update(self, request, *args, **kwargs):
+        return super().update(request, *args, **kwargs)
+
+    @extend_schema(summary="Partial Update Lead")
+    def partial_update(self, request, *args, **kwargs):
+        return super().partial_update(request, *args, **kwargs)
+
+    @extend_schema(summary="Delete Lead (Admin Only)")
+    def destroy(self, request, *args, **kwargs):
+        return super().destroy(request, *args, **kwargs)
+
     def perform_update(self, serializer):
         """Track who last updated this lead."""
         serializer.save(updated_by=self.request.user)
 
+    @extend_schema(
+        summary="Branch Lead Summary",
+        description="Returns per-branch lead statistics (total vs status counts).",
+        parameters=[
+            OpenApiParameter("branch_search", type=str, description="Search by branch name or code"),
+            OpenApiParameter("city", type=str, description="Filter by branch city"),
+            OpenApiParameter("branch_status", type=str, description="Filter by branch status (active/inactive)"),
+        ],
+        responses={200: inline_serializer(
+            name="BranchLeadSummary",
+            many=True,
+            fields={
+                "branch_id": serializers.UUIDField(),
+                "branch_name": serializers.CharField(),
+                "city": serializers.CharField(),
+                "area": serializers.CharField(),
+                "total_leads": serializers.IntegerField(),
+                "total_pending": serializers.IntegerField(),
+                "total_ringing": serializers.IntegerField(),
+                "total_coming": serializers.IntegerField(),
+                "total_interested": serializers.IntegerField(),
+                "total_not_interested": serializers.IntegerField(),
+            }
+        )}
+    )
     @action(detail=False, methods=["get"])
     def branch_summary(self, request):
         """
@@ -143,28 +215,14 @@ class LeadManagementViewSet(viewsets.ModelViewSet):
         Additional filters:
             ?branch_search=<name_or_code>
             ?city=<city>
-            ?status=active|inactive (branch active status)
+            ?branch_status=active|inactive (branch active status)
         """
         qs = self.get_queryset()
 
-        # Apply additional summary-level filters
-        branch_search = request.query_params.get("branch_search", None)
-        city = request.query_params.get("city", None)
-        active_status = request.query_params.get("status", None)
+        # Use the filterset to apply filters (branch_search, city, branch_status)
+        filtered_qs = self.filter_queryset(qs)
 
-        if branch_search:
-            qs = qs.filter(
-                Q(branch__spa_name__icontains=branch_search) |
-                Q(branch__code__icontains=branch_search)
-            )
-        if city:
-            qs = qs.filter(branch__city__icontains=city)
-        if active_status == "active":
-            qs = qs.filter(branch__is_active=True)
-        elif active_status == "inactive":
-            qs = qs.filter(branch__is_active=False)
-
-        summary = qs.values(
+        summary = filtered_qs.values(
             "branch__id",
             "branch__spa_name",
             "branch__city",
@@ -230,6 +288,28 @@ class LeadsSyncView(viewsets.ViewSet):
     authentication_classes = [DeviceAuthentication]
     permission_classes = [IsDevice]
 
+    @extend_schema(
+        summary="Batch Sync Leads (Device)",
+        description="Bulk upload leads captured manually on the Android device.",
+        request=inline_serializer(
+            name="BatchLeadSyncRequest",
+            many=True,
+            fields={
+                "phone_number": serializers.CharField(),
+                "call_hash": serializers.CharField(required=False),
+                "status": serializers.CharField(required=False),
+                "remarks": serializers.CharField(required=False),
+                "booking_date": serializers.DateField(required=False),
+            }
+        ),
+        responses={201: inline_serializer(
+            name="BatchLeadSyncResponse",
+            fields={
+                "status": serializers.CharField(),
+                "synced_count": serializers.IntegerField()
+            }
+        )}
+    )
     def create(self, request):
         device = request.auth
         payloads = request.data

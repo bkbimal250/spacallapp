@@ -1,9 +1,10 @@
-import React, { useState, memo, useCallback, useEffect } from 'react';
+import React, { useState, memo, useMemo, useCallback, useEffect } from 'react';
 import Input from '../../../shared/components/Input';
 import Button from '../../../shared/components/Button';
+import SearchableSelect from '../../../shared/components/SearchableSelect';
 import { branchesAPI } from '../api';
 
-const BranchFilter = ({ onFilter }) => {
+const BranchFilter = ({ onFilter, externalFilters = {} }) => {
 
     const [search, setSearch] = useState('');
     const [city, setCity] = useState('');
@@ -11,6 +12,11 @@ const BranchFilter = ({ onFilter }) => {
     const [status, setStatus] = useState('');
     const [group, setGroup] = useState('');
     const [groups, setGroups] = useState([]);
+
+    const groupOptions = useMemo(() =>
+        groups.map(g => ({ value: g.id, label: g.name })),
+        [groups]
+    );
 
     useEffect(() => {
         const fetchGroups = async () => {
@@ -23,6 +29,13 @@ const BranchFilter = ({ onFilter }) => {
         };
         fetchGroups();
     }, []);
+
+    // Sync external filters (like from BranchGroupFilter)
+    useEffect(() => {
+        if (externalFilters.group !== undefined) {
+            setGroup(externalFilters.group);
+        }
+    }, [externalFilters.group]);
 
     const handleGroupChange = useCallback((e) => setGroup(e.target.value), []);
 
@@ -128,26 +141,13 @@ const BranchFilter = ({ onFilter }) => {
             {/* GROUP */}
 
             <div>
-
-                <label className="block text-sm font-medium text-text-secondary mb-1">
-                    Branch Group
-                </label>
-
-                <select
-                    className="block w-full px-3 py-2 bg-background border border-border rounded-md
-                               text-text-primary text-sm
-                               focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary"
+                <SearchableSelect
+                    label="Branch Group"
+                    options={groupOptions}
                     value={group}
-                    onChange={handleGroupChange}
-                >
-
-                    <option value="">All Groups</option>
-                    {groups.map(g => (
-                        <option key={g.id} value={g.id}>{g.name}</option>
-                    ))}
-
-                </select>
-
+                    onChange={(val) => setGroup(val)}
+                    placeholder="All Groups"
+                />
             </div>
 
             {/* ACTION BUTTONS */}

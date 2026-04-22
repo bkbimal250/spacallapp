@@ -1,4 +1,5 @@
-from rest_framework import viewsets, permissions, views, response, status
+from rest_framework import viewsets, permissions, views, response, status, serializers
+from drf_spectacular.utils import extend_schema, OpenApiParameter, inline_serializer, OpenApiResponse
 from .models import ExportJob
 from .serializers import ExportJobSerializer
 from apps.calllogs.models import CallLog
@@ -13,9 +14,36 @@ class ExportViewSet(viewsets.ModelViewSet):
     serializer_class = ExportJobSerializer
     permission_classes = [permissions.IsAuthenticated]
 
+    @extend_schema(summary="List Export Jobs")
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
+    @extend_schema(summary="Retrieve Export Job")
+    def retrieve(self, request, *args, **kwargs):
+        return super().retrieve(request, *args, **kwargs)
+
+    @extend_schema(summary="Delete Export Job")
+    def destroy(self, request, *args, **kwargs):
+        return super().destroy(request, *args, **kwargs)
+
 class GenerateExportView(views.APIView):
     permission_classes = [permissions.IsAuthenticated]
 
+    @extend_schema(
+        summary="Generate Export",
+        description="Initiates an Excel export for call logs or other data types.",
+        request=inline_serializer(
+            name="GenerateExportRequest",
+            fields={
+                "type": serializers.CharField(default="call_logs"),
+                "branch": serializers.UUIDField(required=False),
+                "group": serializers.UUIDField(required=False),
+                "start_date": serializers.DateField(required=False),
+                "end_date": serializers.DateField(required=False),
+            }
+        ),
+        responses={201: ExportJobSerializer}
+    )
     def post(self, request):
         export_type = request.data.get('type', 'call_logs')
         
@@ -101,6 +129,16 @@ class GenerateExportView(views.APIView):
 class DownloadExportView(views.APIView):
     permission_classes = [permissions.IsAuthenticated]
 
+    @extend_schema(
+        summary="Download Export File",
+        description="Returns the generated Excel file for a completed export job.",
+        responses={
+            200: OpenApiResponse(
+                description="The generated Excel file (.xlsx)",
+                response=bytes,
+            )
+        }
+    )
     def get(self, request, pk):
         try:
             job = ExportJob.objects.get(pk=pk)

@@ -7,4 +7,5 @@ export const devicesAPI = {
     updateDevice: (id, data) => axiosInstance.put(`/devices/${id}/`, data),
     deleteDevice: (id) => axiosInstance.delete(`/devices/${id}/`),
     getDeviceStats: () => axiosInstance.get('/devices/stats/'),
+    regenerateToken: (id) => axiosInstance.post(`/devices/${id}/regenerate_token/`),
 };

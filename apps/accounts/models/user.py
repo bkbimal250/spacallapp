@@ -60,6 +60,13 @@ class User(AbstractBaseUser, PermissionsMixin, TimeStampedModel):
         help_text="The primary/active branch this user is assigned to.",
     )
 
+    # Firebase Cloud Messaging token for push notifications
+    fcm_token = models.TextField(
+        null=True, 
+        blank=True, 
+        help_text="Registration token for Firebase Cloud Messaging for this manager."
+    )
+
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
 

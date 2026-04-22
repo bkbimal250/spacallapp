@@ -23,7 +23,10 @@ const LiveUsersList = () => {
                 </div>
             </div>
 
-            <div className="space-y-3">
+            <div 
+                className="space-y-1 overflow-y-auto pr-2 custom-scrollbar"
+                style={{ maxHeight: '430px', minHeight: '130px' }}
+            >
                 {onlineUsers.length > 0 ? (
                     onlineUsers.map((user) => (
                         <div key={user.id} className="group p-3 hover:bg-bg-tertiary transition-all duration-200 rounded-lg border border-transparent hover:border-bg-quaternary">
@@ -54,7 +57,7 @@ const LiveUsersList = () => {
                     ))
                 ) : (
                     <div className="flex flex-col items-center justify-center py-12 px-4 bg-bg-tertiary/30 rounded-xl border border-dashed border-bg-quaternary">
-                        <div className="p-3 bg-bg-quaternary/40 rounded-full mb-3 mb-3">
+                        <div className="p-3 bg-bg-quaternary/40 rounded-full mb-3">
                             <Info className="text-text-quaternary" size={24} />
                         </div>
                         <p className="text-text-secondary text-sm font-medium">No users online right now</p>

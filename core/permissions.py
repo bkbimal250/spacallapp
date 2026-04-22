@@ -23,3 +23,10 @@ class IsDevice(permissions.BasePermission):
     """
     def has_permission(self, request, view):
         return bool(request.auth and hasattr(request.auth, 'device_id'))
+
+class IsAdmin(permissions.BasePermission):
+    """
+    Allows access only to users with 'admin' or 'super_admin' roles.
+    """
+    def has_permission(self, request, view):
+        return bool(request.user and hasattr(request.user, 'role') and request.user.role in ['admin', 'super_admin'])

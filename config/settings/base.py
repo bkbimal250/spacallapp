@@ -66,6 +66,8 @@ INSTALLED_APPS = [
     "corsheaders",
     "rest_framework",
     "rest_framework_simplejwt",
+    "django_filters",
+    "drf_spectacular",
 
 
     # Local apps
@@ -191,8 +193,14 @@ REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (
         "rest_framework_simplejwt.authentication.JWTAuthentication",
     ),
+    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
     "DEFAULT_PAGINATION_CLASS": "core.pagination.StandardResultsSetPagination",
     "PAGE_SIZE": 30,
+    "DEFAULT_FILTER_BACKENDS": (
+        "django_filters.rest_framework.DjangoFilterBackend",
+        "rest_framework.filters.SearchFilter",
+        "rest_framework.filters.OrderingFilter",
+    ),
     "EXCEPTION_HANDLER": "apps.common.exceptions.custom_exception_handler",
 }
 
@@ -238,9 +246,27 @@ CELERY_TASK_SERIALIZER = "json"
 CELERY_RESULT_SERIALIZER = "json"
 CELERY_TIMEZONE = TIME_ZONE
 
+CELERY_BEAT_SCHEDULE = {
+    'check-offline-devices-every-5-mins': {
+        'task': 'apps.monitoring.tasks.check_offline_devices',
+        'schedule': 300.0,  # 5 minutes
+    },
+    'check-sync-health-every-15-mins': {
+        'task': 'apps.monitoring.tasks.check_device_sync_health',
+        'schedule': 900.0,  # 15 minutes
+    },
+}
+
 # Caching (Redis)
 CACHES = {
-    "default": env.cache("REDIS_CACHE_URL", default="redis://localhost:6379/2")
+    "default": {
+        "BACKEND": "django_redis.cache.RedisCache",
+        "LOCATION": env("REDIS_CACHE_URL", default="redis://127.0.0.1:6379/2"),
+        "OPTIONS": {
+            "CLIENT_CLASS": "django_redis.client.DefaultClient",
+            "IGNORE_EXCEPTIONS": True,
+        }
+    }
 }
 
 # CHANNEL_LAYERS Configuration
@@ -259,3 +285,28 @@ if not os.path.isabs(_firebase_path):
     FIREBASE_SERVICE_ACCOUNT_KEY = str(BASE_DIR / _firebase_path)
 else:
     FIREBASE_SERVICE_ACCOUNT_KEY = _firebase_path
+
+# Spectacular Settings for API Documentation
+SPECTACULAR_SETTINGS = {
+    "TITLE": "CallLog System API",
+    "DESCRIPTION": "Comprehensive API documentation for the CallLog System. Managed call logs, branches, devices, and lead management.",
+    "VERSION": "1.0.0",
+    "SERVE_INCLUDE_SCHEMA": False,
+    "COMPONENT_SPLIT_REQUEST": True,
+    "SCHEMA_PATH_PREFIX": r"/api/v1/",
+    "SERVE_PERMISSIONS": ["rest_framework.permissions.AllowAny"],
+    "SECURITY": [
+        {
+            "jwtAuth": [],
+        }
+    ],
+    "APPEND_COMPONENTS": {
+        "securitySchemes": {
+            "jwtAuth": {
+                "type": "http",
+                "scheme": "bearer",
+                "bearerFormat": "JWT",
+            }
+        }
+    },
+}

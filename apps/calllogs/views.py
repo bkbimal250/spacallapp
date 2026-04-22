@@ -26,13 +26,17 @@ Android Sync Flow:
 from django.http import HttpResponse
 from django.utils import timezone
 from django.db.models import Count, Q, Sum, Avg
-from rest_framework import viewsets, permissions, views, response, status
+from rest_framework import viewsets, permissions, views, response, status, filters
 from rest_framework.decorators import action
+from drf_spectacular.utils import extend_schema, OpenApiParameter, inline_serializer
+from rest_framework import serializers
 import openpyxl
 from openpyxl.styles import Font
-
-from .models import CallLog
-from .serializers import CallLogSerializer
+from django.db.models import Count, Q, Sum, Avg
+from django_filters.rest_framework import DjangoFilterBackend
+from .filters import CallLogFilter
+from .models import CallLog, MissedCallFollowUp
+from .serializers import CallLogSerializer, CallLogListSerializer, MissedCallFollowUpSerializer
 from core.authentication import DeviceAuthentication
 from core.permissions import IsDevice
 from apps.common.permissions import IsSuperAdmin
@@ -63,6 +67,32 @@ class DeviceSyncView(views.APIView):
     authentication_classes = [DeviceAuthentication]
     permission_classes = [IsDevice]
 
+    @extend_schema(
+        summary="Sync call logs (Android)",
+        description="Batch upload call logs from the Android app. HMAC authentication required.",
+        request=inline_serializer(
+            name="CallLogSyncRequest",
+            many=True,
+            fields={
+                "phone_number": serializers.CharField(help_text="External caller's number"),
+                "call_type": serializers.ChoiceField(choices=["incoming", "outgoing", "missed", "rejected"]),
+                "duration": serializers.IntegerField(help_text="Duration in seconds"),
+                "sim_slot": serializers.IntegerField(help_text="Android slot: 0 or 1"),
+                "call_time": serializers.DateTimeField(),
+                "call_hash": serializers.CharField(help_text="Unique hash of the call record"),
+            }
+        ),
+        responses={
+            201: inline_serializer(
+                name="CallLogSyncResponse",
+                fields={
+                    "status": serializers.CharField(),
+                    "synced_count": serializers.IntegerField(),
+                    "leads_created": serializers.IntegerField(),
+                }
+            )
+        }
+    )
     def post(self, request):
         device = request.auth  # The authenticated Device object
 
@@ -81,14 +111,19 @@ class DeviceSyncView(views.APIView):
         contact_map = {}  # Maps last_10_digits → Contact object
 
         if phone_numbers:
-            # Build a list of normalized numbers (last 10 digits)
-            normalized_numbers = {pn[-10:] if len(pn) >= 10 else pn for pn in phone_numbers}
+            # Build a list of normalized numbers (last 10 digits cleaning non-digits)
+            import re
+            normalized_numbers = []
+            for pn in phone_numbers:
+                if not pn: continue
+                clean_pn = re.sub(r'\D', '', pn)
+                last_10 = clean_pn[-10:] if len(clean_pn) >= 10 else clean_pn
+                normalized_numbers.append(last_10)
             
             # Efficiently fetch all matching contacts in one query using the indexed field
             contacts = Contact.objects.filter(phone_normalized__in=normalized_numbers)
             for c in contacts:
-                c_last_10 = c.phone_number[-10:] if len(c.phone_number) >= 10 else c.phone_number
-                contact_map[c_last_10] = c
+                contact_map[c.phone_normalized] = c
 
         # ── Step 2: Build CallLog objects for bulk insert ──
         logs_to_create = []
@@ -103,7 +138,9 @@ class DeviceSyncView(views.APIView):
                 normalized_slot = 1
 
             phone_num = item.get("phone_number")
-            log_last_10 = phone_num[-10:] if phone_num and len(phone_num) >= 10 else phone_num
+            import re
+            clean_pn = re.sub(r'\D', '', phone_num or '')
+            log_last_10 = clean_pn[-10:] if len(clean_pn) >= 10 else clean_pn
 
             logs_to_create.append(
                 CallLog(
@@ -111,6 +148,7 @@ class DeviceSyncView(views.APIView):
                     device_id=device.id,            # The device that captured this call
                     contact=contact_map.get(log_last_10),  # Auto-link if known contact
                     phone_number=phone_num,
+                    phone_normalized=log_last_10,
                     call_type=item.get("call_type"),
                     duration=item.get("duration", 0),
                     sim_slot=normalized_slot,
@@ -122,6 +160,11 @@ class DeviceSyncView(views.APIView):
         # ── Step 3: Bulk insert — ignore duplicates (by call_hash unique constraint) ──
         if logs_to_create:
             CallLog.objects.bulk_create(logs_to_create, ignore_conflicts=True)
+            
+            # ── New: Hook up FollowUpService to process missed calls ──
+            from .services import FollowUpService
+            inserted_logs = CallLog.objects.filter(call_hash__in=[log.call_hash for log in logs_to_create])
+            FollowUpService.process_batch(inserted_logs)
 
         # ── Step 4: Auto-create Leads for newly created call logs ──
         # We query the database to find which hashes actually got inserted.
@@ -162,6 +205,18 @@ class DeviceSyncView(views.APIView):
         device.last_sync = timezone.now()
         device.save(update_fields=["last_sync"])
 
+        # Reset monitoring flags
+        from apps.monitoring.models import DeviceHealth
+        DeviceHealth.objects.update_or_create(
+            device=device,
+            defaults={
+                "last_sync": device.last_sync,
+                "notified_2h": False,
+                "notified_24h": False,
+                "is_online": True
+            }
+        )
+
         return response.Response({
             "status": "success",
             "synced_count": len(logs_to_create),
@@ -182,7 +237,32 @@ class CallLogViewSet(viewsets.ModelViewSet):
         export_excel   → Download all filtered logs as an Excel file.
         bulk_delete    → Delete multiple logs (super_admin only).
     """
-    serializer_class = CallLogSerializer
+    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
+    filterset_class = CallLogFilter
+    ordering_fields = ['call_time', 'duration', 'phone_number']
+    ordering = ['-call_time']
+
+    def get_serializer_class(self):
+        """Use a lightweight serializer for list operations."""
+        if self.action == 'list':
+            return CallLogListSerializer
+        return CallLogSerializer
+
+    @extend_schema(
+        summary="List/Filter Call Logs",
+        description="Returns a paginated list of call logs with extensive filtering options.",
+        parameters=[
+            OpenApiParameter("search", str, description="Search by number or contact name"),
+            OpenApiParameter("call_type", str, enum=["incoming", "outgoing", "missed", "rejected"]),
+            OpenApiParameter("branch", str, description="Branch UUID"),
+            OpenApiParameter("device", str, description="Device ID string"),
+            OpenApiParameter("start_date", str, description="YYYY-MM-DD"),
+            OpenApiParameter("end_date", str, description="YYYY-MM-DD"),
+            OpenApiParameter("is_unique", bool, description="If true, returns only the latest call per phone number"),
+        ],
+    )
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
 
     def get_permissions(self):
         """
@@ -200,13 +280,17 @@ class CallLogViewSet(viewsets.ModelViewSet):
         super_admin / admin → See ALL call logs.
         branch_manager      → See ONLY call logs for their assigned branch.
         """
+        if getattr(self, "swagger_fake_view", False):
+            return CallLog.objects.none()
+
         user = self.request.user
-        queryset = CallLog.objects.select_related(
-            "branch", "device", "contact"
-        ).all().order_by("-call_time")
+        
+        # All views need these relations pre-fetched to avoid N+1 queries
+        related = ["branch", "contact", "lead", "followup_status", "device"]
+        queryset = CallLog.objects.select_related(*related).order_by("-call_time")
 
         # Branch manager: strict filter to single assigned branch
-        if user.role == "branch_manager":
+        if user.is_authenticated and hasattr(user, 'role') and user.role == "branch_manager":
             if user.branch:
                 queryset = queryset.filter(branch=user.branch)
             else:
@@ -215,90 +299,26 @@ class CallLogViewSet(viewsets.ModelViewSet):
 
         # super_admin and admin see all — no filter
 
-        # Apply URL query filters (for list/export actions only)
-        if self.action not in ["stats", "branch_summary"]:
-            queryset = self._apply_filters(queryset)
-
         return queryset
 
-    def _apply_filters(self, queryset):
-        """
-        Apply query parameter filters to the call log queryset.
 
-        Available filters:
-            ?search=<number>        → Filter by phone number (partial match).
-            ?call_type=<type>       → Filter by call type (incoming/outgoing/missed/rejected).
-            ?branch=<uuid>          → Filter by branch UUID (admin/super_admin only).
-            ?device=<device_id>     → Filter by device_id string.
-            ?start_date=YYYY-MM-DD  → Filter calls on or after this date.
-            ?end_date=YYYY-MM-DD    → Filter calls on or before this date.
-        """
-        params = self.request.query_params
-
-        call_type = params.get("call_type", None)
-        if call_type:
-            queryset = queryset.filter(call_type=call_type)
-
-        # Unique Records Filter: Show only the most recent call for each phone number
-        is_unique = params.get("is_unique") == "true"
-        if is_unique:
-            # We use a subquery approach to maintain compatibility with ordering and aggregation
-            # First, get the IDs of the latest call for each unique phone number within the current filtered set
-            latest_ids = queryset.order_by('phone_number', '-call_time').distinct('phone_number').values_list('id', flat=True)
-            # Re-filter the current queryset using these IDs to preserve select_related
-            queryset = queryset.filter(id__in=latest_ids).order_by('-call_time')
-
-        # Branch filter (only meaningful for admin/super_admin — managers are already filtered)
-        branch = params.get("branch", None)
-        if branch:
-            if branch == "null":
-                queryset = queryset.filter(branch__isnull=True)
-            elif branch.strip() and branch not in ("undefined", ""):
-                queryset = queryset.filter(branch_id=branch)
-
-        # Filter by device_id string (the human-readable ID, not UUID)
-        device = params.get("device", None)
-        if device:
-            if device == "null":
-                queryset = queryset.filter(device__isnull=True)
-            elif device.strip() and device not in ("undefined", ""):
-                queryset = queryset.filter(device__device_id=device)
-
-        # Search by phone number (partial / contains)
-        search = params.get("search", None)
-        if search:
-            queryset = queryset.filter(
-                Q(phone_number__icontains=search) |
-                Q(contact__name__icontains=search)
+    @extend_schema(
+        summary="Bulk delete call logs",
+        description="Delete a large batch of call logs at once. Restricted to super_admin.",
+        request=inline_serializer(
+            name="BulkDeleteRequest",
+            fields={"ids": serializers.ListField(child=serializers.UUIDField())}
+        ),
+        responses={
+            200: inline_serializer(
+                name="BulkDeleteResponse",
+                fields={
+                    "status": serializers.CharField(),
+                    "message": serializers.CharField()
+                }
             )
-
-        # Date range filters (using direct timestamp comparison for index efficiency)
-        start_date = params.get("start_date", None)
-        if start_date:
-            try:
-                # Ensure we capture everything from 00:00:00 of the start date
-                from django.utils import timezone
-                from datetime import datetime
-                naive_start = datetime.strptime(start_date, "%Y-%m-%d")
-                aware_start = timezone.make_aware(naive_start)
-                queryset = queryset.filter(call_time__gte=aware_start)
-            except (ValueError, TypeError):
-                pass
-
-        end_date = params.get("end_date", None)
-        if end_date:
-            try:
-                # Ensure we capture everything up to 23:59:59 of the end date
-                from django.utils import timezone
-                from datetime import datetime, timedelta
-                naive_end = datetime.strptime(end_date, "%Y-%m-%d")
-                aware_end = timezone.make_aware(naive_end).replace(hour=23, minute=59, second=59, microsecond=999999)
-                queryset = queryset.filter(call_time__lte=aware_end)
-            except (ValueError, TypeError):
-                pass
-
-        return queryset
-
+        }
+    )
     @action(detail=False, methods=["post"])
     def bulk_delete(self, request):
         """
@@ -318,6 +338,32 @@ class CallLogViewSet(viewsets.ModelViewSet):
             "message": f"Successfully deleted {deleted_count} call log(s)."
         }, status=status.HTTP_200_OK)
 
+    @extend_schema(
+        summary="Get call log summary stats",
+        description="Calculates totals and averages for the currently filtered set of logs.",
+        parameters=[
+            OpenApiParameter("search", str),
+            OpenApiParameter("call_type", str),
+            OpenApiParameter("branch", str),
+            OpenApiParameter("start_date", str),
+            OpenApiParameter("end_date", str),
+        ],
+        responses={
+            200: inline_serializer(
+                name="CallLogStatsResponse",
+                fields={
+                    "total": serializers.IntegerField(),
+                    "incoming": serializers.IntegerField(),
+                    "outgoing": serializers.IntegerField(),
+                    "missed": serializers.IntegerField(),
+                    "rejected": serializers.IntegerField(),
+                    "unique_count": serializers.IntegerField(),
+                    "total_duration": serializers.IntegerField(),
+                    "avg_duration": serializers.FloatField(),
+                }
+            )
+        }
+    )
     @action(detail=False, methods=["get"])
     def stats(self, request):
         """
@@ -327,7 +373,7 @@ class CallLogViewSet(viewsets.ModelViewSet):
         Response:
             total, incoming, outgoing, missed, rejected, total_duration, avg_duration
         """
-        queryset = self._apply_filters(self.get_queryset())
+        queryset = self.filter_queryset(self.get_queryset())
         stats = queryset.aggregate(
             total=Count("id"),
             incoming=Count("id", filter=Q(call_type="incoming")),
@@ -336,44 +382,77 @@ class CallLogViewSet(viewsets.ModelViewSet):
             rejected=Count("id", filter=Q(call_type="rejected")),
             total_duration=Sum("duration"),
             avg_duration=Avg("duration"),
+            # Follow-up specific stats
+            followed_up=Count("id", filter=Q(followup_status__is_followed_up=True)),
+            sla_good=Count("id", filter=Q(followup_status__sla_status='GOOD')),
+            sla_missed=Count("id", filter=Q(followup_status__sla_status='MISSED')),
+            # Calculate unique count in the same pass using the indexed normalized field
+            unique_count=Count("phone_normalized", distinct=True)
         )
         
-        # Calculate unique count separately to avoid aggregate + distinct(fields) conflict
-        # We respect all currently applied filters (branch, date, etc)
-        stats["unique_count"] = queryset.values("phone_number").distinct().count() or 0
         return response.Response(stats)
 
+    @extend_schema(
+        summary="Get per-branch summaries",
+        description="Returns an overview of call counts for each branch.",
+        parameters=[
+            OpenApiParameter("branch_search", str),
+            OpenApiParameter("city", str),
+            OpenApiParameter("status", str, enum=["active", "inactive"]),
+        ],
+        responses={
+            200: inline_serializer(
+                name="BranchSummaryResponse",
+                many=True,
+                fields={
+                    "branch_id": serializers.UUIDField(),
+                    "branch_name": serializers.CharField(),
+                    "city": serializers.CharField(),
+                    "area": serializers.CharField(),
+                    "total_calls": serializers.IntegerField(),
+                    "total_missed": serializers.IntegerField(),
+                    "total_outgoing": serializers.IntegerField(),
+                    "total_incoming": serializers.IntegerField(),
+                }
+            )
+        }
+    )
     @action(detail=False, methods=["get"])
     def branch_summary(self, request):
         """
         Returns per-branch call log summary.
         Admins see all branches; branch managers see only their branch.
 
-        Filters (in addition to role-based filtering):
-            ?branch_search=<name_or_code>  → Search branches by name or code.
-            ?city=<city>                   → Filter branches by city.
-            ?status=active|inactive        → Filter by branch active status.
+        Filters: Supports all filters from CallLogFilter (start_date, end_date, 
+        quick_date, branch_search, city, status, etc).
+        Sorting: Use 'ordering' parameter (e.g., -total_calls).
         """
-        queryset = self.get_queryset()
+        # Automatically applies role-based and query-params-based filtering
+        queryset = self.filter_queryset(self.get_queryset())
 
-        # Additional summary-specific filters
-        branch_search = request.query_params.get("branch_search", None)
-        city = request.query_params.get("city", None)
-        active_status = request.query_params.get("status", None)
+        # Define allowed sort fields and map them to database/annotation names
+        sort_mapping = {
+            'total_calls': 'total_calls',
+            'missed_calls': 'total_missed',
+            'outgoing_calls': 'total_outgoing',
+            'incoming_calls': 'total_incoming',
+            'followed': 'total_followed',
+            'missed_sla': 'total_missed_sla',
+            'branch_name': 'branch__spa_name',
+        }
+    
 
-        if branch_search:
-            queryset = queryset.filter(
-                Q(branch__spa_name__icontains=branch_search) |
-                Q(branch__code__icontains=branch_search)
-            )
-        if city:
-            queryset = queryset.filter(branch__city__icontains=city)
-        if active_status == "active":
-            queryset = queryset.filter(branch__is_active=True)
-        elif active_status == "inactive":
-            queryset = queryset.filter(branch__is_active=False)
+        # Handle ordering parameter
+        ordering_param = request.query_params.get('ordering', 'branch_name')
+        is_desc = ordering_param.startswith('-')
+        clean_field = ordering_param[1:] if is_desc else ordering_param
+        
+        # Determine the database field to sort by
+        db_sort_field = sort_mapping.get(clean_field, 'branch__spa_name')
+        if is_desc:
+            db_sort_field = f'-{db_sort_field}'
 
-        summary = queryset.values(
+        summary = queryset.order_by().values(
             "branch__id",
             "branch__spa_name",
             "branch__city",
@@ -383,7 +462,9 @@ class CallLogViewSet(viewsets.ModelViewSet):
             total_missed=Count("id", filter=Q(call_type="missed")),
             total_outgoing=Count("id", filter=Q(call_type="outgoing")),
             total_incoming=Count("id", filter=Q(call_type="incoming")),
-        ).order_by("branch__spa_name")
+            total_followed=Count("id", filter=Q(followup_status__is_followed_up=True)),
+            total_missed_sla=Count("id", filter=Q(followup_status__sla_status='MISSED')),
+        ).order_by(db_sort_field)
 
         page = self.paginate_queryset(summary)
         result = self._format_branch_summary(page if page is not None else summary)
@@ -404,6 +485,8 @@ class CallLogViewSet(viewsets.ModelViewSet):
                 "total_missed": s["total_missed"],
                 "total_outgoing": s["total_outgoing"],
                 "total_incoming": s["total_incoming"],
+                "total_followed": s["total_followed"],
+                "total_missed_sla": s["total_missed_sla"],
             }
             for s in summary
         ]
@@ -415,7 +498,7 @@ class CallLogViewSet(viewsets.ModelViewSet):
         Applies same role-based and filter-based queryset restrictions.
         Uses .iterator() for memory efficiency with large datasets.
         """
-        queryset = self.get_queryset().select_related("branch", "device").iterator()
+        queryset = self.filter_queryset(self.get_queryset()).select_related("branch", "device").iterator()
 
         workbook = openpyxl.Workbook()
         worksheet = workbook.active
@@ -461,3 +544,59 @@ class CallLogViewSet(viewsets.ModelViewSet):
         http_response["Content-Disposition"] = f'attachment; filename="call_logs_{timestamp}.xlsx"'
         workbook.save(http_response)
         return http_response
+
+
+class MissedCallFollowUpViewSet(viewsets.ReadOnlyModelViewSet):
+    """
+    ViewSet for tracking and reporting on missed call follow-up performance.
+    """
+    queryset = MissedCallFollowUp.objects.all()
+    serializer_class = MissedCallFollowUpSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        qs = super().get_queryset().select_related('missed_call', 'branch', 'followup_call')
+        
+        if user.role == 'branch_manager':
+            return qs.filter(branch=user.branch)
+        return qs
+
+    @action(detail=False, methods=['get'])
+    def today_missed(self, request):
+        """Returns all missed calls received today."""
+        today = timezone.now().date()
+        queryset = self.get_queryset().filter(created_at__date=today)
+        serializer = self.get_serializer(queryset, many=True)
+        return response.Response(serializer.data)
+
+    @action(detail=False, methods=['get'])
+    def stats(self, request):
+        """Returns aggregate stats: Followed vs Not Followed, and SLA breakdown."""
+        qs = self.get_queryset()
+        
+        # Optimized aggregation for millions of records
+        stats = qs.aggregate(
+            total_missed=Count('id'),
+            followed_count=Count('id', filter=Q(is_followed_up=True)),
+            unfollowed_count=Count('id', filter=Q(is_followed_up=False)),
+            good_sla=Count('id', filter=Q(sla_status='GOOD')),
+            ok_sla=Count('id', filter=Q(sla_status='OK')),
+            late_sla=Count('id', filter=Q(sla_status='LATE')),
+            missed_sla=Count('id', filter=Q(sla_status='MISSED')),
+        )
+        
+        return response.Response(stats)
+
+    @action(detail=False, methods=['get'])
+    def branch_performance(self, request):
+        """Returns missed call follow-up performance breakdown per branch."""
+        # Note: In a large-scale system, this should be cached or pre-aggregated in a DailySummary model.
+        performance = self.get_queryset().values('branch__spa_name').annotate(
+            total=Count('id'),
+            followed=Count('id', filter=Q(is_followed_up=True)),
+            follow_rate=Count('id', filter=Q(is_followed_up=True)) * 100.0 / Count('id'),
+            avg_attempts=Avg('followup_attempt_count')
+        ).order_by('-follow_rate')
+        
+        return response.Response(performance)

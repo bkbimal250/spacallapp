@@ -86,6 +86,14 @@ const BranchList = () => {
         setPage(1);
     }, []);
 
+    const handleGroupSelect = useCallback((groupId) => {
+        setFilters(prev => ({
+            ...prev,
+            group: groupId || ''
+        }));
+        setPage(1);
+    }, []);
+
     const handlePageChange = useCallback((newPage) => {
         setPage(newPage);
     }, []);
@@ -150,17 +158,9 @@ const BranchList = () => {
     const columns = useMemo(() => [
 
         { header: 'Spa Name', accessor: 'spa_name' },
-        {
-            header: 'Group',
-            render: (row) => (
-                <span className="px-2 py-0.5 text-xs font-semibold rounded-md bg-primary/10 text-primary">
-                    {row.branch_group_name || 'Unassigned'}
-                </span>
-            )
-        },
         { header: 'Branch Code', accessor: 'code' },
-        { header: 'Area', accessor: 'area' },
-        { header: 'Postal Code', accessor: 'postal_code' },
+        { header: 'City', accessor: 'city' },
+        { header: 'Branch Group Name', accessor: 'branch_group_name' },
 
         {
             header: 'Location',
@@ -258,11 +258,15 @@ const BranchList = () => {
             {/* STATS */}
             <BranchStats stats={stats} />
 
-            {/* FILTER */}
+
+
 
             <div className="bg-card border border-border rounded-2xl p-6">
 
-                <BranchFilter onFilter={handleFilter} />
+                <BranchFilter
+                    onFilter={handleFilter}
+                    externalFilters={filters}
+                />
 
             </div>
 

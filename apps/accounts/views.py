@@ -23,6 +23,8 @@ from rest_framework import viewsets, status
 from django.contrib.auth import authenticate
 from django.utils import timezone
 from .services.realtime import RealTimeService
+from drf_spectacular.utils import extend_schema, inline_serializer, OpenApiParameter
+from rest_framework import serializers
 
 from .serializers import (
     LoginSerializer,
@@ -50,6 +52,26 @@ class LoginView(APIView):
     """
     permission_classes = [AllowAny]
 
+    serializer_class = LoginSerializer
+
+    @extend_schema(
+        request=LoginSerializer,
+        responses={
+            200: inline_serializer(
+                name="LoginResponse",
+                fields={
+                    "message": serializers.CharField(),
+                    "refresh": serializers.CharField(),
+                    "access": serializers.CharField(),
+                },
+            ),
+            400: inline_serializer(
+                name="LoginError",
+                fields={"error": serializers.CharField()},
+            ),
+        },
+        description="Authenticates a user via email and password, returning JWT tokens and profile data."
+    )
     def post(self, request):
         serializer = LoginSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -92,9 +114,9 @@ class LoginView(APIView):
         refresh = RefreshToken.for_user(user)
 
         return Response({
+            "message": "Login successful",
             "refresh": str(refresh),
             "access": str(refresh.access_token),
-            "user": UserSerializer(user).data
         })
 
 
@@ -105,6 +127,22 @@ class RequestOTPView(APIView):
     """
     permission_classes = [AllowAny]
 
+    serializer_class = OTPRequestSerializer
+
+    @extend_schema(
+        request=OTPRequestSerializer,
+        responses={
+            200: inline_serializer(
+                name="OTPRequestSuccess",
+                fields={"message": serializers.CharField()},
+            ),
+            400: inline_serializer(
+                name="OTPRequestError",
+                fields={"error": serializers.CharField()},
+            ),
+        },
+        description="Sends a one-time password (OTP) to the provided email address if the user exists."
+    )
     def post(self, request):
         serializer = OTPRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -124,7 +162,26 @@ class VerifyOTPView(APIView):
     Verify the OTP sent to the email and return JWT tokens if valid.
     """
     permission_classes = [AllowAny]
+    serializer_class = OTPVerifySerializer
 
+    @extend_schema(
+        request=OTPVerifySerializer,
+        responses={
+            200: inline_serializer(
+                name="OTPVerifyResponse",
+                fields={
+                    "message": serializers.CharField(),
+                    "refresh": serializers.CharField(),
+                    "access": serializers.CharField(),
+                },
+            ),
+            400: inline_serializer(
+                name="OTPVerifyError",
+                fields={"error": serializers.CharField()},
+            ),
+        },
+        description="Verifies the OTP sent to the email and returns JWT tokens if valid."
+    )
     def post(self, request):
         serializer = OTPVerifySerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -154,9 +211,9 @@ class VerifyOTPView(APIView):
             refresh = RefreshToken.for_user(user)
 
             return Response({
+                "message": "Login successful",
                 "refresh": str(refresh),
                 "access": str(refresh.access_token),
-                "user": UserSerializer(user).data
             })
         except ValueError as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
@@ -185,6 +242,39 @@ class UserViewSet(viewsets.ModelViewSet):
     """
     serializer_class = UserSerializer
     permission_classes = [IsAuthenticated, IsAdminOrSuperAdmin]
+
+    @extend_schema(
+        summary="List Users",
+        description="List all users with search and filtering for roles and branches.",
+        parameters=[
+            OpenApiParameter("search", type=str, description="Search by name or email"),
+            OpenApiParameter("role", type=str, description="Filter by user role"),
+            OpenApiParameter("branch", type=str, description="Filter by branch UUID"),
+            OpenApiParameter("is_active", type=bool, description="Filter by active status"),
+        ]
+    )
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
+    @extend_schema(summary="Create User")
+    def create(self, request, *args, **kwargs):
+        return super().create(request, *args, **kwargs)
+
+    @extend_schema(summary="Retrieve User")
+    def retrieve(self, request, *args, **kwargs):
+        return super().retrieve(request, *args, **kwargs)
+
+    @extend_schema(summary="Update User")
+    def update(self, request, *args, **kwargs):
+        return super().update(request, *args, **kwargs)
+
+    @extend_schema(summary="Partial Update User")
+    def partial_update(self, request, *args, **kwargs):
+        return super().partial_update(request, *args, **kwargs)
+
+    @extend_schema(summary="Delete User")
+    def destroy(self, request, *args, **kwargs):
+        return super().destroy(request, *args, **kwargs)
 
     def get_queryset(self):
         """
@@ -252,6 +342,21 @@ class OnlineUsersView(APIView):
     """
     permission_classes = [IsAuthenticated, IsAdminOrSuperAdmin]
 
+    @extend_schema(
+        summary="List Online Users",
+        description="Returns a list of users currently marked as online.",
+        responses={200: inline_serializer(
+            name="OnlineUserListItem",
+            many=True,
+            fields={
+                "id": serializers.UUIDField(),
+                "full_name": serializers.CharField(),
+                "role": serializers.CharField(),
+                "branch": serializers.CharField(),
+                "last_login_at": serializers.DateTimeField(),
+            }
+        )}
+    )
     def get(self, request):
         online_users = User.objects.filter(is_online=True).select_related("branch").only(
             "id", "full_name", "role", "branch", "last_login_at"
@@ -277,6 +382,19 @@ class UserLoginHistoryViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = UserLoginHistorySerializer
     permission_classes = [IsAuthenticated, IsAdminOrSuperAdmin]
 
+    @extend_schema(
+        summary="List Login History",
+        parameters=[
+            OpenApiParameter("user", type=str, description="Filter history by user UUID")
+        ]
+    )
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
+    @extend_schema(summary="Retrieve Login History Item")
+    def retrieve(self, request, *args, **kwargs):
+        return super().retrieve(request, *args, **kwargs)
+
     def get_queryset(self):
         queryset = UserLoginHistory.objects.select_related(
             "user", "user__branch"
@@ -287,3 +405,37 @@ class UserLoginHistoryViewSet(viewsets.ReadOnlyModelViewSet):
             queryset = queryset.filter(user_id=user_id)
             
         return queryset
+
+class UpdateProfileView(APIView):
+    """
+    Allows the authenticated user to update their own profile information.
+    Currently used by branch managers on Android to register their FCM token.
+    """
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        summary="Update Current User Profile",
+        description="Updates the profile of the currently logged-in user. Used for FCM token registration.",
+        request=inline_serializer(
+            name="UpdateProfileRequest",
+            fields={
+                "fcm_token": serializers.CharField(required=False),
+                "full_name": serializers.CharField(required=False),
+            }
+        ),
+        responses={200: inline_serializer(
+            name="UpdateProfileResponse",
+            fields={"status": serializers.CharField()}
+        )}
+    )
+    def patch(self, request):
+        user = request.user
+        data = request.data
+
+        if "fcm_token" in data:
+            user.fcm_token = data["fcm_token"]
+        if "full_name" in data:
+            user.full_name = data["full_name"]
+        
+        user.save()
+        return Response({"status": "profile updated"})

@@ -2,23 +2,28 @@ from rest_framework import serializers
 from .models import Branch, BranchGroups
 
 class BranchGroupSerializer(serializers.ModelSerializer):
-    branch_count = serializers.SerializerMethodField()
+    branch_count = serializers.ReadOnlyField()
 
     class Meta:
         model = BranchGroups
         fields = '__all__'
 
-    def get_branch_count(self, obj):
-        return obj.branches.count()
-
 class BranchSerializer(serializers.ModelSerializer):
-    branch_group_name = serializers.SerializerMethodField()
+    branch_group_name = serializers.ReadOnlyField(source='branch_group.name')
 
     class Meta:
         model = Branch
         fields = '__all__'
 
-    def get_branch_group_name(self, obj):
-        if obj.branch_group:
-            return obj.branch_group.name
-        return None
+class BranchListSerializer(serializers.ModelSerializer):
+    """
+    Lean serializer for branch list view.
+    Includes only essential fields to prevent N+1 queries for excluded fields.
+    """
+    branch_group_name = serializers.ReadOnlyField(source='branch_group.name')
+
+    class Meta:
+        model = Branch
+        fields = [
+            "id", "spa_name", "code", "city", "state", "is_active", "branch_group", "branch_group_name"
+        ]

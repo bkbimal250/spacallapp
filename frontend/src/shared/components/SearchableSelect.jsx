@@ -34,22 +34,25 @@ const SearchableSelect = ({
         opt.label.toLowerCase().includes(searchTerm.toLowerCase())
     ), [options, searchTerm]);
 
-    // 🔥 Highlight search text
-    const highlightText = useCallback((text) => {
-        if (!searchTerm) return text;
+    // 🔥 Highlight search text - Optimized
+    const highlightedOptions = useMemo(() => {
+        if (!searchTerm) return null;
+        return searchTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }, [searchTerm]);
 
-        // Escape special characters to prevent regex errors
-        const escapedSearch = searchTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        const parts = text.split(new RegExp(`(${escapedSearch})`, "gi"));
+    const highlightText = useCallback((text) => {
+        if (!highlightedOptions) return text;
+
+        const parts = text.split(new RegExp(`(${highlightedOptions})`, "gi"));
         
         return parts.map((part, i) =>
             part.toLowerCase() === searchTerm.toLowerCase() ? (
-                <span key={i} className="bg-yellow-200 text-black px-1 rounded font-bold">
+                <span key={i} className="bg-primary/20 text-primary px-0.5 rounded font-bold">
                     {part}
                 </span>
             ) : part
         );
-    }, [searchTerm]);
+    }, [searchTerm, highlightedOptions]);
 
     const handleSelect = useCallback((option) => {
         onChange(option.value);
@@ -128,7 +131,7 @@ const SearchableSelect = ({
 
             {/* DROPDOWN */}
             {isOpen && (
-                <div className="absolute z-50 mt-2 w-full rounded-xl bg-card border border-border shadow-2xl overflow-hidden animate-fadeIn">
+                <div className="absolute z-[999] mt-2.5 w-full rounded-xl bg-card border border-border shadow-2xl overflow-hidden animate-fadeIn backdrop-blur-sm">
 
                     {/* SEARCH */}
                     <div className="sticky top-0 bg-background px-3 py-2 border-b border-border">

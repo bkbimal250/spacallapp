@@ -1,17 +1,43 @@
 from django.db.models import Count, Q
-from rest_framework import views, viewsets, response, status, permissions
+from rest_framework import views, viewsets, response, status, permissions, serializers
+from django_filters.rest_framework import DjangoFilterBackend
+from .filters import NotificationFilter
 from rest_framework.decorators import action
+from drf_spectacular.utils import extend_schema, OpenApiParameter, inline_serializer
 from .models import Notification
 from .serializers import NotificationSerializer
 from .services import NotificationService
 from apps.devices.models import Device
 
+from core.permissions import IsAdmin
+
 class AdminSendNotificationView(views.APIView):
     """
     Allow admins to send manual notifications to devices from the dashboard.
     """
-    permission_classes = [permissions.IsAuthenticated] # Should be IsAdmin
+    permission_classes = [permissions.IsAuthenticated, IsAdmin]
 
+    @extend_schema(
+        summary="Send Manual Notification",
+        description="Allows managers to send push notifications to one or more devices.",
+        request=inline_serializer(
+            name="SendNotificationRequest",
+            fields={
+                "device_ids": serializers.ListField(child=serializers.UUIDField(), required=False),
+                "title": serializers.CharField(),
+                "body": serializers.CharField(),
+                "type": serializers.CharField(default="system"),
+            }
+        ),
+        responses={200: inline_serializer(
+            name="SendNotificationResponse",
+            fields={
+                "status": serializers.CharField(),
+                "sent_count": serializers.IntegerField(),
+                "total_count": serializers.IntegerField(),
+            }
+        )}
+    )
     def post(self, request):
         device_ids = request.data.get("device_ids", [])
         title = request.data.get("title")
@@ -68,28 +94,58 @@ class NotificationViewSet(viewsets.ModelViewSet):
     """
     View summary and delete history of sent notifications.
     """
-    queryset = Notification.objects.all().select_related('device', 'device__branch').order_by('-created_at')
     serializer_class = NotificationSerializer
     permission_classes = [permissions.IsAuthenticated]
+    filter_backends = [DjangoFilterBackend]
+    filterset_class = NotificationFilter
 
     def get_queryset(self):
+        """
+        Return notifications scoped by user role.
+        """
         user = self.request.user
-        queryset = super().get_queryset()
+        qs = Notification.objects.select_related("device", "device__branch").all().order_by("-created_at")
 
-        if user.role == 'branch_manager':
-            queryset = queryset.filter(device__branch=user.branch)
+        # Optimization: prune columns for the list view
+        if self.action == "list":
+            qs = qs.only(
+                "id", "title", "notification_type", "is_sent", "created_at",
+                "device__id", "device__device_id",
+                "device__branch__id", "device__branch__spa_name"
+            )
+
+        if user.role == "branch_manager":
+            # Show notifications for their branch's devices OR notifications sent specifically to them
+            qs = qs.filter(
+                Q(device__branch=user.branch) | Q(user=user)
+            )
         
-        # Filtering
-        notif_type = self.request.query_params.get('type')
-        if notif_type:
-            queryset = queryset.filter(notification_type=notif_type)
-            
-        branch_id = self.request.query_params.get('branch')
-        if branch_id and user.role != 'branch_manager':
-            queryset = queryset.filter(device__branch_id=branch_id)
-            
-        return queryset
+        # Admin and super_admin see all history
 
+        return qs
+
+    @extend_schema(
+        summary="List Notifications",
+        parameters=[]
+    )
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
+    @extend_schema(summary="Retrieve Notification")
+    def retrieve(self, request, *args, **kwargs):
+        return super().retrieve(request, *args, **kwargs)
+
+    @extend_schema(
+        summary="Delete All Notifications",
+        description="Permanently deletes all notification logs within the user's branch/global scope.",
+        responses={200: inline_serializer(
+            name="DeleteAllNotificationsResponse",
+            fields={
+                "status": serializers.CharField(),
+                "count": serializers.IntegerField()
+            }
+        )}
+    )
     @action(detail=False, methods=['delete'])
     def delete_all(self, request):
         """Delete all notification logs in the user's scope."""
@@ -105,6 +161,18 @@ class NotificationStatsView(views.APIView):
     """
     permission_classes = [permissions.IsAuthenticated]
 
+    @extend_schema(
+        summary="Notification Statistics",
+        description="Returns aggregate health metrics for the notification system (delivery rates).",
+        responses={200: inline_serializer(
+            name="NotificationStats",
+            fields={
+                "total_sent": serializers.IntegerField(),
+                "delivery_rate": serializers.CharField(),
+                "active_devices": serializers.IntegerField(),
+            }
+        )}
+    )
     def get(self, request):
         user = self.request.user
         

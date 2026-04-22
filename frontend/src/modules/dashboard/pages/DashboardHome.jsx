@@ -52,6 +52,7 @@ const DashboardHome = () => {
     const [branchData, setBranchData] = useState([]);
     const [loading, setLoading] = useState(true);
     const [leadSource, setLeadSource] = useState('all');
+    const [quickDate, setQuickDate] = useState('today');
     const [selectedBranch, setSelectedBranch] = useState('');
     const [branches, setBranches] = useState([]);
 
@@ -88,7 +89,9 @@ const DashboardHome = () => {
 
         try {
 
-            const params = {};
+            const params = {
+                quick_date: quickDate
+            };
 
             if (leadSource !== 'all') params.lead_source = leadSource;
             if (selectedBranch) params.branch = selectedBranch;
@@ -111,7 +114,7 @@ const DashboardHome = () => {
         } finally {
             if (!isBackground) setLoading(false);
         }
-    }, [leadSource, selectedBranch]);
+    }, [leadSource, selectedBranch, quickDate]);
 
     useEffect(() => {
         fetchStats();
@@ -165,8 +168,38 @@ const DashboardHome = () => {
 
                 </div>
 
-                <div className="flex flex-wrap items-center gap-3">
-                    {/* Filters area (future use) */}
+                <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
+                    <div className="w-full md:w-64">
+                        <SearchableSelect
+                            options={branches}
+                            value={selectedBranch}
+                            onChange={setSelectedBranch}
+                            placeholder="All Branches"
+                            isClearable
+                        />
+                    </div>
+                    
+                    <select 
+                        value={quickDate}
+                        onChange={(e) => setQuickDate(e.target.value)}
+                        className="bg-card border border-border text-text-primary rounded-xl px-4 py-2.5 text-sm font-medium focus:ring-2 focus:ring-primary outline-none min-w-[140px] shadow-sm hover:border-primary transition-colors"
+                    >
+                        <option value="">All Time</option>
+                        <option value="today">Today</option>
+                        <option value="yesterday">Yesterday</option>
+                        <option value="last_7_days">Last 7 Days</option>
+                    </select>
+
+                    <select 
+                        value={leadSource}
+                        onChange={(e) => setLeadSource(e.target.value)}
+                        className="bg-card border border-border text-text-primary rounded-xl px-4 py-2.5 text-sm font-medium focus:ring-2 focus:ring-primary outline-none min-w-[140px] shadow-sm hover:border-primary transition-colors"
+                    >
+                        <option value="all">All Leads</option>
+                        <option value="new">New Leads</option>
+                        <option value="followup">Follow up</option>
+                        <option value="closed">Closed</option>
+                    </select>
                 </div>
 
             </div>

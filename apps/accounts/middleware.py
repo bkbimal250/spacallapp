@@ -14,20 +14,18 @@ def get_user(user_id):
         return AnonymousUser()
 
 class JWTAuthMiddleware:
+    """
+    Custom JWT Authentication Middleware for Channels.
+    Expects token in query string: /ws/.../?token=TOKEN
+    """
     def __init__(self, inner):
         self.inner = inner
 
-    def __call__(self, scope):
-        return JWTAuthMiddlewareInstance(scope, self.inner)
+    async def __call__(self, scope, receive, send):
+        # Close old database connections to prevent usage of timed out connections
+        # close_old_connections() # Add if needed, usually Channels handles this
 
-
-class JWTAuthMiddlewareInstance:
-    def __init__(self, scope, inner):
-        self.scope = scope
-        self.inner = inner
-
-    async def __call__(self, receive, send):
-        query_string = self.scope.get("query_string", b"").decode("utf-8")
+        query_string = scope.get("query_string", b"").decode("utf-8")
         query_params = parse_qs(query_string)
         token = query_params.get("token", [None])[0]
 
@@ -36,22 +34,22 @@ class JWTAuthMiddlewareInstance:
         if token:
             try:
                 access_token = AccessToken(token)
-                print("✅ PAYLOAD:", access_token.payload)
-
+                # Note: access_token.payload might be validated here implicitly
                 user_id = access_token.payload.get("user_id")
+                
+                print("✅ PAYLOAD:", access_token.payload)
                 print("👉 USER_ID:", user_id)
 
                 if user_id:
-                    self.scope["user"] = await get_user(user_id)
+                    scope["user"] = await get_user(user_id)
                 else:
-                    self.scope["user"] = AnonymousUser()
+                    scope["user"] = AnonymousUser()
 
             except Exception as e:
                 print("❌ JWT ERROR:", str(e))
-                self.scope["user"] = AnonymousUser()
+                scope["user"] = AnonymousUser()
         else:
             print("❌ No token")
-            self.scope["user"] = AnonymousUser()
+            scope["user"] = AnonymousUser()
 
-        inner = self.inner(self.scope)
-        return await inner(receive, send)
+        return await self.inner(scope, receive, send)

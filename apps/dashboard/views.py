@@ -19,8 +19,9 @@ from django.db.models.functions import TruncDate
 from apps.calllogs.models import CallLog
 from apps.devices.models import Device
 from apps.branches.models import Branch
-from apps.common.utils import apply_branch_filter, get_branch_filter_ids
-
+from apps.common.utils import get_branch_filter_ids
+from drf_spectacular.utils import extend_schema, OpenApiParameter, inline_serializer
+from rest_framework import serializers
 
 class DashboardStatsView(APIView):
     """
@@ -40,6 +41,56 @@ class DashboardStatsView(APIView):
     """
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(
+        summary="Get dashboard KPI metrics",
+        description="Returns global or branch-specific statistics for the web dashboard.",
+        parameters=[
+            OpenApiParameter("branch", str, description="Filter results by Branch UUID"),
+            OpenApiParameter("lead_source", str, enum=["direct", "manual"], description="Filter by lead creation source"),
+        ],
+        responses={
+            200: inline_serializer(
+                name="DashboardStatsResponse",
+                fields={
+                    "total_calls": serializers.IntegerField(),
+                    "active_devices": serializers.IntegerField(),
+                    "total_devices": serializers.IntegerField(),
+                    "missed_calls": serializers.IntegerField(),
+                    "total_leads": serializers.IntegerField(),
+                    "total_branches": serializers.IntegerField(),
+                    "total_contacts": serializers.IntegerField(),
+                    "total_users": serializers.IntegerField(),
+                    "total_exports": serializers.IntegerField(),
+                    "today_total_calls": serializers.IntegerField(),
+                    "avg_duration": serializers.CharField(help_text="Format: 5m 30s"),
+                    "call_volume_trends": serializers.ListField(
+                        child=inline_serializer(
+                            name="TrendPoint",
+                            fields={
+                                "name": serializers.CharField(help_text="Day of week: Mon, Tue"),
+                                "calls": serializers.IntegerField(),
+                            }
+                        )
+                    ),
+                    "branch_performance": serializers.ListField(
+                        child=inline_serializer(
+                            name="BranchPerformance",
+                            fields={
+                                "id": serializers.UUIDField(),
+                                "name": serializers.CharField(),
+                                "calls": serializers.IntegerField(),
+                                "incoming": serializers.IntegerField(),
+                                "outgoing": serializers.IntegerField(),
+                                "missed": serializers.IntegerField(),
+                                "conversion": serializers.IntegerField(),
+                                "status": serializers.CharField(),
+                            }
+                        )
+                    ),
+                }
+            )
+        }
+    )
     def get(self, request):
         user = request.user
         from apps.monitoring.models import DeviceHealth
@@ -51,8 +102,28 @@ class DashboardStatsView(APIView):
 
         # Get branch IDs for the current user's role
         branch_ids = get_branch_filter_ids(user)
+        # Get filter parameters
         branch_id_param = request.query_params.get("branch")
-        lead_source = request.query_params.get("lead_source")  # New filter: 'direct' or 'manual'
+        lead_source = request.query_params.get("lead_source")
+        quick_date = request.query_params.get("quick_date")
+        start_date_param = request.query_params.get("start_date")
+        end_date_param = request.query_params.get("end_date")
+
+        # Build date filter Q
+        date_filter_q = Q()
+        now = timezone.now()
+        today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+
+        if quick_date == 'today':
+            date_filter_q = Q(call_time__gte=today_start)
+        elif quick_date == 'yesterday':
+            yesterday_start = today_start - timedelta(days=1)
+            date_filter_q = Q(call_time__gte=yesterday_start, call_time__lt=today_start)
+        elif start_date_param or end_date_param:
+            if start_date_param:
+                date_filter_q &= Q(call_time__date__gte=start_date_param)
+            if end_date_param:
+                date_filter_q &= Q(call_time__date__lte=end_date_param)
 
         # Build base querysets
         calls_qs = CallLog.objects.all()
@@ -63,6 +134,11 @@ class DashboardStatsView(APIView):
         contact_qs = Contact.objects.all()
         user_qs = User.objects.filter(is_active=True)
         export_qs = ExportJob.objects.all()
+
+        # Apply date filtering to calls if requested
+        # Note: We apply it to calls_qs so the main KPI total_calls reflects the selected range
+        if date_filter_q:
+            calls_qs = calls_qs.filter(date_filter_q)
 
         # Apply lead source filtering if requested
         if lead_source == "direct":
@@ -118,9 +194,17 @@ class DashboardStatsView(APIView):
         total_users = user_qs.count()
         total_exports = export_qs.count()
 
-        # Today's total calls
-        today_start = timezone.now().replace(hour=0, minute=0, second=0, microsecond=0)
-        today_total_calls = calls_qs.filter(call_time__gte=today_start).count()
+        # Today's total calls (should be independent of global quick_date filter)
+        today_start_absolute = timezone.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        
+        # We need a branch-filtered queryset for today's calls
+        today_calls_qs = CallLog.objects.all()
+        if branch_ids and branch_ids != ["NONE"]:
+            today_calls_qs = today_calls_qs.filter(branch_id__in=branch_ids)
+        elif branch_id_param and branch_id_param.strip() and branch_id_param not in ("undefined", "null"):
+            today_calls_qs = today_calls_qs.filter(branch_id=branch_id_param)
+        
+        today_total_calls = today_calls_qs.filter(call_time__gte=today_start_absolute).count()
 
         # Average call duration (formatted as "Xm Ys")
         avg_dur = calls_qs.aggregate(Avg("duration"))["duration__avg"]
@@ -146,22 +230,36 @@ class DashboardStatsView(APIView):
         ]
 
         # ── Top 10 Branch Performance Table ───────────────────────────────────
-        # Define filter Q for the annotations based on lead_source
-        call_filter_q = Q()
+        # Define filter Q for the annotations based on lead_source and date
+        performance_filter_q = Q()
+        
+        # 1. Add lead source filter
         if lead_source == "direct":
-            call_filter_q &= Q(call_logs__lead__isnull=False)
+            performance_filter_q &= Q(call_logs__lead__isnull=False)
         elif lead_source == "manual":
-            # If manual source is selected, call logs will be 0 as they only come from sync
-            call_filter_q &= Q(call_logs__id__isnull=True)
+            # Manual source = 0 calls
+            performance_filter_q &= Q(call_logs__id__isnull=True)
+
+        # 2. Add date filter (Converting date_filter_q to related path)
+        if quick_date == 'today':
+            performance_filter_q &= Q(call_logs__call_time__gte=today_start)
+        elif quick_date == 'yesterday':
+            yesterday_start = today_start - timedelta(days=1)
+            performance_filter_q &= Q(call_logs__call_time__gte=yesterday_start, call_logs__call_time__lt=today_start)
+        elif start_date_param or end_date_param:
+            if start_date_param:
+                performance_filter_q &= Q(call_logs__call_time__date__gte=start_date_param)
+            if end_date_param:
+                performance_filter_q &= Q(call_logs__call_time__date__lte=end_date_param)
 
         performance_branches = branch_qs.annotate(
-            total_calls_count=Count("call_logs", filter=call_filter_q),
-            incoming_count=Count("call_logs", filter=call_filter_q & Q(call_logs__call_type="incoming")),
-            outgoing_count=Count("call_logs", filter=call_filter_q & Q(call_logs__call_type="outgoing")),
-            missed_count=Count("call_logs", filter=call_filter_q & Q(call_logs__call_type="missed")),
+            total_calls_count=Count("call_logs", filter=performance_filter_q),
+            incoming_count=Count("call_logs", filter=performance_filter_q & Q(call_logs__call_type="incoming")),
+            outgoing_count=Count("call_logs", filter=performance_filter_q & Q(call_logs__call_type="outgoing")),
+            missed_count=Count("call_logs", filter=performance_filter_q & Q(call_logs__call_type="missed")),
             completed_calls_count=Count(
                 "call_logs",
-                filter=call_filter_q & (Q(call_logs__call_type="incoming") | Q(call_logs__call_type="outgoing")),
+                filter=performance_filter_q & (Q(call_logs__call_type="incoming") | Q(call_logs__call_type="outgoing")),
             ),
         ).order_by("-total_calls_count")[:10]
 

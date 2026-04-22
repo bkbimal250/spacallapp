@@ -23,6 +23,8 @@ from rest_framework.permissions import IsAuthenticated
 from apps.calllogs.models import CallLog
 from apps.common.utils import apply_branch_filter
 from .services import AnalyticsService
+from drf_spectacular.utils import extend_schema, OpenApiParameter, inline_serializer
+from rest_framework import serializers
 
 
 def get_date_range(request):
@@ -81,6 +83,32 @@ class AnalyticsOverviewView(APIView):
     """
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(
+        summary="Get call type distribution",
+        description="Returns call counts grouped by type (incoming, outgoing, missed, rejected) for the selected range.",
+        parameters=[
+            OpenApiParameter("time_filter", str, description="Range filter: today, yesterday, last_7_days, last_30_days, this_month, custom"),
+            OpenApiParameter("branch", str, description="Filter by branch ID"),
+            OpenApiParameter("start_date", str, description="Format: YYYY-MM-DD"),
+            OpenApiParameter("end_date", str, description="Format: YYYY-MM-DD"),
+        ],
+        responses={
+            200: inline_serializer(
+                name="AnalyticsOverviewResponse",
+                fields={
+                    "conversion_rates": serializers.ListField(
+                        child=inline_serializer(
+                            name="CallTypeStat",
+                            fields={
+                                "name": serializers.CharField(),
+                                "value": serializers.IntegerField(),
+                            }
+                        )
+                    )
+                }
+            )
+        }
+    )
     def get(self, request):
         start_date, end_date = get_date_range(request)
         user = request.user
@@ -120,6 +148,26 @@ class PeakHoursView(APIView):
     """
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(
+        summary="Get hourly call volume",
+        description="Returns a 24-hour breakdown of call counts to identify peak hours.",
+        parameters=[
+            OpenApiParameter("time_filter", str, description="Range filter"),
+            OpenApiParameter("branch", str, description="Filter by branch ID"),
+            OpenApiParameter("start_date", str, description="YYYY-MM-DD"),
+            OpenApiParameter("end_date", str, description="YYYY-MM-DD"),
+        ],
+        responses={
+            200: inline_serializer(
+                name="PeakHoursResponse",
+                many=True,
+                fields={
+                    "hour": serializers.CharField(),
+                    "calls": serializers.IntegerField(),
+                }
+            )
+        }
+    )
     def get(self, request):
         start_date, end_date = get_date_range(request)
         user = request.user
@@ -172,6 +220,27 @@ class AnalyticsStatsView(APIView):
     """
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(
+        summary="Get comprehensive analytics metrics",
+        description="Returns performance score, missed call ratio, and average duration.",
+        parameters=[
+            OpenApiParameter("time_filter", str, description="Range filter"),
+            OpenApiParameter("branch", str, description="Filter by branch ID"),
+            OpenApiParameter("start_date", str, description="YYYY-MM-DD"),
+            OpenApiParameter("end_date", str, description="YYYY-MM-DD"),
+        ],
+        responses={
+            200: inline_serializer(
+                name="AnalyticsStatsResponse",
+                fields={
+                    "missed_call_ratio": serializers.FloatField(),
+                    "conversion_rate": serializers.FloatField(),
+                    "avg_duration": serializers.FloatField(),
+                    "performance_score": serializers.FloatField(),
+                }
+            )
+        }
+    )
     def get(self, request):
         start_date, end_date = get_date_range(request)
         user = request.user
@@ -201,6 +270,43 @@ class CallAnalyticsView(APIView):
     """
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(
+        summary="Get call volume trends",
+        description="Returns daily call volume counts and type breakdown over time.",
+        parameters=[
+            OpenApiParameter("time_filter", str, description="Range filter"),
+            OpenApiParameter("branch", str, description="Filter by branch ID"),
+            OpenApiParameter("start_date", str, description="YYYY-MM-DD"),
+            OpenApiParameter("end_date", str, description="YYYY-MM-DD"),
+        ],
+        responses={
+            200: inline_serializer(
+                name="CallAnalyticsResponse",
+                fields={
+                    "trends": serializers.ListField(
+                        child=inline_serializer(
+                            name="TrendStat",
+                            fields={
+                                "date": serializers.DateField(),
+                                "count": serializers.IntegerField(),
+                            }
+                        )
+                    ),
+                    "daily_breakdown": serializers.ListField(
+                        child=inline_serializer(
+                            name="DailyBreakdown",
+                            fields={
+                                "date": serializers.DateField(),
+                                "incoming": serializers.IntegerField(),
+                                "outgoing": serializers.IntegerField(),
+                                "missed": serializers.IntegerField(),
+                            }
+                        )
+                    ),
+                }
+            )
+        }
+    )
     def get(self, request):
         start_date, end_date = get_date_range(request)
         user = request.user
@@ -223,6 +329,48 @@ class LeadAnalyticsView(APIView):
     """
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(
+        summary="Get lead conversion analytics",
+        description="Returns lead status distribution and conversion funnel stages.",
+        parameters=[
+            OpenApiParameter("time_filter", str, description="Range filter"),
+            OpenApiParameter("branch", str, description="Filter by branch ID"),
+            OpenApiParameter("start_date", str, description="YYYY-MM-DD"),
+            OpenApiParameter("end_date", str, description="YYYY-MM-DD"),
+        ],
+        responses={
+            200: inline_serializer(
+                name="LeadAnalyticsResponse",
+                fields={
+                    "status_distribution": serializers.ListField(
+                        child=inline_serializer(
+                            name="StatusStat",
+                            fields={
+                                "status": serializers.CharField(),
+                                "count": serializers.IntegerField(),
+                            }
+                        )
+                    ),
+                    "funnel": inline_serializer(
+                        name="FunnelStat",
+                        fields={
+                            "Total Leads": serializers.IntegerField(),
+                            "Followed Up": serializers.IntegerField(),
+                            "Interested": serializers.IntegerField(),
+                            "Confirmed Visits": serializers.IntegerField(),
+                        }
+                    ),
+                    "rates": inline_serializer(
+                        name="SuccessRates",
+                        fields={
+                            "conversion_rate": serializers.FloatField(),
+                            "interest_rate": serializers.FloatField(),
+                        }
+                    ),
+                }
+            )
+        }
+    )
     def get(self, request):
         start_date, end_date = get_date_range(request)
         user = request.user

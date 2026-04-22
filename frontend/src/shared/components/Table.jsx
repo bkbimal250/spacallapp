@@ -1,4 +1,5 @@
 import React, { useMemo, memo } from 'react';
+import { ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
 
 const Table = memo(({
     columns,
@@ -6,7 +7,9 @@ const Table = memo(({
     onRowClick,
     selectable = false,
     selectedIds = [],
-    onSelectionChange
+    onSelectionChange,
+    onSort,
+    sortConfig = { key: null, direction: 'asc' }
 }) => {
 
     const allIds = useMemo(() => data.map(row => row.id || row.ID), [data]);
@@ -53,14 +56,48 @@ const Table = memo(({
                                 />
                             </th>
                         )}
-                        {columns.map((col, idx) => (
-                            <th
-                                key={idx}
-                                className="px-4 py-3 text-left text-xs font-semibold text-text-secondary uppercase tracking-wider"
-                            >
-                                {col.header}
-                            </th>
-                        ))}
+                        {columns.map((col, idx) => {
+                            const isSortable = !!col.sortKey && !!onSort;
+                            const isActive = sortConfig.key === col.sortKey;
+
+                            return (
+                                <th
+                                    key={idx}
+                                    className={`px-4 py-3 text-left text-xs font-semibold text-text-secondary uppercase tracking-wider ${isSortable ? 'cursor-pointer hover:text-primary transition-colors group' : ''}`}
+                                    onClick={() => isSortable && onSort(col.sortKey)}
+                                    title={
+                                        isSortable
+                                            ? isActive
+                                                ? `Currently sorted ${sortConfig.direction === 'asc' ? 'A to Z / Smallest first' : 'Z to A / Largest first'}. Click to flip order.`
+                                                : `Sort by ${col.header}`
+                                            : undefined
+                                    }
+                                >
+                                    <div className="flex items-center gap-1.5">
+                                        <span>{col.header}</span>
+                                        {isSortable && (
+                                            <div 
+                                                className="flex-shrink-0"
+                                                title={isActive 
+                                                    ? (sortConfig.direction === 'asc' ? 'Sorting Ascending' : 'Sorting Descending') 
+                                                    : 'Click to sort this column'
+                                                }
+                                            >
+                                                {isActive ? (
+                                                    sortConfig.direction === 'asc' ? (
+                                                        <ArrowUp size={14} className="text-primary animate-in fade-in zoom-in duration-300" />
+                                                    ) : (
+                                                        <ArrowDown size={14} className="text-primary animate-in fade-in zoom-in duration-300" />
+                                                    )
+                                                ) : (
+                                                    <ArrowUpDown size={14} className="opacity-10 group-hover:opacity-50 transition-opacity" />
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+                                </th>
+                            );
+                        })}
                     </tr>
                 </thead>
 

@@ -6,7 +6,7 @@ import GroupForm from '../components/GroupForm';
 import BranchAssignmentModal from '../components/BranchAssignmentModal';
 import ViewGroupModal from '../components/ViewGroupModal';
 import BranchGroupStats from '../components/BranchGroupStats';
-import BranchTabs from '../components/BranchTabs';
+import BranchGroupListFilter from '../components/BranchGroupListFilter';
 import {
     Edit,
     Trash2,
@@ -28,12 +28,13 @@ const GroupList = () => {
     const [editingGroup, setEditingGroup] = useState(null);
     const [viewingGroup, setViewingGroup] = useState(null);
     const [assigningGroup, setAssigningGroup] = useState(null);
+    const [filters, setFilters] = useState({});
 
-    const fetchGroups = useCallback(async () => {
+    const fetchGroups = useCallback(async (currentFilters = filters) => {
         setLoading(true);
         try {
             const [groupRes, branchRes] = await Promise.all([
-                branchesAPI.getGroups({ all: true }),
+                branchesAPI.getGroups({ ...currentFilters }),
                 branchesAPI.getBranches({ all: true })
             ]);
             
@@ -61,6 +62,11 @@ const GroupList = () => {
 
     useEffect(() => {
         fetchGroups();
+    }, [fetchGroups]);
+
+    const handleFilter = useCallback((newFilters) => {
+        setFilters(newFilters);
+        fetchGroups(newFilters);
     }, [fetchGroups]);
 
     const handleCreate = () => {
@@ -184,6 +190,8 @@ const GroupList = () => {
     return (
         <div className="space-y-6">
             <BranchGroupStats stats={groupStats} />
+
+            <BranchGroupListFilter onFilter={handleFilter} />
 
             <div className="flex justify-end pr-1">
                 <Button

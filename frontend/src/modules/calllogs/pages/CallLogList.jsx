@@ -23,6 +23,7 @@ import {
     UserCheck,
     ExternalLink,
     X,
+    MapPin,
     Filter
 } from 'lucide-react';
 import { contactApi } from '../../contacts/api';
@@ -49,6 +50,9 @@ const CallLogList = () => {
         branch: initialBranch,
         device: initialDevice,
         search: initialSearch,
+        quick_date: queryParams.get('quick_date') || 'today',
+        start_date: queryParams.get('start_date') || '',
+        end_date: queryParams.get('end_date') || '',
         is_unique: queryParams.get('is_unique') === 'true'
     });
 
@@ -58,6 +62,7 @@ const CallLogList = () => {
     const [exporting, setExporting] = useState(false);
 
     const [selectedLead, setSelectedLead] = useState(null);
+    const [sortConfig, setSortConfig] = useState({ key: 'call_time', direction: 'desc' });
     const [isLeadFormOpen, setIsLeadFormOpen] = useState(false);
 
     const [isContactFormOpen, setIsContactFormOpen] = useState(false);
@@ -65,7 +70,7 @@ const CallLogList = () => {
 
     const [branches, setBranches] = useState([]);
 
-    const pageSize = 100;
+    const pageSize = 25;
 
     const isSuperAdmin = user?.role === 'super_admin';
     const isAdmin = user?.role === 'admin' || isSuperAdmin;
@@ -97,6 +102,9 @@ const CallLogList = () => {
             search: queryParams.get('search') || '',
             branch: queryParams.get('branch') || '',
             device: queryParams.get('device') || '',
+            quick_date: queryParams.get('quick_date') || 'today',
+            start_date: queryParams.get('start_date') || '',
+            end_date: queryParams.get('end_date') || '',
             is_unique: queryParams.get('is_unique') === 'true'
         }));
 
@@ -107,10 +115,13 @@ const CallLogList = () => {
         if (!background) setLoading(true);
         else setRefreshing(true);
 
+        const ordering = sortConfig.key ? (sortConfig.direction === 'desc' ? `-${sortConfig.key}` : sortConfig.key) : null;
+
         try {
             const response = await callLogsAPI.getCallLogs({
                 ...currentFilters,
-                page: currentPage
+                page: currentPage,
+                ordering
             });
 
             setLogs(response.data.results);
@@ -122,7 +133,7 @@ const CallLogList = () => {
             if (!background) setLoading(false);
             else setRefreshing(false);
         }
-    }, [pageSize]);
+    }, [pageSize, sortConfig]);
 
     const fetchStats = useCallback(async (currentFilters = {}, background = false) => {
         if (!background) setStatsLoading(true);
@@ -152,6 +163,14 @@ const CallLogList = () => {
 
     const handleFilter = useCallback((newFilters) => {
         setFilters(newFilters);
+        setPage(1);
+    }, []);
+
+    const handleSort = useCallback((key) => {
+        setSortConfig(prev => ({
+            key,
+            direction: prev.key === key && prev.direction === 'asc' ? 'desc' : 'asc'
+        }));
         setPage(1);
     }, []);
 
@@ -245,47 +264,40 @@ const CallLogList = () => {
                 )
             },
             {
-                header: "Number",
+                header: "Phone Number",
+                sortKey: "phone_number",
                 render: (row) => (
-                    <div className="flex flex-col group">
+                    <div className="flex flex-col">
                         <div className="flex items-center gap-2">
                             <span className="font-semibold">{row.phone_number}</span>
-                            {row.contact ? (
-                                <UserCheck size={14} className="text-success" title="Verified Contact" />
-                            ) : (
-                                <button
-                                    onClick={(e) => { e.stopPropagation(); handleQuickContact(row); }}
-                                    className="opacity-0 group-hover:opacity-100 p-0.5 hover:bg-gray-100 rounded transition"
-                                    title="Add Contact"
-                                >
-                                    <UserPlus size={14} />
-                                </button>
+                            {row.contact && (
+                                <Badge variant="blue" className="text-[10px] py-0">
+                                    MATCHED
+                                </Badge>
                             )}
                         </div>
-                        {row.contact_name ? (
-                            <button
-                                onClick={(e) => { e.stopPropagation(); navigate("/contacts"); }}
-                                className="text-xs text-primary flex items-center gap-1 hover:underline"
-                            >
-                                {row.contact_name}
-                                <ExternalLink size={10} />
-                            </button>
-                        ) : (
-                            <span className="text-xs text-text-secondary italic">Unknown Contact</span>
+                        {row.contact && (
+                            <span className="text-xs text-text-secondary">{row.contact.name}</span>
                         )}
                     </div>
                 )
             },
             {
                 header: "Duration",
-                render: (row) => `${row.duration}s`
+                sortKey: "duration",
+                render: (row) => (
+                    <span className="font-mono text-xs">
+                        {row.duration}s
+                    </span>
+                )
             },
             {
                 header: "Branch",
+                sortKey: "branch__spa_name",
                 render: (row) => (
-                    <div className="flex flex-col">
-                        <span className="font-semibold text-text-primary">{row.branch_name}</span>
-                        <span className="text-xs text-text-secondary">Code: {row.branch_code}</span>
+                    <div className="flex items-center gap-1.5 opacity-80">
+                        <MapPin size={12} />
+                        <span className="text-xs">{row.branch_name || "N/A"}</span>
                     </div>
                 )
             },
@@ -304,19 +316,54 @@ const CallLogList = () => {
             },
             {
                 header: "Call Time",
+                sortKey: "call_time",
                 render: (row) => formatDate(row.call_time, 'MMM dd, yyyy HH:mm:ss')
             },
             {
                 header: "Created Time",
+                sortKey: "created_at",
                 render: (row) => formatDate(row.created_at, 'MMM dd, yyyy HH:mm:ss')
             },
             {
                 header: "Status",
                 render: (row) => (
-                    <Badge variant={row.call_type === "missed" ? "danger" : "success"}>
+                    <Badge variant={row.call_type === "missed" ? "red" : "green"}>
                         {row.call_type === "missed" ? "Missed" : "Completed"}
                     </Badge>
                 )
+            },
+            {
+                header: "Follow-up",
+                render: (row) => {
+                    if (row.call_type !== "missed") return <span className="text-gray-400 text-xs">-</span>;
+
+                    const isFollowed = row.is_followed_up;
+                    const status = row.followup_status;
+
+                    if (isFollowed) {
+                        const variant = status === 'GOOD' ? 'success' : (status === 'OK' ? 'warning' : 'danger');
+
+                        return (
+                            <div className="flex flex-col gap-1 items-center" title="Follow-up complete">
+                                <Badge variant={variant} className="text-[10px] px-2 py-0.5 whitespace-nowrap shadow-sm border-none font-bold">
+                                    {status || 'DONE'}
+                                </Badge>
+                                <div className="flex items-center gap-1 text-[10px] text-success font-black drop-shadow-sm uppercase">
+                                    <UserCheck size={12} strokeWidth={3} /> Followed Up
+                                </div>
+                            </div>
+                        );
+                    }
+
+                    return (
+                        <div className="flex flex-col gap-1 items-center" title="Pending follow-up">
+                            <Badge variant="gray" className="text-[10px] px-2 py-0.5 animate-pulse bg-slate-200 text-slate-600 border-none">
+                                Pending...
+                            </Badge>
+                            <span className="text-[10px] text-text-secondary italic font-medium">Wait for Callback</span>
+                        </div>
+                    );
+                }
             }
         ];
 
@@ -377,12 +424,15 @@ const CallLogList = () => {
                     initialDevice={initialDevice}
                     initialSearch={initialSearch}
                     initialUnique={filters.is_unique}
+                    initialQuickDate={filters.quick_date}
+                    initialStartDate={filters.start_date}
+                    initialEndDate={filters.end_date}
                 />
             </div>
 
-            <CallLogStats 
-                stats={stats} 
-                loading={statsLoading} 
+            <CallLogStats
+                stats={stats}
+                loading={statsLoading}
             />
 
             <div className="bg-card border border-border rounded-lg overflow-hidden flex flex-col">
@@ -405,6 +455,8 @@ const CallLogList = () => {
                                     selectable={isSuperAdmin}
                                     selectedIds={selectedLogs}
                                     onSelectionChange={setSelectedLogs}
+                                    onSort={handleSort}
+                                    sortConfig={sortConfig}
                                 />
                             )}
                         </>

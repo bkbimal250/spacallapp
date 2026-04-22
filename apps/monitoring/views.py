@@ -12,6 +12,10 @@ from datetime import timedelta
 from django.utils import timezone
 from rest_framework import viewsets, permissions, views, response, status
 from rest_framework.decorators import action
+from drf_spectacular.utils import extend_schema, OpenApiParameter, inline_serializer
+from rest_framework import serializers
+from django_filters.rest_framework import DjangoFilterBackend
+from .filters import DeviceEventFilter
 
 from .models import DeviceEvent, DeviceHealth
 from .serializers import DeviceEventSerializer, DeviceHealthSerializer
@@ -41,6 +45,23 @@ class DeviceHeartbeatView(views.APIView):
     authentication_classes = [DeviceAuthentication]
     permission_classes = [IsDevice]
 
+    @extend_schema(
+        summary="Device Heartbeat",
+        description="Updates device heartbeat and health metrics. Triggered periodically by the Android app.",
+        request=inline_serializer(
+            name="HeartbeatPayload",
+            fields={
+                "battery_level": serializers.IntegerField(required=False),
+                "signal_strength": serializers.IntegerField(required=False),
+                "app_version": serializers.CharField(required=False),
+                "storage_used_mb": serializers.FloatField(required=False),
+            }
+        ),
+        responses={200: inline_serializer(
+            name="HeartbeatResponse",
+            fields={"status": serializers.CharField()}
+        )}
+    )
     def post(self, request):
         device = request.auth
         now = timezone.now()
@@ -74,6 +95,39 @@ class DeviceHeartbeatView(views.APIView):
                         body=f"Device {device.device_id} is at {battery}%. Please connect to power.",
                         notification_type="alert"
                     )
+
+        # SIM Change Detection
+        sim_changed = False
+        description = "SIM change detected: "
+        
+        if "sim_1_number" in health_data:
+            new_sim1 = health_data["sim_1_number"]
+            # Check against Device model (source of truth for registration)
+            if device.sim_1_number and new_sim1 and device.sim_1_number != new_sim1:
+                sim_changed = True
+                description += f"SIM1 ({device.sim_1_number} -> {new_sim1}) "
+            health.sim_1_number = new_sim1
+
+        if "sim_2_number" in health_data:
+            new_sim2 = health_data["sim_2_number"]
+            if device.sim_2_number and new_sim2 and device.sim_2_number != new_sim2:
+                sim_changed = True
+                description += f"SIM2 ({device.sim_2_number} -> {new_sim2}) "
+            health.sim_2_number = new_sim2
+
+        if sim_changed:
+            DeviceEvent.objects.create(
+                device=device,
+                event_type='sim_change',
+                description=description
+            )
+            from apps.notifications.services import NotificationService
+            NotificationService.send_push(
+                device=device,
+                title="SIM Card Changed",
+                body=f"Device {device.device_id} reported a SIM change. Please verify security.",
+                notification_type="alert"
+            )
 
         if "signal_strength" in health_data:
             health.signal_strength = health_data["signal_strength"]
@@ -111,35 +165,44 @@ class DeviceEventViewSet(viewsets.ModelViewSet):
     """
     serializer_class = DeviceEventSerializer
     permission_classes = [permissions.IsAuthenticated]
+    filter_backends = [DjangoFilterBackend]
+    filterset_class = DeviceEventFilter
 
     def get_queryset(self):
+        """
+        Filter queryset based on user role and query parameters.
+        """
         user = self.request.user
-        queryset = DeviceEvent.objects.select_related("device", "device__branch").filter(
-            device__is_deleted=False
-        ).order_by("-created_at")
+        queryset = DeviceEvent.objects.all().select_related('device', 'device__branch')
 
-        # Apply role-based branch restriction
+        # ── Role-based Access Control ──────────────────────────────────────────
+        # Use existing utility to get the branch scope
         branch_ids = get_branch_filter_ids(user)
+
         if branch_ids and branch_ids != ["NONE"]:
+            # Restrict to assigned branches
             queryset = queryset.filter(device__branch_id__in=branch_ids)
         elif branch_ids == ["NONE"]:
-            return queryset.none()
+            # Branch manager with no branch — return empty
+            return DeviceEvent.objects.none()
 
-        # ── Optional Filters ─────────────────────────────────────────────────
-        event_type = self.request.query_params.get("event_type", None)
-        if event_type:
-            queryset = queryset.filter(event_type=event_type)
+        return queryset.order_by('-created_at')
 
-        branch = self.request.query_params.get("branch", None)
-        if branch:
-            queryset = queryset.filter(device__branch_id=branch)
+    @extend_schema(
+        summary="List Device Events",
+        parameters=[]
+    )
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
 
-        resolved = self.request.query_params.get("resolved", None)
-        if resolved is not None:
-            queryset = queryset.filter(resolved=resolved.lower() == "true")
-
-        return queryset
-
+    @extend_schema(
+        summary="Resolve Event",
+        description="Mark a single device event as resolved.",
+        responses={200: inline_serializer(
+            name="ResolveEventResponse",
+            fields={"status": serializers.CharField()}
+        )}
+    )
     @action(detail=True, methods=['post'])
     def resolve(self, request, pk=None):
         """Mark a single event as resolved."""
@@ -149,6 +212,17 @@ class DeviceEventViewSet(viewsets.ModelViewSet):
         event.save()
         return response.Response({'status': 'event resolved'})
 
+    @extend_schema(
+        summary="Resolve All Events",
+        description="Mark all unresolved events in the user's current scope as resolved.",
+        responses={200: inline_serializer(
+            name="ResolveAllEventsResponse",
+            fields={
+                "status": serializers.CharField(),
+                "count": serializers.IntegerField()
+            }
+        )}
+    )
     @action(detail=False, methods=['post'])
     def resolve_all(self, request):
         """Mark all unresolved events in the user's scope as resolved."""
@@ -174,6 +248,23 @@ class DeviceStatusResultView(views.APIView):
     """
     permission_classes = [permissions.IsAuthenticated]
 
+    @extend_schema(
+        summary="Device Monitoring Status Summary",
+        description="Returns aggregate health counts for the management dashboard.",
+        parameters=[
+            OpenApiParameter("branch", type=str, description="Optional branch ID to filter stats (Admin only)")
+        ],
+        responses={200: inline_serializer(
+            name="DeviceStatusSummary",
+            fields={
+                "total_devices": serializers.IntegerField(),
+                "active_devices": serializers.IntegerField(),
+                "online_devices": serializers.IntegerField(),
+                "offline_alerts": serializers.IntegerField(),
+                "sim_change_alerts": serializers.IntegerField(),
+            }
+        )}
+    )
     def get(self, request):
         user = request.user
         branch_id_param = request.query_params.get("branch")

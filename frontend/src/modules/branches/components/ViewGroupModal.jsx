@@ -13,11 +13,9 @@ const ViewGroupModal = ({ isOpen, onClose, group }) => {
             if (!group) return;
             setLoading(true);
             try {
-                // Fetch all branches and filter locally (consistent with BranchAssignmentModal)
-                const response = await branchesAPI.getBranches({ all: true });
-                const allBranches = response.data.results || response.data || [];
-                const filtered = allBranches.filter(b => b.branch_group === group.id);
-                setAssignedBranches(filtered);
+                const response = await branchesAPI.getBranches({ group: group.id, all: true });
+                const assigned = response.data.results || response.data || [];
+                setAssignedBranches(assigned);
             } catch (error) {
                 console.error("Failed to fetch branches for group", error);
             } finally {

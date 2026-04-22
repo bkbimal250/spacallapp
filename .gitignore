@@ -36,12 +36,12 @@ media/
 static_root/
 staticfiles/
 
-# Requested: Exclude all migrations
-**/migrations/*.py
+# Requested: Exclude all migrations (Optional project-specific preference)
+# NOTE: Ignoring migrations often causes schema mismatches on other machines (e.g. "column does not exist").
+# **/migrations/*.py
 !**/migrations/__init__.py
 
-# Requested: Exclude testing files
-# (Common patterns for test artifacts)
+# Testing and Coverage
 .pytest_cache/
 nosetests.xml
 coverage.xml
@@ -59,6 +59,18 @@ frontend/dist/
 frontend/.env
 frontend/*.env
 frontend/.eslintcache
+.vite/
+.eslintcache
+
+# Documentation and Schema
+schema.yml
+openapi.yaml
+CallLog System API.yaml
+
+# Firebase and Credentials
+firebase-credentials.json
+static/firebase-credentials.json
+firebase/
 
 # OS and IDE files
 .DS_Store
@@ -67,30 +79,15 @@ Thumbs.db
 .vscode/
 *.swp
 *.swo
-android setup
-android_web_connect.md/
-android_web_connect.md
-connect_api_android.md
-connect_api_android.md/
-frontend_structure.md/
-frontend_structure.md
-# Vite / Build tool artifacts
-.vite/
-.eslintcache
-android_web_connect.md/
-android_web_connect.md
-connect_api_android.md
-connect_api_android.md/
-android_web_connect.md/
-api_end_points.md/
-api_end_points.md
 
-server.log/
+# Misc
 server.log
+android setup
+scratch/
+.gemini/
+*.pyc
+*.pyo
+.python-version
 
 
-firebase-credentials.json
-static/firebase-credentials.json
-firebase/
-static/firebase-credentials.json/
-firebase-credentials.json
+check_users.py\

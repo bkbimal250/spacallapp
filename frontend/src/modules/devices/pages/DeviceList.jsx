@@ -6,11 +6,14 @@ import DeviceStatusBadge from '../components/DeviceStatusBadge';
 import DeviceForm from '../components/DeviceForm';
 import DeviceFilter from '../components/DeviceFilter';
 import Pagination from '../../../shared/components/Pagination';
-import { Edit, Trash2, Plus, Smartphone } from 'lucide-react';
+import { Edit, Trash2, Plus, Smartphone, RefreshCcw } from 'lucide-react';
 import { formatDate } from '../../../shared/utils/formatDate';
 import StatsCard from '../components/StatsCard';
+import { useAuth } from '../../../shared/hooks/useAuth';
 
 const DeviceList = () => {
+    const { user } = useAuth();
+    const isSuperAdmin = user?.role === 'super_admin';
 
     const [devices, setDevices] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -76,6 +79,19 @@ const DeviceList = () => {
         setIsModalOpen(true);
     };
 
+    const handleRegenerateToken = async (id) => {
+        if (!isSuperAdmin) return;
+        if (window.confirm("Are you sure you want to regenerate the token? This will invalidate current registration and generate a new token.")) {
+            try {
+                await devicesAPI.regenerateToken(id);
+                fetchDevices(filters, page);
+            } catch (error) {
+                console.error("Failed to regenerate token", error);
+                alert("Failed to regenerate token. Please try again.");
+            }
+        }
+    };
+
     const handleEdit = (device) => {
         setEditingDevice(device);
         setIsModalOpen(true);
@@ -99,6 +115,7 @@ const DeviceList = () => {
         }
 
     };
+
 
     const handleSubmit = async (data) => {
 
@@ -158,49 +175,77 @@ const DeviceList = () => {
 
         {
             header: 'Reg. Token',
-            render: (row) => row.is_registered ? (
-
-                <span className="text-text-muted text-xs">
-                    — Registered —
-                </span>
-
-            ) : (
-
-                <div className="flex items-center group">
-
+            render: (row) => (
+                <div className="flex items-center gap-3 min-w-[200px]">
                     {row.registration_token ? (
-
-                        <>
-                            <code className="bg-primary/10 text-primary px-2 py-1 rounded-md text-xs font-mono">
+                        <div className="flex items-center gap-2 flex-1">
+                            <code className="bg-primary/5 text-primary border border-primary/10 px-2 py-1 rounded text-[11px] font-mono flex-1 truncate">
                                 {row.registration_token}
                             </code>
-
-                            <button
-                                onClick={() => {
-                                    navigator.clipboard.writeText(row.registration_token);
-                                    alert("Registration token copied!");
-                                }}
-                                className="ml-2 p-1 rounded-md text-text-muted hover:text-primary hover:bg-primary/10 transition"
-                                title="Copy Token"
-                            >
-                                📋
-                            </button>
-                        </>
-
+                            <div className="flex items-center gap-1 shrink-0">
+                                <button
+                                    onClick={() => {
+                                        navigator.clipboard.writeText(row.registration_token);
+                                        alert("Registration token copied!");
+                                    }}
+                                    className="p-1 rounded text-text-muted hover:text-primary hover:bg-primary/5 transition-colors"
+                                    title="Copy Token"
+                                >
+                                    <Smartphone size={14} />
+                                </button>
+                                {isSuperAdmin && (
+                                    <button
+                                        onClick={() => handleRegenerateToken(row.id)}
+                                        className="p-1 rounded text-text-muted hover:text-warning hover:bg-warning/5 transition-colors"
+                                        title="Regenerate Token"
+                                    >
+                                        <RefreshCcw size={14} />
+                                    </button>
+                                )}
+                            </div>
+                        </div>
                     ) : (
-
-                        <span className="text-warning text-xs italic">
-                            Token Unassigned
-                        </span>
-
+                        <div className="flex items-center gap-3">
+                            <span className="bg-success/10 text-success border border-success/20 px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider">
+                                Claimed
+                            </span>
+                            {isSuperAdmin && (
+                                <button
+                                    onClick={() => handleRegenerateToken(row.id)}
+                                    className="p-1 rounded text-text-muted hover:text-warning hover:bg-warning/5 transition-colors"
+                                    title="Regenerate Token"
+                                >
+                                    <RefreshCcw size={14} />
+                                </button>
+                            )}
+                        </div>
                     )}
-
                 </div>
-
             )
         },
 
-        { header: 'Branch', accessor: 'branch_name' },
+        {
+            header: 'Spa / Branch',
+            render: (row) => (
+                <div className="flex items-center gap-3">
+                    <span className="font-bold text-text-primary text-sm whitespace-nowrap">
+                        {row.branch_name || "—"}
+                    </span>
+                    <div className={`flex items-center gap-1.5 px-2 py-0.5 rounded-full border shadow-sm ${(row.branch_is_active === 'True' || row.branch_is_active === true)
+                        ? 'bg-success/5 text-success border-success/20'
+                        : 'bg-danger/5 text-danger border-danger/20'
+                        }`}>
+                        <div className={`w-1 h-1 rounded-full ${(row.branch_is_active === 'True' || row.branch_is_active === true)
+                            ? 'bg-success shadow-[0_0_4px_rgba(34,197,94,0.5)]'
+                            : 'bg-danger shadow-[0_0_4px_rgba(239,68,68,0.5)]'
+                            }`} />
+                        <span className="text-[9px] font-bold uppercase tracking-wider">
+                            {(row.branch_is_active === 'True' || row.branch_is_active === true) ? 'Active' : 'Inactive'}
+                        </span>
+                    </div>
+                </div>
+            )
+        },
 
         {
             header: 'Status',
@@ -231,16 +276,15 @@ const DeviceList = () => {
 
                     <button
                         onClick={() => handleEdit(row)}
-                        className="p-1 rounded-md text-info hover:bg-info/10"
-                        title="Edit"
+                        className="p-1.5 rounded-lg text-blue-500 hover:bg-blue-500/10 transition-colors"
+                        title="Edit Device"
                     >
                         <Edit size={16} />
                     </button>
-
                     <button
                         onClick={() => handleDelete(row.id)}
-                        className="p-1 rounded-md text-danger hover:bg-danger/10"
-                        title="Delete"
+                        className="p-1.5 rounded-lg text-danger hover:bg-danger/10 transition-colors"
+                        title="Delete Device"
                     >
                         <Trash2 size={16} />
                     </button>
@@ -279,7 +323,7 @@ const DeviceList = () => {
 
             {/* FILTER */}
 
-            <div className="bg-card border border-border rounded-2xl p-6">
+            <div className="bg-card border border-border rounded-2xl p-6 relative z-20">
 
                 <DeviceFilter onFilter={handleFilter} />
 

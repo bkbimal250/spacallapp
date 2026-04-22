@@ -26,7 +26,10 @@ from rest_framework.decorators import action
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from django.db import models
-
+from drf_spectacular.utils import extend_schema, OpenApiParameter, inline_serializer
+from rest_framework import serializers
+from django_filters.rest_framework import DjangoFilterBackend
+from .filters import DeviceFilter
 from .models import Device
 from .serializers import DeviceSerializer, ClaimRegistrationSerializer
 from apps.common.permissions import IsAdminOrSuperAdmin
@@ -43,6 +46,8 @@ class DeviceViewSet(viewsets.ModelViewSet):
     """
     serializer_class = DeviceSerializer
     permission_classes = [permissions.IsAuthenticated]
+    filter_backends = [DjangoFilterBackend]
+    filterset_class = DeviceFilter
 
     def get_permissions(self):
         """
@@ -68,51 +73,33 @@ class DeviceViewSet(viewsets.ModelViewSet):
             else:
                 queryset = queryset.none()
 
-        # Admin and super_admin see all devices
-
-        # ─── Optional Filters ─────────────────────────────────────────────────
-
-        # Search by device_id or registration_token
-        search = self.request.query_params.get("search", None)
-        if search:
-            queryset = queryset.filter(
-                models.Q(device_id__icontains=search) |
-                models.Q(registration_token__icontains=search)
-            )
-
-        # Filter by branch UUID
-        branch = self.request.query_params.get("branch", None)
-        if branch:
-            queryset = queryset.filter(branch_id=branch)
-
-        # Filter by branch city
-        city = self.request.query_params.get("city", None)
-        if city:
-            queryset = queryset.filter(branch__city__icontains=city)
-
-        # Filter by branch area
-        area = self.request.query_params.get("area", None)
-        if area:
-            queryset = queryset.filter(branch__area__icontains=area)
-
-        # Filter by branch state
-        state = self.request.query_params.get("state", None)
-        if state:
-            queryset = queryset.filter(branch__state__icontains=state)
-
-        # Filter by registration status (accepts 'true' or 'false' string)
-        is_registered = self.request.query_params.get("is_registered", None)
-        if is_registered is not None:
-            queryset = queryset.filter(is_registered=is_registered.lower() == "true")
-
+        # Filters are now handled by DjangoFilterBackend via DeviceFilter
         return queryset
 
+    @extend_schema(
+        summary="Get aggregate device stats",
+        description="Returns counts of total, registered, online/offline, and blocked devices.",
+        responses={
+            200: inline_serializer(
+                name="DeviceStatsResponse",
+                fields={
+                    "total": serializers.IntegerField(),
+                    "registered": serializers.IntegerField(),
+                    "unregistered": serializers.IntegerField(),
+                    "online": serializers.IntegerField(),
+                    "offline": serializers.IntegerField(),
+                    "blocked": serializers.IntegerField(),
+                    "inactive": serializers.IntegerField(),
+                }
+            )
+        }
+    )
     @action(detail=False, methods=["get"])
     def stats(self, request):
         """
         Returns aggregate device statistics respecting role-based filters.
         """
-        queryset = self.get_queryset()
+        queryset = self.filter_queryset(self.get_queryset())
         
         from django.utils import timezone
         from datetime import timedelta
@@ -135,6 +122,45 @@ class DeviceViewSet(viewsets.ModelViewSet):
             "inactive": queryset.filter(is_active=False).count(),
         }
         return Response(stats)
+    
+    @extend_schema(
+        summary="Regenerate Registration Token",
+        description="Invalidates current registration and generates a new token. Use this if a device needs to be re-setup.",
+        responses={200: inline_serializer(
+            name="RegenerateTokenResponse",
+            fields={
+                "status": serializers.CharField(),
+                "new_token": serializers.CharField()
+            }
+        )}
+    )
+    @action(detail=True, methods=["post"])
+    def regenerate_token(self, request, pk=None):
+        """
+        Invalidates current device credentials and generates a new registration token.
+        Allows a device to be 'claimed' again by an Android phone.
+        """
+        device = self.get_object()
+        
+        # Generate new token
+        new_token = secrets.token_hex(6).upper()
+        
+        # Reset registration status
+        device.registration_token = new_token
+        device.is_registered = False
+        device.device_id = None
+        device.secret_key = None
+        device.fcm_token = None # Clear FCM token as well
+        
+        device.save(update_fields=[
+            "registration_token", "is_registered", "device_id", 
+            "secret_key", "fcm_token"
+        ])
+        
+        return Response({
+            "status": "success",
+            "new_token": new_token
+        })
 
 
 class ClaimRegistrationView(APIView):
@@ -152,6 +178,27 @@ class ClaimRegistrationView(APIView):
     """
     permission_classes = [permissions.AllowAny]
 
+    @extend_schema(
+        summary="Claim a device (Android)",
+        description="Android app registers itself using a one-time token. Returns device credentials.",
+        request=ClaimRegistrationSerializer,
+        responses={
+            200: inline_serializer(
+                name="ClaimRegistrationResponse",
+                fields={
+                    "status": serializers.CharField(),
+                    "device_id": serializers.CharField(),
+                    "secret_key": serializers.CharField(),
+                    "branch_name": serializers.CharField(),
+                    "branch_id": serializers.UUIDField(),
+                }
+            ),
+            404: inline_serializer(
+                name="ClaimErrorResponse",
+                fields={"error": serializers.CharField()}
+            )
+        }
+    )
     def post(self, request):
         serializer = ClaimRegistrationSerializer(data=request.data)
         if not serializer.is_valid():
@@ -200,6 +247,23 @@ class UpdateFCMTokenView(APIView):
     authentication_classes = [DeviceAuthentication]
     permission_classes = [IsDevice]
 
+    @extend_schema(
+        summary="Update Device FCM Token",
+        description="Updates the push notification token for the authenticated device.",
+        request=inline_serializer(
+            name="UpdateFCMTokenRequest",
+            fields={"fcm_token": serializers.CharField()}
+        ),
+        responses={
+            200: inline_serializer(
+                name="UpdateFCMTokenResponse",
+                fields={
+                    "status": serializers.CharField(),
+                    "message": serializers.CharField()
+                }
+            )
+        }
+    )
     def post(self, request):
         token = request.data.get("fcm_token")
         if not token:

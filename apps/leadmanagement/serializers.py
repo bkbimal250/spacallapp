@@ -3,17 +3,13 @@ from .models import LeadManagement
 from apps.calllogs.serializers import CallLogSerializer
 
 class LeadManagementSerializer(serializers.ModelSerializer):
-    branch_name = serializers.CharField(source='branch.spa_name', read_only=True)
-    contact_name = serializers.CharField(source='contact.name', read_only=True)
-    created_by_name = serializers.CharField(source='created_by.full_name', read_only=True)
-    updated_by_name = serializers.CharField(source='updated_by.full_name', read_only=True)
-    
-    # Extra fields for the app to see the correlated phone number directly
-    phone_number = serializers.CharField(source='calllog.phone_number', read_only=True)
-    call_type = serializers.CharField(source='calllog.call_type', read_only=True)
-    
-    # Alternatively you can nest simple calllog data
-    # calllog_details = CallLogSerializer(source='calllog', read_only=True)
+    """Full detail serializer for LeadManagement."""
+    branch_name = serializers.ReadOnlyField(source='branch.spa_name')
+    contact_name = serializers.ReadOnlyField(source='contact.name')
+    created_by_name = serializers.ReadOnlyField(source='created_by.full_name')
+    updated_by_name = serializers.ReadOnlyField(source='updated_by.full_name')
+    phone_number = serializers.ReadOnlyField(source='calllog.phone_number')
+    call_type = serializers.ReadOnlyField(source='calllog.call_type')
 
     class Meta:
         model = LeadManagement
@@ -29,3 +25,18 @@ class LeadManagementSerializer(serializers.ModelSerializer):
         user = self.context['request'].user
         validated_data['updated_by'] = user
         return super().update(instance, validated_data)
+
+
+class LeadManagementListSerializer(serializers.ModelSerializer):
+    """Minimal serializer for Lead Management dashbaord list."""
+    branch_name = serializers.ReadOnlyField(source='branch.spa_name')
+    contact_name = serializers.ReadOnlyField(source='contact.name')
+    phone_number = serializers.ReadOnlyField(source='calllog.phone_number')
+    call_type = serializers.ReadOnlyField(source='calllog.call_type')
+
+    class Meta:
+        model = LeadManagement
+        fields = [
+            'id', 'status', 'booking_date', 'branch_name', 
+            'contact_name', 'phone_number', 'call_type', 'created_at'
+        ]

@@ -22,20 +22,26 @@ const BranchPerformanceTable = ({ data = [] }) => {
                     onClick={() => navigate(`/calllogs/details?branch=${row.id}`)}
                     className="flex flex-col items-start p-2 -m-2 rounded-xl transition-all group text-left w-full border border-transparent hover:border-primary/30 hover:bg-background"
                 >
-                    <div className="flex items-center">
+                    <div className="flex flex-wrap items-center gap-2">
 
-                        <div className="p-1.5 bg-background rounded-lg group-hover:bg-primary/10 group-hover:text-primary transition-colors mr-2">
-                            <Building2 size={14} />
+                        <div className="flex items-center">
+                            <div className="p-1.5 bg-background rounded-lg group-hover:bg-primary/10 group-hover:text-primary transition-colors mr-2">
+                                <Building2 size={14} />
+                            </div>
+
+                            <span className="font-semibold text-text-primary group-hover:text-primary uppercase text-sm">
+                                {row.name}
+                            </span>
+
+                            <ChevronRight
+                                size={14}
+                                className="ml-1 text-text-muted group-hover:text-primary group-hover:translate-x-0.5 transition-all"
+                            />
                         </div>
 
-                        <span className="font-semibold text-text-primary group-hover:text-primary uppercase text-sm">
-                            {row.name}
-                        </span>
-
-                        <ChevronRight
-                            size={14}
-                            className="ml-1 text-text-muted group-hover:text-primary group-hover:translate-x-0.5 transition-all"
-                        />
+                        <Badge variant={row.status === 'Active' ? 'green' : 'red'} size="sm">
+                            {row.status}
+                        </Badge>
 
                     </div>
                 </button>
@@ -46,7 +52,7 @@ const BranchPerformanceTable = ({ data = [] }) => {
             header: 'Total Calls',
             render: (row) => (
                 <span className="font-semibold text-text-primary">
-                    {row.calls}
+                    {row.calls || 0}
                 </span>
             )
         },
@@ -56,7 +62,7 @@ const BranchPerformanceTable = ({ data = [] }) => {
             accessor: 'incoming',
             render: (row) => (
                 <span className="text-success font-medium">
-                    {row.incoming}
+                    {row.incoming || 0}
                 </span>
             )
         },
@@ -66,7 +72,7 @@ const BranchPerformanceTable = ({ data = [] }) => {
             accessor: 'outgoing',
             render: (row) => (
                 <span className="text-info font-medium">
-                    {row.outgoing}
+                    {row.outgoing || 0}
                 </span>
             )
         },
@@ -76,7 +82,7 @@ const BranchPerformanceTable = ({ data = [] }) => {
             accessor: 'missed',
             render: (row) => (
                 <span className="text-danger font-medium">
-                    {row.missed}
+                    {row.missed || 0}
                 </span>
             )
         },
@@ -90,25 +96,16 @@ const BranchPerformanceTable = ({ data = [] }) => {
 
                         <div
                             className="bg-primary h-full rounded-full"
-                            style={{ width: `${row.conversion}%` }}
+                            style={{ width: `${row.conversion || 0}%` }}
                         ></div>
 
                     </div>
 
                     <span className="text-xs font-semibold text-text-secondary">
-                        {row.conversion}%
+                        {row.conversion || 0}%
                     </span>
 
                 </div>
-            )
-        },
-
-        {
-            header: 'Status',
-            render: (row) => (
-                <Badge variant={row.status === 'Active' ? 'green' : 'red'}>
-                    {row.status}
-                </Badge>
             )
         },
     ];

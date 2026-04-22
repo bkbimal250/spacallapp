@@ -16,6 +16,7 @@ import SendNotificationModal from '../components/SendNotificationModal';
 
 import { branchesAPI } from '../../branches/api';
 import { getUser } from '../../../shared/services/tokenService';
+import { formatDate } from '../../../shared/utils/formatDate';
 
 const NotificationList = () => {
     const [logs, setLogs] = useState([]);
@@ -50,9 +51,9 @@ const NotificationList = () => {
     const fetchLogs = async () => {
         setLoading(true);
         try {
-            const res = await notificationsAPI.getLogs({ 
+            const res = await notificationsAPI.getLogs({
                 type: filter,
-                branch: branchFilter 
+                branch: branchFilter
             });
             setLogs(res.data.results || res.data || []);
         } catch (err) {
@@ -75,9 +76,9 @@ const NotificationList = () => {
         try {
             const res = await notificationsAPI.sendManual(data);
             const { sent_count, total_count } = res.data;
-            
+
             alert(`Successfully sent ${sent_count} of ${total_count} notifications.`);
-            
+
             fetchLogs();
             fetchStats();
         } catch (err) {
@@ -272,41 +273,49 @@ const NotificationList = () => {
 
                                         <td className="px-6 py-4">
 
-                                            <div className="flex items-center gap-3">
 
-                                                <div className="w-9 h-9 bg-background rounded-lg flex items-center justify-center">
-                                                    <Smartphone size={16} className="text-text-secondary" />
-                                                </div>
 
-                                                <div>
-                                                    <p className="font-medium text-text-primary">{log.device_name}</p>
-                                                    <p className="text-xs text-text-secondary">{log.branch_name}</p>
-                                                </div>
-
+                                            <div className="flex flex-col">
+                                                <p className="font-semibold text-text-primary uppercase flex items-center gap-1.5">
+                                                    <Smartphone size={14} className="text-primary" />
+                                                    {log.device_name || 'Unknown Device'}
+                                                </p>
+                                                <p className="text-xs text-text-muted mt-0.5">
+                                                    {log.branch_name || 'System / Global'}
+                                                </p>
                                             </div>
-
                                         </td>
-
-                                        <td className="px-6 py-4 max-w-xs">
-                                            <p className="font-medium">{log.title}</p>
-                                            <p className="text-xs text-text-secondary truncate">{log.body}</p>
-                                        </td>
-
                                         <td className="px-6 py-4">
-                                            <span className={`px-3 py-1 rounded-full text-xs ${getTypeStyles(log.notification_type)}`}>
-                                                {log.notification_type.replace('_', ' ')}
+                                            <div className="max-w-xs">
+                                                <p className="font-medium text-text-primary truncate" title={log.title}>{log.title}</p>
+                                                <p className="text-xs text-text-secondary line-clamp-1" title={log.body}>{log.body}</p>
+                                            </div>
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border ${getTypeStyles(log.notification_type)}`}>
+                                                {log.notification_type}
                                             </span>
                                         </td>
-
-                                        <td className="px-6 py-4 flex items-center gap-2">
-                                            {getStatusIcon(log)}
-                                            <span className="text-xs">{log.is_sent ? 'Delivered' : 'Failed'}</span>
+                                        <td className="px-6 py-4">
+                                            {log.is_sent ? (
+                                                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold bg-success/10 text-success border border-success/20">
+                                                    <CheckCircle2 size={12} /> DELIVERED
+                                                </span>
+                                            ) : (
+                                                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold bg-danger/10 text-danger border border-danger/20">
+                                                    <XCircle size={12} /> FAILED
+                                                </span>
+                                            )}
                                         </td>
-
-                                        <td className="px-6 py-4 text-text-secondary text-xs flex items-center gap-1">
-                                            <Clock size={14} />
-                                            {new Date(log.created_at).toLocaleDateString()}{" "}
-                                            {new Date(log.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                        <td className="px-6 py-4 whitespace-nowrap">
+                                            <div className="flex flex-col">
+                                                <span className="text-sm font-medium text-text-primary">
+                                                    {formatDate(log.created_at, 'MMM dd, yyyy')}
+                                                </span>
+                                                <span className="text-[11px] text-text-muted flex items-center gap-1">
+                                                    <Clock size={10} /> {formatDate(log.created_at, 'hh:mm a')}
+                                                </span>
+                                            </div>
                                         </td>
 
                                         <td className="px-6 py-4 text-right">

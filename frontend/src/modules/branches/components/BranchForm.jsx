@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import Input from '../../../shared/components/Input';
 import Button from '../../../shared/components/Button';
 import Modal from '../../../shared/components/Modal';
+import SearchableSelect from '../../../shared/components/SearchableSelect';
 import { branchesAPI } from '../api';
 
 const BranchForm = ({ isOpen, onClose, onSubmit, initialData }) => {
@@ -19,6 +20,11 @@ const BranchForm = ({ isOpen, onClose, onSubmit, initialData }) => {
     });
 
     const [groups, setGroups] = useState([]);
+
+    const groupOptions = useMemo(() => 
+        groups.map(g => ({ value: g.id, label: g.name })),
+        [groups]
+    );
 
     useEffect(() => {
         const fetchGroups = async () => {
@@ -173,26 +179,13 @@ const BranchForm = ({ isOpen, onClose, onSubmit, initialData }) => {
                     />
                 </div>
                 {/* BRANCH GROUP */}
-                <div>
-                    <label className="block text-sm font-medium text-text-secondary mb-1">
-                        Branch Group
-                    </label>
-                    <select
-                        name="branch_group"
-                        value={formData.branch_group}
-                        onChange={handleChange}
-                        className="w-full px-3 py-2 bg-background border border-border rounded-md
-                                   text-text-primary text-sm
-                                   focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary"
-                    >
-                        <option value="">Select Group (Optional)</option>
-                        {groups.map(group => (
-                            <option key={group.id} value={group.id}>
-                                {group.name}
-                            </option>
-                        ))}
-                    </select>
-                </div>
+                <SearchableSelect
+                    label="Branch Group"
+                    options={groupOptions}
+                    value={formData.branch_group}
+                    onChange={(val) => setFormData(prev => ({ ...prev, branch_group: val }))}
+                    placeholder="Select Group (Optional)"
+                />
 
                 {/* STATUS */}
 

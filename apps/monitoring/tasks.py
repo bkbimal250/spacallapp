@@ -50,3 +50,67 @@ def check_offline_devices():
                     notification_type="sync_issue"
                 )
 
+
+@shared_task
+def check_device_sync_health():
+    """
+    Task to monitor device sync intervals and send alerts via FCM.
+    Rules:
+      - > 2 hours since last sync: Send mild reminder.
+      - > 24 hours since last sync: Send urgent alert.
+    """
+    from apps.monitoring.models import DeviceHealth
+    from apps.notifications.services import NotificationService
+    import logging
+
+    logger = logging.getLogger(__name__)
+    now = timezone.now()
+    
+    threshold_24h = now - timedelta(hours=24)
+    threshold_2h = now - timedelta(hours=2)
+
+    # 1. Check for 24-hour sync failures (highest priority)
+    late_24h = DeviceHealth.objects.filter(
+        device__is_active=True,
+        device__is_deleted=False,
+        last_sync__lt=threshold_24h,
+        notified_24h=False
+    ).select_related('device', 'device__branch')
+
+    for health in late_24h:
+        success = NotificationService.send_push(
+            device=health.device,
+            title="⚠️ Sync Required Immediately",
+            body="Data has not been synced for 24 hours. Immediate action required.",
+            notification_type="sync_issue"
+        )
+        if success:
+            health.notified_24h = True
+            health.notified_2h = True  # If 24h is sent, we don't need to send 2h anymore
+            health.save(update_fields=["notified_24h", "notified_2h"])
+            logger.info(f"Sent 24h critical sync alert to device {health.device.device_id}")
+
+    # 2. Check for 2-hour sync failures
+    late_2h = DeviceHealth.objects.filter(
+        device__is_active=True,
+        device__is_deleted=False,
+        last_sync__lt=threshold_2h,
+        notified_2h=False
+    ).select_related('device', 'device__branch')
+
+    for health in late_2h:
+        # Avoid sending 2h if they already crossed 24h (though flags should prevent it)
+        if health.last_sync < threshold_24h:
+            continue
+
+        success = NotificationService.send_push(
+            device=health.device,
+            title="Sync Reminder",
+            body="Your data is not synced. Please refresh or sync the app.",
+            notification_type="reminder"
+        )
+        if success:
+            health.notified_2h = True
+            health.save(update_fields=["notified_2h"])
+            logger.info(f"Sent 2h sync reminder to device {health.device.device_id}")
+

@@ -48,7 +48,9 @@ class Contact(BaseModel, TimeStampedModel):
     def save(self, *args, **kwargs):
         # Normalize phone number (store last 10 digits for fast lookup)
         if self.phone_number:
-            self.phone_normalized = self.phone_number[-10:] if len(self.phone_number) >= 10 else self.phone_number
+            import re
+            clean_digits = re.sub(r'\D', '', self.phone_number)
+            self.phone_normalized = clean_digits[-10:] if len(clean_digits) >= 10 else clean_digits
         
         super().save(*args, **kwargs)
         
