@@ -3,7 +3,7 @@ from .base import *
 DEBUG = False
 
 # Pull allowed hosts from .env (comma-separated list)
-ALLOWED_HOSTS = env.list("ALLOWED_HOSTS", default=['apibackend.mastercall.in', 'localhost', '127.0.0.1'])
+ALLOWED_HOSTS = env.list("ALLOWED_HOSTS", default=['apibackend.mastercall.in','crm.mastercall.in', 'localhost', '127.0.0.1'])
 
 # Temporarily allowing all origins to debug the "Network Error" on login
 CORS_ALLOW_ALL_ORIGINS = True
