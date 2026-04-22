@@ -1,4 +1,5 @@
 from urllib.parse import parse_qs
+from uuid import UUID
 from channels.db import database_sync_to_async
 from django.contrib.auth.models import AnonymousUser
 from django.contrib.auth import get_user_model
@@ -38,16 +39,22 @@ class JWTAuthMiddleware:
                 access_token = AccessToken(token)
                 
                 # Support multiple user_id keys for different JWT configurations
-                user_id = (
+                raw_user_id = (
                     access_token.payload.get("user_id") or 
                     access_token.payload.get("id") or 
                     access_token.payload.get("sub")
                 )
                 
-                print("✅ JWT VALID. Payload:", access_token.payload)
+                print(f"✅ JWT VALID. Raw User ID: {raw_user_id}")
                 
-                if user_id:
-                    scope["user"] = await get_user(user_id)
+                if raw_user_id:
+                    try:
+                        # CRITICAL: Convert string UUID to UUID object for strict DB engines (Postgres)
+                        user_id = UUID(str(raw_user_id))
+                        scope["user"] = await get_user(user_id)
+                    except ValueError:
+                        print(f"❌ UUID ERROR: Invalid format ({raw_user_id})")
+                        scope["user"] = AnonymousUser()
                 else:
                     print("❌ JWT ERROR: No user identifier in payload")
                     scope["user"] = AnonymousUser()
