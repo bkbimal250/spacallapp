@@ -6,31 +6,36 @@ from channels.db import database_sync_to_async
 class CRMConsumer(AsyncWebsocketConsumer):
     async def connect(self):
         self.user = self.scope.get("user")
-        print("USER:", self.user)  # 🔍 DEBUG
-
-    # Safe check
+        
+        # 1. Authentication Check
         if not self.user or not self.user.is_authenticated:
-            print("❌ Not authenticated")
-            await self.close()
+            print("❌ WebSocket Reject: Anonymous User")
+            # 4001: Policy Violation (Custom: Authentication Required)
+            await self.close(code=4001)
             return
 
-    # Safe role check
+        # 2. Authorization Check (Role-based)
         user_role = getattr(self.user, "role", None)
-
-        if user_role not in ["admin", "super_admin", "branch_manager"]:
-            print("❌ Invalid role:", user_role)
-            await self.close()
+        allowed_roles = ["admin", "super_admin", "branch_manager"]
+        
+        if user_role not in allowed_roles:
+            print(f"❌ WebSocket Reject: Invalid Role ({user_role})")
+            # 4003: Forbidden
+            await self.close(code=4003)
             return
 
+        # 3. Successful Connection
         self.group_name = "crm_dashboard"
-
         await self.channel_layer.group_add(
             self.group_name,
             self.channel_name
         )
 
         await self.accept()
-        print("✅ WebSocket connected")
+        print(f"✅ WebSocket Connected: {self.user.email} ({user_role})")
+        
+        # Mark user as online
+        await self.update_user_status(True)
 
 
 

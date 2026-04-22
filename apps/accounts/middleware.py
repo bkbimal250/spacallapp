@@ -9,8 +9,14 @@ User = get_user_model()
 @database_sync_to_async
 def get_user(user_id):
     try:
-        return User.objects.get(id=user_id)
-    except Exception:
+        user = User.objects.get(id=user_id)
+        print(f"👤 USER FOUND: {user.email} (Role: {user.role})")
+        return user
+    except User.DoesNotExist:
+        print(f"❌ USER NOT FOUND: id={user_id}")
+        return AnonymousUser()
+    except Exception as e:
+        print(f"❌ DB ERROR in get_user: {str(e)}")
         return AnonymousUser()
 
 class JWTAuthMiddleware:
@@ -22,34 +28,35 @@ class JWTAuthMiddleware:
         self.inner = inner
 
     async def __call__(self, scope, receive, send):
-        # Close old database connections to prevent usage of timed out connections
-        # close_old_connections() # Add if needed, usually Channels handles this
-
         query_string = scope.get("query_string", b"").decode("utf-8")
         query_params = parse_qs(query_string)
         token = query_params.get("token", [None])[0]
 
-        print("🔥 TOKEN:", token)
-
         if token:
             try:
+                # This validates the token (expiration, signature, etc.)
                 access_token = AccessToken(token)
-                # Note: access_token.payload might be validated here implicitly
-                user_id = access_token.payload.get("user_id")
                 
-                print("✅ PAYLOAD:", access_token.payload)
-                print("👉 USER_ID:", user_id)
-
+                # Support multiple user_id keys for different JWT configurations
+                user_id = (
+                    access_token.payload.get("user_id") or 
+                    access_token.payload.get("id") or 
+                    access_token.payload.get("sub")
+                )
+                
+                print("✅ JWT VALID. Payload:", access_token.payload)
+                
                 if user_id:
                     scope["user"] = await get_user(user_id)
                 else:
+                    print("❌ JWT ERROR: No user identifier in payload")
                     scope["user"] = AnonymousUser()
 
             except Exception as e:
-                print("❌ JWT ERROR:", str(e))
+                print(f"❌ JWT VALIDATION FAILED: {str(e)}")
                 scope["user"] = AnonymousUser()
         else:
-            print("❌ No token")
+            print("⚠️ WebSocket attempt WITHOUT token")
             scope["user"] = AnonymousUser()
 
         return await self.inner(scope, receive, send)
