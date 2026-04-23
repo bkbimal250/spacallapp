@@ -135,6 +135,10 @@ class NotificationViewSet(viewsets.ModelViewSet):
     def retrieve(self, request, *args, **kwargs):
         return super().retrieve(request, *args, **kwargs)
 
+    def perform_destroy(self, instance):
+        instance.delete()
+        NotificationService._broadcast_refresh()
+
     @extend_schema(
         summary="Delete All Notifications",
         description="Permanently deletes all notification logs within the user's branch/global scope.",
@@ -152,6 +156,7 @@ class NotificationViewSet(viewsets.ModelViewSet):
         queryset = self.get_queryset()
         count = queryset.count()
         queryset.delete()
+        NotificationService._broadcast_refresh()
         return response.Response({'status': 'all notifications deleted', 'count': count})
 
 

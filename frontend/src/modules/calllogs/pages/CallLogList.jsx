@@ -40,6 +40,8 @@ const CallLogList = () => {
     const initialBranch = queryParams.get('branch') || '';
     const initialDevice = queryParams.get('device') || '';
     const initialSearch = queryParams.get('search') || '';
+    const initialCallType = queryParams.get('call_type') || '';
+    const initialFollowupStatus = queryParams.get('followup_status') || '';
 
     const [logs, setLogs] = useState([]);
     const [stats, setStats] = useState(null);
@@ -162,9 +164,15 @@ const CallLogList = () => {
     }, [filters, page, fetchLogs, fetchStats]);
 
     const handleFilter = useCallback((newFilters) => {
-        setFilters(newFilters);
-        setPage(1);
-    }, []);
+        const params = new URLSearchParams();
+        Object.entries(newFilters).forEach(([key, value]) => {
+            if (value !== undefined && value !== null && value !== '') {
+                params.set(key, value);
+            }
+        });
+        navigate(`?${params.toString()}`, { replace: true });
+        // The useEffect watching location.search will update the filters state
+    }, [navigate]);
 
     const handleSort = useCallback((key) => {
         setSortConfig(prev => ({
@@ -423,6 +431,8 @@ const CallLogList = () => {
                     initialBranch={initialBranch}
                     initialDevice={initialDevice}
                     initialSearch={initialSearch}
+                    initialCallType={initialCallType}
+                    initialFollowupStatus={initialFollowupStatus}
                     initialUnique={filters.is_unique}
                     initialQuickDate={filters.quick_date}
                     initialStartDate={filters.start_date}

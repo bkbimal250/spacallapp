@@ -6,7 +6,7 @@ from apps.leadmanagement.models import LeadManagement
 
 class AnalyticsService:
     @staticmethod
-    def get_peak_hours(branch_id, date_start, date_end):
+    def get_peak_hours(branch_id, date_start, date_end, call_type=None):
         """
         Identify peak calling hours
         """
@@ -16,6 +16,9 @@ class AnalyticsService:
                 queryset = queryset.filter(branch__isnull=True)
             else:
                 queryset = queryset.filter(branch_id=branch_id)
+        
+        if call_type:
+            queryset = queryset.filter(call_type=call_type.lower())
             
         return (
             queryset
@@ -86,13 +89,16 @@ class AnalyticsService:
             "performance_score": round(performance_score, 2),
         }
     @staticmethod
-    def get_call_analytics(branch_ids, date_start, date_end):
+    def get_call_analytics(branch_ids, date_start, date_end, call_type=None):
         """
         Detailed call analytics: volume trends and call type performance.
         """
         queryset = CallLog.objects.filter(call_time__range=(date_start, date_end))
         if branch_ids:
             queryset = queryset.filter(branch_id__in=branch_ids)
+
+        if call_type:
+            queryset = queryset.filter(call_type=call_type.lower())
 
         # 1. Volume Trends (Calls per Day)
         trends = (

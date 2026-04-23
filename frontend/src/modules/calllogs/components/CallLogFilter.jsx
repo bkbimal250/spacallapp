@@ -21,6 +21,8 @@ const CallLogFilter = ({
     initialBranch = '', 
     initialDevice = '', 
     initialSearch = '', 
+    initialCallType = '',
+    initialFollowupStatus = '',
     initialUnique = false,
     initialQuickDate = 'today',
     initialStartDate = '',
@@ -47,9 +49,9 @@ const CallLogFilter = ({
     const [branches, setBranches] = useState([]);
     const [selectedBranch, setSelectedBranch] = useState(initialBranch);
     const [devices, setDevices] = useState([]);
-    const [selectedDevice, setSelectedDevice] = useState('');
-    const [selectedCallType, setSelectedCallType] = useState('');
-    const [selectedFollowupStatus, setSelectedFollowupStatus] = useState('');
+    const [selectedDevice, setSelectedDevice] = useState(initialDevice);
+    const [selectedCallType, setSelectedCallType] = useState(initialCallType);
+    const [selectedFollowupStatus, setSelectedFollowupStatus] = useState(initialFollowupStatus);
     const [isUnique, setIsUnique] = useState(initialUnique);
     const [loadingDevices, setLoadingDevices] = useState(false);
 
@@ -59,6 +61,8 @@ const CallLogFilter = ({
         setSearch(initialSearch);
         setSelectedBranch(initialBranch);
         setSelectedDevice(initialDevice);
+        setSelectedCallType(initialCallType);
+        setSelectedFollowupStatus(initialFollowupStatus);
         setIsUnique(initialUnique);
         
         if (initialStartDate && initialEndDate) {
@@ -77,7 +81,7 @@ const CallLogFilter = ({
             setSingleDate('');
             setDateRange({ startDate: '', endDate: '' });
         }
-    }, [initialSearch, initialBranch, initialDevice, initialUnique, initialQuickDate, initialStartDate, initialEndDate]);
+    }, [initialSearch, initialBranch, initialDevice, initialCallType, initialFollowupStatus, initialUnique, initialQuickDate, initialStartDate, initialEndDate]);
 
     useEffect(() => {
         const fetchBranches = async () => {
@@ -157,33 +161,32 @@ const CallLogFilter = ({
         setDateMode('preset');
         
         // Auto-apply on quick date change
-        const currentFilters = {
+        const filters = {
             search,
             quick_date: preset,
             branch: (selectedBranch && !isRestrictedManager) ? selectedBranch : undefined,
             device: selectedDevice,
             call_type: selectedCallType,
+            followup_status: selectedFollowupStatus,
             is_unique: isUnique
         };
-        onFilter(Object.fromEntries(Object.entries(currentFilters).filter(([_, v]) => v !== undefined && v !== '')));
+        onFilter(Object.fromEntries(Object.entries(filters).filter(([_, v]) => v !== undefined && v !== '')));
     };
 
     const handleSingleDateChange = (date) => {
         setSingleDate(date);
-        // Auto-apply for single date selection as well? 
-        // User said: "if i want onlysee 13 date, then i use quick calender"
-        // Let's auto-apply for better UX if date is picked
         if (date) {
-            const currentFilters = {
+            const filters = {
                 search,
                 start_date: date,
                 end_date: date,
                 branch: (selectedBranch && !isRestrictedManager) ? selectedBranch : undefined,
                 device: selectedDevice,
                 call_type: selectedCallType,
+                followup_status: selectedFollowupStatus,
                 is_unique: isUnique
             };
-            onFilter(Object.fromEntries(Object.entries(currentFilters).filter(([_, v]) => v !== undefined && v !== '')));
+            onFilter(Object.fromEntries(Object.entries(filters).filter(([_, v]) => v !== undefined && v !== '')));
         }
     };
 
@@ -328,6 +331,15 @@ const CallLogFilter = ({
                                 onChange={(val) => {
                                     setSelectedBranch(val);
                                     setSelectedDevice('');
+                                    // Auto-apply branch change
+                                    const filters = {
+                                        search,
+                                        branch: (val && !isRestrictedManager) ? val : undefined,
+                                        quick_date: quickDate,
+                                        call_type: selectedCallType,
+                                        is_unique: isUnique
+                                    };
+                                    onFilter(Object.fromEntries(Object.entries(filters).filter(([_, v]) => v !== undefined && v !== '')));
                                 }}
                                 className="w-full"
                             />
@@ -343,7 +355,19 @@ const CallLogFilter = ({
                             placeholder={loadingDevices ? "Loading..." : "All Devices"}
                             options={devices}
                             value={selectedDevice}
-                            onChange={setSelectedDevice}
+                            onChange={(val) => {
+                                setSelectedDevice(val);
+                                const filters = {
+                                    search,
+                                    branch: (selectedBranch && !isRestrictedManager) ? selectedBranch : undefined,
+                                    quick_date: quickDate,
+                                    device: val,
+                                    call_type: selectedCallType,
+                                    followup_status: selectedFollowupStatus,
+                                    is_unique: isUnique
+                                };
+                                onFilter(Object.fromEntries(Object.entries(filters).filter(([_, v]) => v !== undefined && v !== '')));
+                            }}
                             disabled={!selectedBranch && !isRestrictedManager}
                         />
                     </div>
@@ -356,7 +380,19 @@ const CallLogFilter = ({
                         <select
                             className="block w-full h-[42px] px-3 bg-background border border-border rounded-lg text-sm text-text-primary focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all outline-none appearance-none cursor-pointer"
                             value={selectedCallType}
-                            onChange={(e) => setSelectedCallType(e.target.value)}
+                            onChange={(e) => {
+                                const val = e.target.value;
+                                setSelectedCallType(val);
+                                const filters = {
+                                    search,
+                                    branch: (selectedBranch && !isRestrictedManager) ? selectedBranch : undefined,
+                                    quick_date: quickDate,
+                                    call_type: val,
+                                    followup_status: selectedFollowupStatus,
+                                    is_unique: isUnique
+                                };
+                                onFilter(Object.fromEntries(Object.entries(filters).filter(([_, v]) => v !== undefined && v !== '')));
+                            }}
                         >
                             <option value="">All Types</option>
                             <option value="incoming">Incoming</option>
@@ -374,7 +410,19 @@ const CallLogFilter = ({
                         <select
                             className="block w-full h-[42px] px-3 bg-background border border-border rounded-lg text-sm text-text-primary focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all outline-none appearance-none cursor-pointer"
                             value={selectedFollowupStatus}
-                            onChange={(e) => setSelectedFollowupStatus(e.target.value)}
+                            onChange={(e) => {
+                                const val = e.target.value;
+                                setSelectedFollowupStatus(val);
+                                const filters = {
+                                    search,
+                                    branch: (selectedBranch && !isRestrictedManager) ? selectedBranch : undefined,
+                                    quick_date: quickDate,
+                                    call_type: selectedCallType,
+                                    followup_status: val,
+                                    is_unique: isUnique
+                                };
+                                onFilter(Object.fromEntries(Object.entries(filters).filter(([_, v]) => v !== undefined && v !== '')));
+                            }}
                         >
                             <option value="">All Status</option>
                             <option value="GOOD">Good (&lt; 10m)</option>
@@ -392,7 +440,19 @@ const CallLogFilter = ({
                                         type="checkbox"
                                         className="sr-only"
                                         checked={isUnique}
-                                        onChange={(e) => setIsUnique(e.target.checked)}
+                                        onChange={(e) => {
+                                            const val = e.target.checked;
+                                            setIsUnique(val);
+                                            const filters = {
+                                                search,
+                                                branch: (selectedBranch && !isRestrictedManager) ? selectedBranch : undefined,
+                                                quick_date: quickDate,
+                                                call_type: selectedCallType,
+                                                followup_status: selectedFollowupStatus,
+                                                is_unique: val
+                                            };
+                                            onFilter(Object.fromEntries(Object.entries(filters).filter(([_, v]) => v !== undefined && v !== '')));
+                                        }}
                                     />
                                     <div className={`w-9 h-5 rounded-full transition-colors ${isUnique ? 'bg-primary' : 'bg-slate-300'}`}></div>
                                     <div className={`absolute left-0.5 top-0.5 w-4 h-4 bg-white rounded-full transition-transform ${isUnique ? 'translate-x-4' : 'translate-x-0'} shadow-sm`}></div>

@@ -89,6 +89,7 @@ class AnalyticsOverviewView(APIView):
         parameters=[
             OpenApiParameter("time_filter", str, description="Range filter: today, yesterday, last_7_days, last_30_days, this_month, custom"),
             OpenApiParameter("branch", str, description="Filter by branch ID"),
+            OpenApiParameter("call_type", str, description="Filter by call type: incoming, outgoing, missed, rejected"),
             OpenApiParameter("start_date", str, description="Format: YYYY-MM-DD"),
             OpenApiParameter("end_date", str, description="Format: YYYY-MM-DD"),
         ],
@@ -119,6 +120,11 @@ class AnalyticsOverviewView(APIView):
         # Apply role-based branch restriction
         branch_id = request.query_params.get("branch")
         base_qs = apply_branch_filter(base_qs, "branch_id", user, extra_branch_id=branch_id)
+
+        # Optional call type filter
+        call_type = request.query_params.get("call_type")
+        if call_type:
+            base_qs = base_qs.filter(call_type=call_type.lower())
 
         # Aggregate call type stats
         stats = base_qs.aggregate(
@@ -154,6 +160,7 @@ class PeakHoursView(APIView):
         parameters=[
             OpenApiParameter("time_filter", str, description="Range filter"),
             OpenApiParameter("branch", str, description="Filter by branch ID"),
+            OpenApiParameter("call_type", str, description="Filter by call type"),
             OpenApiParameter("start_date", str, description="YYYY-MM-DD"),
             OpenApiParameter("end_date", str, description="YYYY-MM-DD"),
         ],
@@ -178,6 +185,11 @@ class PeakHoursView(APIView):
         # Apply role-based branch restriction
         branch_id = request.query_params.get("branch")
         queryset = apply_branch_filter(queryset, "branch_id", user, extra_branch_id=branch_id)
+
+        # Optional call type filter
+        call_type = request.query_params.get("call_type")
+        if call_type:
+            queryset = queryset.filter(call_type=call_type.lower())
 
         # Aggregate calls by hour of day
         hourly_data = (
@@ -319,7 +331,8 @@ class CallAnalyticsView(APIView):
         if requested_branch and requested_branch != "null":
             branch_ids = [requested_branch]
 
-        data = AnalyticsService.get_call_analytics(branch_ids, start_date, end_date)
+        call_type = request.query_params.get("call_type")
+        data = AnalyticsService.get_call_analytics(branch_ids, start_date, end_date, call_type=call_type)
         return Response(data)
 
 

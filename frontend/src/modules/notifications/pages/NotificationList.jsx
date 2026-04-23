@@ -17,6 +17,7 @@ import SendNotificationModal from '../components/SendNotificationModal';
 import { branchesAPI } from '../../branches/api';
 import { getUser } from '../../../shared/services/tokenService';
 import { formatDate } from '../../../shared/utils/formatDate';
+import { useWebSocket } from '../../../shared/hooks/useWebSocket';
 
 const NotificationList = () => {
     const [logs, setLogs] = useState([]);
@@ -27,6 +28,17 @@ const NotificationList = () => {
     const [branchFilter, setBranchFilter] = useState('');
     const [branches, setBranches] = useState([]);
     const [user, setUser] = useState(getUser());
+
+    // Real-time update logic
+    const handleWebSocketMessage = (data) => {
+        if (data.type === 'notification_created' || data.type === 'refresh_notifications') {
+            console.log('🔔 Real-time notification update received, refreshing list...');
+            fetchLogs();
+            fetchStats();
+        }
+    };
+
+    useWebSocket('/ws/crm/dashboard/', handleWebSocketMessage);
 
     useEffect(() => {
         fetchLogs();

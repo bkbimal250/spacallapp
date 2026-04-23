@@ -6,34 +6,38 @@ import {
     YAxis,
     CartesianGrid,
     Tooltip,
-    ResponsiveContainer
+    ResponsiveContainer,
+    Cell
 } from 'recharts';
 
-const PeakHourChart = ({ data = [], loading = false }) => {
+const PeakHourChart = React.memo(({ data = [], loading = false }) => {
 
     const safeData = data || [];
 
     return (
-
-        <div className="relative w-full min-h-[280px]">
-
+        <div className="relative w-full min-h-[350px]">
             {loading && (
-                <div className="absolute inset-0 bg-background/70 backdrop-blur-sm z-10 flex items-center justify-center">
+                <div className="absolute inset-0 bg-background/70 backdrop-blur-sm z-10 flex items-center justify-center rounded-2xl">
                     <div className="text-primary font-semibold animate-pulse">
-                        Updating analytics...
+                        Analyzing traffic...
                     </div>
                 </div>
             )}
 
-            <ResponsiveContainer width="100%" height={280} minWidth={0}>
-
-                <BarChart data={safeData}>
+            <ResponsiveContainer width="100%" height={350}>
+                <BarChart data={safeData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                    <defs>
+                        <linearGradient id="barGradient" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor="rgb(59 130 246)" stopOpacity={1} />
+                            <stop offset="100%" stopColor="rgb(59 130 246)" stopOpacity={0.6} />
+                        </linearGradient>
+                    </defs>
 
                     <CartesianGrid
-                        strokeDasharray="3 3"
+                        strokeDasharray="4 4"
                         vertical={false}
                         stroke="var(--border)"
-                        opacity={0.4}
+                        opacity={0.3}
                     />
 
                     <XAxis
@@ -42,8 +46,10 @@ const PeakHourChart = ({ data = [], loading = false }) => {
                         tickLine={false}
                         tick={{
                             fill: "var(--text-secondary)",
-                            fontSize: 11
+                            fontSize: 12,
+                            fontWeight: 500
                         }}
+                        dy={10}
                     />
 
                     <YAxis
@@ -51,37 +57,42 @@ const PeakHourChart = ({ data = [], loading = false }) => {
                         tickLine={false}
                         tick={{
                             fill: "var(--text-secondary)",
-                            fontSize: 11
+                            fontSize: 12,
+                            fontWeight: 500
                         }}
                     />
 
                     <Tooltip
+                        cursor={{ fill: 'var(--primary)', opacity: 0.05 }}
                         contentStyle={{
-                            background: "var(--card)",
+                            background: "rgba(53, 192, 76, 0.9)",
+                            backdropFilter: "blur(4px)",
                             border: "1px solid var(--border)",
-                            borderRadius: "10px",
-                            fontSize: "12px"
-                        }}
-                        labelStyle={{
-                            color: "var(--text-secondary)"
+                            borderRadius: "12px",
+                            boxShadow: "0 4px 6px -1px rgb(0 0 0 / 0.1)",
+                            fontSize: "12px",
+                            fontWeight: "500"
                         }}
                     />
 
                     <Bar
                         dataKey="calls"
-                        fill="rgb(59 130 246)"
-                        radius={[6, 6, 0, 0]}
-                        barSize={32}
-                    />
-
+                        fill="url(#barGradient)"
+                        radius={[8, 8, 0, 0]}
+                        barSize={40}
+                        animationDuration={1000}
+                    >
+                        {safeData.map((entry, index) => (
+                            <Cell
+                                key={`cell-${index}`}
+                                className="hover:opacity-80 transition-opacity duration-300"
+                            />
+                        ))}
+                    </Bar>
                 </BarChart>
-
             </ResponsiveContainer>
-
         </div>
-
     );
-
-};
+});
 
 export default PeakHourChart;

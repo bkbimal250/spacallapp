@@ -3,6 +3,8 @@ import firebase_admin
 from firebase_admin import credentials, messaging
 from django.conf import settings
 from .models import Notification
+from asgiref.sync import async_to_sync
+from channels.layers import get_channel_layer
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +27,50 @@ class NotificationService:
                     firebase_admin.initialize_app()
                 except Exception:
                     logger.warning("Firebase not initialized. Push notifications will be logged but not sent.")
+
+    @staticmethod
+    def _broadcast_refresh():
+        """Broadcast a refresh signal to the dashboard group."""
+        try:
+            channel_layer = get_channel_layer()
+            async_to_sync(channel_layer.group_send)(
+                "crm_dashboard",
+                {
+                    "type": "broadcast_message",
+                    "message": {
+                        "type": "refresh_notifications"
+                    }
+                }
+            )
+        except Exception as e:
+            logger.error(f"Failed to broadcast refresh: {e}")
+
+    @staticmethod
+    def _broadcast_notification(notification_log):
+        """Broadcast notification to the dashboard group for real-time updates."""
+        try:
+            channel_layer = get_channel_layer()
+            async_to_sync(channel_layer.group_send)(
+                "crm_dashboard",
+                {
+                    "type": "broadcast_message",
+                    "message": {
+                        "type": "notification_created",
+                        "notification": {
+                            "id": str(notification_log.id),
+                            "title": notification_log.title,
+                            "body": notification_log.body,
+                            "notification_type": notification_log.notification_type,
+                            "device_name": notification_log.device.device_name,
+                            "branch_name": notification_log.device.branch.spa_name,
+                            "created_at": notification_log.created_at.isoformat(),
+                            "is_sent": notification_log.is_sent
+                        }
+                    }
+                }
+            )
+        except Exception as e:
+            logger.error(f"Failed to broadcast notification: {e}")
 
     @staticmethod
     def send_push(recipient, title, body, notification_type, data=None):
@@ -67,12 +113,14 @@ class NotificationService:
             if notif_log:
                 notif_log.error_message = "Recipient has no FCM token saved."
                 notif_log.save()
+                NotificationService._broadcast_notification(notif_log)
             return False
 
         if not firebase_admin._apps:
             if notif_log:
                 notif_log.error_message = "Firebase Admin SDK not initialized."
                 notif_log.save()
+                NotificationService._broadcast_notification(notif_log)
             return False
 
         try:
@@ -93,6 +141,7 @@ class NotificationService:
                 notif_log.is_sent = True
                 notif_log.firebase_message_id = response
                 notif_log.save()
+                NotificationService._broadcast_notification(notif_log)
             return True
             
         except messaging.ApiCallError as e:
@@ -100,6 +149,7 @@ class NotificationService:
             if notif_log:
                 notif_log.error_message = str(e)
                 notif_log.save()
+                NotificationService._broadcast_notification(notif_log)
             
             # Common FCM error codes for stale/invalid tokens
             invalid_token_codes = ['registration-token-not-registered', 'invalid-registration-token']
@@ -115,4 +165,6 @@ class NotificationService:
             if notif_log:
                 notif_log.error_message = str(e)
                 notif_log.save()
+                NotificationService._broadcast_notification(notif_log)
             return False
+

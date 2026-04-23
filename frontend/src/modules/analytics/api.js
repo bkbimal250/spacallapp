@@ -1,9 +1,9 @@
 import axiosInstance from '../../shared/services/axiosInstance';
 
 export const analyticsAPI = {
-    getOverview: (params) => axiosInstance.get('/analytics/overview/', { params }),
-    getPeakHours: (params) => axiosInstance.get('/analytics/peak-hours/', { params }),
-    getStats: (params) => axiosInstance.get('/analytics/stats/', { params }),
-    getCalls: (params) => axiosInstance.get('/analytics/calls/', { params }),
-    getLeads: (params) => axiosInstance.get('/analytics/leads/', { params }),
+    getOverview: ({ signal, ...params }) => axiosInstance.get('/analytics/overview/', { params, signal }),
+    getPeakHours: ({ signal, ...params }) => axiosInstance.get('/analytics/peak-hours/', { params, signal }),
+    getStats: ({ signal, ...params }) => axiosInstance.get('/analytics/stats/', { params, signal }),
+    getCalls: ({ signal, ...params }) => axiosInstance.get('/analytics/calls/', { params, signal }),
+    getLeads: ({ signal, ...params }) => axiosInstance.get('/analytics/leads/', { params, signal }),
 };
