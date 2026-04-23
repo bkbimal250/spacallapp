@@ -25,7 +25,7 @@ const Login = () => {
 
         dispatch(loginStart());
         try {
-            const response = await authAPI.login({ email: trimmedEmail, password });
+            const response = await authAPI.login({ email: trimmedEmail, password, client: 'web' });
             handleAuthSuccess(response);
         } catch (err) {
             dispatch(loginFailure(err.response?.data?.error || 'Invalid credentials'));
@@ -57,7 +57,7 @@ const Login = () => {
 
         dispatch(loginStart());
         try {
-            const response = await authAPI.verifyOTP({ email: trimmedEmail, otp: otp.trim() });
+            const response = await authAPI.verifyOTP({ email: trimmedEmail, otp: otp.trim(), client: 'web' });
             handleAuthSuccess(response);
         } catch (err) {
             dispatch(loginFailure(err.response?.data?.error || 'Invalid or expired OTP'));
@@ -67,8 +67,8 @@ const Login = () => {
     const handleAuthSuccess = (response) => {
         const { access, refresh, user: userData } = response.data;
 
-        if (userData && userData.role === 'branch_manager') {
-            dispatch(loginFailure('Access Denied: Branch Managers must use the Android App.'));
+        if (userData && userData.role === 'spa_manager') {
+            dispatch(loginFailure('Access Denied: SPA Managers must use the Android App.'));
             return;
         }
 

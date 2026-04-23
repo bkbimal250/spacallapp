@@ -291,13 +291,21 @@ SPECTACULAR_SETTINGS = {
     "TITLE": "CallLog System API",
     "DESCRIPTION": "Comprehensive API documentation for the CallLog System. Managed call logs, branches, devices, and lead management.",
     "VERSION": "1.0.0",
-    "SERVE_INCLUDE_SCHEMA": False,
+    "SERVE_INCLUDE_SCHEMA": True,
     "COMPONENT_SPLIT_REQUEST": True,
     "SCHEMA_PATH_PREFIX": r"/api/v1/",
     "SERVE_PERMISSIONS": ["rest_framework.permissions.AllowAny"],
+    "ENUM_NAME_OVERRIDES": {
+        "CallTypeEnum": "apps.calllogs.models.CallLog.CallType",
+        "NotificationTypeEnum": "apps.notifications.models.Notification.NotificationType",
+    },
     "SECURITY": [
         {
             "jwtAuth": [],
+        },
+        {
+            "DeviceAuth": [],
+            "X-Device-Secret": [],
         }
     ],
     "APPEND_COMPONENTS": {
@@ -306,6 +314,16 @@ SPECTACULAR_SETTINGS = {
                 "type": "http",
                 "scheme": "bearer",
                 "bearerFormat": "JWT",
+            },
+            "DeviceAuth": {
+                "type": "apiKey",
+                "in": "header",
+                "name": "X-Device-ID",
+            },
+            "X-Device-Secret": {
+                "type": "apiKey",
+                "in": "header",
+                "name": "X-Device-Secret",
             }
         }
     },

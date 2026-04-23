@@ -43,6 +43,7 @@ class AdminSendNotificationView(views.APIView):
         title = request.data.get("title")
         body = request.data.get("body")
         notif_type = request.data.get("type", "system")
+        user = request.user
 
         if not title or not body:
             return response.Response({"error": "Title and body required"}, status=status.HTTP_400_BAD_REQUEST)
@@ -51,7 +52,7 @@ class AdminSendNotificationView(views.APIView):
         devices = Device.objects.filter(is_active=True, is_deleted=False)
 
         # Respect user branch scope
-        if hasattr(request.user, 'role') and request.user.role == 'branch_manager' and hasattr(request.user, 'branch'):
+        if user.role == 'spa_manager':
             devices = devices.filter(branch=request.user.branch)
 
         # Handle specific targets if provided
@@ -103,6 +104,9 @@ class NotificationViewSet(viewsets.ModelViewSet):
         """
         Return notifications scoped by user role.
         """
+        if getattr(self, "swagger_fake_view", False):
+            return Notification.objects.none()
+
         user = self.request.user
         qs = Notification.objects.select_related("device", "device__branch").all().order_by("-created_at")
 
@@ -114,7 +118,7 @@ class NotificationViewSet(viewsets.ModelViewSet):
                 "device__branch__id", "device__branch__spa_name"
             )
 
-        if user.role == "branch_manager":
+        if user.role == "spa_manager":
             # Show notifications for their branch's devices OR notifications sent specifically to them
             qs = qs.filter(
                 Q(device__branch=user.branch) | Q(user=user)
@@ -185,7 +189,7 @@ class NotificationStatsView(views.APIView):
         notif_qs = Notification.objects.all()
         device_qs = Device.objects.filter(is_active=True, is_deleted=False)
 
-        if user.role == 'branch_manager':
+        if user.role == 'spa_manager':
             notif_qs = notif_qs.filter(device__branch=user.branch)
             device_qs = device_qs.filter(branch=user.branch)
 

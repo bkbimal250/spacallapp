@@ -97,7 +97,7 @@ class AnalyticsOverviewView(APIView):
             200: inline_serializer(
                 name="AnalyticsOverviewResponse",
                 fields={
-                    "conversion_rates": serializers.ListField(
+                    "distribution": serializers.ListField(
                         child=inline_serializer(
                             name="CallTypeStat",
                             fields={
@@ -135,14 +135,14 @@ class AnalyticsOverviewView(APIView):
         )
 
         # Format for Recharts-compatible structure
-        conversion_data = [
+        distribution_data = [
             {"name": "Incoming",  "value": stats["incoming"] or 0},
             {"name": "Outgoing",  "value": stats["outgoing"] or 0},
             {"name": "Missed",    "value": stats["missed"] or 0},
             {"name": "Rejected",  "value": stats["rejected"] or 0},
         ]
 
-        return Response({"conversion_rates": conversion_data})
+        return Response({"distribution": distribution_data})
 
 
 class PeakHoursView(APIView):
@@ -225,56 +225,6 @@ class PeakHoursView(APIView):
         return Response(result)
 
 
-class AnalyticsStatsView(APIView):
-    """
-    Returns comprehensive analytics metrics for the given time range and branch.
-    Delegates to AnalyticsService for complex aggregation logic.
-    """
-    permission_classes = [IsAuthenticated]
-
-    @extend_schema(
-        summary="Get comprehensive analytics metrics",
-        description="Returns performance score, missed call ratio, and average duration.",
-        parameters=[
-            OpenApiParameter("time_filter", str, description="Range filter"),
-            OpenApiParameter("branch", str, description="Filter by branch ID"),
-            OpenApiParameter("start_date", str, description="YYYY-MM-DD"),
-            OpenApiParameter("end_date", str, description="YYYY-MM-DD"),
-        ],
-        responses={
-            200: inline_serializer(
-                name="AnalyticsStatsResponse",
-                fields={
-                    "missed_call_ratio": serializers.FloatField(),
-                    "conversion_rate": serializers.FloatField(),
-                    "avg_duration": serializers.FloatField(),
-                    "performance_score": serializers.FloatField(),
-                }
-            )
-        }
-    )
-    def get(self, request):
-        start_date, end_date = get_date_range(request)
-        user = request.user
-        branch_id = request.query_params.get("branch")
-
-        # Determine branch scope based on role
-        from apps.common.utils import get_branch_filter_ids
-        branch_ids = get_branch_filter_ids(user)
-
-        if branch_ids and branch_ids != ["NONE"]:
-            # Role-restricted user: compute metrics for their specific branches
-            metrics = AnalyticsService.get_metrics_multi(branch_ids, start_date, end_date)
-        else:
-            # Admin/super_admin: optionally filter by branch query param
-            clean_branch_id = (
-                branch_id
-                if branch_id and branch_id.strip() and branch_id not in ("null", "undefined")
-                else None
-            )
-            metrics = AnalyticsService.get_metrics(clean_branch_id, start_date, end_date)
-
-        return Response(metrics)
 
 class CallAnalyticsView(APIView):
     """
@@ -336,65 +286,3 @@ class CallAnalyticsView(APIView):
         return Response(data)
 
 
-class LeadAnalyticsView(APIView):
-    """
-    Returns lead conversion funnel and status distribution.
-    """
-    permission_classes = [IsAuthenticated]
-
-    @extend_schema(
-        summary="Get lead conversion analytics",
-        description="Returns lead status distribution and conversion funnel stages.",
-        parameters=[
-            OpenApiParameter("time_filter", str, description="Range filter"),
-            OpenApiParameter("branch", str, description="Filter by branch ID"),
-            OpenApiParameter("start_date", str, description="YYYY-MM-DD"),
-            OpenApiParameter("end_date", str, description="YYYY-MM-DD"),
-        ],
-        responses={
-            200: inline_serializer(
-                name="LeadAnalyticsResponse",
-                fields={
-                    "status_distribution": serializers.ListField(
-                        child=inline_serializer(
-                            name="StatusStat",
-                            fields={
-                                "status": serializers.CharField(),
-                                "count": serializers.IntegerField(),
-                            }
-                        )
-                    ),
-                    "funnel": inline_serializer(
-                        name="FunnelStat",
-                        fields={
-                            "Total Leads": serializers.IntegerField(),
-                            "Followed Up": serializers.IntegerField(),
-                            "Interested": serializers.IntegerField(),
-                            "Confirmed Visits": serializers.IntegerField(),
-                        }
-                    ),
-                    "rates": inline_serializer(
-                        name="SuccessRates",
-                        fields={
-                            "conversion_rate": serializers.FloatField(),
-                            "interest_rate": serializers.FloatField(),
-                        }
-                    ),
-                }
-            )
-        }
-    )
-    def get(self, request):
-        start_date, end_date = get_date_range(request)
-        user = request.user
-        
-        from apps.common.utils import get_branch_filter_ids
-        branch_ids = get_branch_filter_ids(user)
-        
-        # Override with specific branch if provided
-        requested_branch = request.query_params.get("branch")
-        if requested_branch and requested_branch != "null":
-            branch_ids = [requested_branch]
-
-        data = AnalyticsService.get_lead_analytics(branch_ids, start_date, end_date)
-        return Response(data)

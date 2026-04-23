@@ -103,8 +103,8 @@ class LeadManagementViewSet(viewsets.ModelViewSet):
             # For detail views, include audit trail related fields
             qs = qs.select_related("created_by", "updated_by")
 
-        # Branch manager: strict filter to their single assigned branch
-        if user.is_authenticated and hasattr(user, 'role') and user.role == "branch_manager":
+        # SPA manager: strict filter to their single assigned branch
+        if user.is_authenticated and hasattr(user, 'role') and user.role == "spa_manager":
             if user.branch:
                 qs = qs.filter(branch=user.branch)
             else:
@@ -137,8 +137,8 @@ class LeadManagementViewSet(viewsets.ModelViewSet):
             except CallLog.DoesNotExist:
                 pass
 
-        # Branch manager: auto-assign their branch
-        if user.role == "branch_manager" and user.branch and "branch" not in extra_data:
+        # SPA manager: auto-assign their branch
+        if user.role == "spa_manager" and user.branch and "branch" not in extra_data:
             if not self.request.data.get("branch"):
                 extra_data["branch"] = user.branch
 

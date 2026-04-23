@@ -289,8 +289,8 @@ class CallLogViewSet(viewsets.ModelViewSet):
         related = ["branch", "contact", "lead", "followup_status", "device"]
         queryset = CallLog.objects.select_related(*related).order_by("-call_time")
 
-        # Branch manager: strict filter to single assigned branch
-        if user.is_authenticated and hasattr(user, 'role') and user.role == "branch_manager":
+        # SPA manager: strict filter to single assigned branch
+        if user.is_authenticated and hasattr(user, 'role') and user.role == "spa_manager":
             if user.branch:
                 queryset = queryset.filter(branch=user.branch)
             else:
@@ -558,7 +558,7 @@ class MissedCallFollowUpViewSet(viewsets.ReadOnlyModelViewSet):
         user = self.request.user
         qs = super().get_queryset().select_related('missed_call', 'branch', 'followup_call')
         
-        if user.role == 'branch_manager':
+        if user.role == 'spa_manager':
             return qs.filter(branch=user.branch)
         return qs
 

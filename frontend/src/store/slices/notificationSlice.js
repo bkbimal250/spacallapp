@@ -12,11 +12,15 @@ const notificationSlice = createSlice({
     reducers: {
         addNotification: (state, action) => {
             state.notifications.unshift({
-                id: Date.now(),
+                id: action.payload.id || Date.now(),
                 ...action.payload,
                 timestamp: new Date().toISOString(),
                 read: false,
             });
+            // Keep only the last 50 notifications to prevent performance lag
+            if (state.notifications.length > 50) {
+                state.notifications = state.notifications.slice(0, 50);
+            }
             state.unreadCount += 1;
         },
         markAsRead: (state, action) => {

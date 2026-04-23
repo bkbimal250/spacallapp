@@ -50,20 +50,20 @@ class IsAdminOrSuperAdmin(BasePermission):
         )
 
 
-class IsBranchManager(BasePermission):
+class IsSPAManager(BasePermission):
     """
-    Allow access to 'branch_manager' role.
-    Used to restrict certain views to branch managers only.
+    Allow access to 'spa_manager' role.
+    Used to restrict certain views to spa managers only.
     """
 
-    message = "Only Branch Managers can perform this action."
+    message = "Only SPA Managers can perform this action."
 
     def has_permission(self, request, view):
         return (
             request.user
             and request.user.is_authenticated
             and hasattr(request.user, "role")
-            and request.user.role == "branch_manager"
+            and request.user.role == "spa_manager"
         )
 
 

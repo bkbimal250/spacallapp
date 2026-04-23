@@ -60,7 +60,7 @@ def send_missed_call_reminder(call_log_id, step):
     body = f"Missed call from {phone} - Please call back"
     
     # Get branch managers to notify
-    managers = followup.branch.branch_users.filter(role='branch_manager', is_active=True)
+    managers = followup.branch.branch_users.filter(role='spa_manager', is_active=True)
     
     sent_count = 0
     for manager in managers:

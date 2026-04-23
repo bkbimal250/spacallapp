@@ -4,11 +4,11 @@ User model for the CallLog SPA Management System.
 Roles:
     - super_admin  : Full system access, creates admins.
     - admin        : Creates users and assigns branches. Full data access.
-    - branch_manager: Restricted to their single assigned branch only.
+    - spa_manager  : Restricted to their single assigned branch only.
 
 Branch Assignment Rules:
-    - A branch_manager is assigned ONE branch at a time (via `branch` FK).
-    - Admin can later re-assign the branch_manager to a different branch.
+    - A spa_manager is assigned ONE branch at a time (via `branch` FK).
+    - Admin can later re-assign the spa_manager to a different branch.
     - `assigned_branches` M2M is kept for historical tracking / analytics
       of which branches a manager has managed (optional use).
 """
@@ -28,13 +28,13 @@ class User(AbstractBaseUser, PermissionsMixin, TimeStampedModel):
     Three roles are supported:
         super_admin    → God-mode, manages everything.
         admin          → Creates users, assigns branch, manages branches/devices.
-        branch_manager → Can only access data for their single assigned branch.
+        spa_manager    → Can only access data for their single assigned branch.
     """
 
     ROLE_CHOICES = (
         ("super_admin", "Super Admin"),       # Full system access
         ("admin", "Admin"),                   # Manage users, branches, devices
-        ("branch_manager", "Branch Manager"), # Access restricted to assigned branch only
+        ("spa_manager", "SPA Manager"),       # Access restricted to assigned branch only
     )
 
     # Primary key uses UUID for security and scalability
@@ -49,8 +49,8 @@ class User(AbstractBaseUser, PermissionsMixin, TimeStampedModel):
     # User's system role — controls access level
     role = models.CharField(max_length=30, choices=ROLE_CHOICES, db_index=True)
 
-    # The single active branch a user (branch_manager) is assigned to.
-    # Admin assigns this; branch_manager can only see data from this branch.
+    # The single active branch a user (spa_manager) is assigned to.
+    # Admin assigns this; spa_manager can only see data from this branch.
     branch = models.ForeignKey(
         "branches.Branch",
         null=True,
@@ -107,6 +107,6 @@ class User(AbstractBaseUser, PermissionsMixin, TimeStampedModel):
         return self.role == "admin"
 
     @property
-    def is_branch_manager(self):
-        """Convenience property to check branch_manager role."""
-        return self.role == "branch_manager"
+    def is_spa_manager(self):
+        """Convenience property to check spa_manager role."""
+        return self.role == "spa_manager"

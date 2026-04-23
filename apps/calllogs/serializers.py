@@ -1,3 +1,4 @@
+from drf_spectacular.utils import extend_schema_field
 from apps.devices.models import Device
 from rest_framework import serializers
 from .models import CallLog
@@ -25,6 +26,7 @@ class CallLogSerializer(serializers.ModelSerializer):
             'call_hash', 'lead_status', 'lead_id', 'created_at'
         ]
 
+    @extend_schema_field(serializers.CharField(allow_null=True))
     def get_receiver_number(self, obj):
         if not obj.device:
             return None

@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from drf_spectacular.utils import extend_schema_field
 from .models import Notification
 
 class NotificationSerializer(serializers.ModelSerializer):
@@ -14,9 +15,11 @@ class NotificationSerializer(serializers.ModelSerializer):
             'created_at'
         ]
 
+    @extend_schema_field(serializers.CharField())
     def get_device_name(self, obj):
         return obj.device.device_id if obj.device else "N/A"
 
+    @extend_schema_field(serializers.CharField())
     def get_branch_name(self, obj):
         if obj.device and obj.device.branch:
             return obj.device.branch.spa_name

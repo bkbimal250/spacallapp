@@ -11,7 +11,7 @@ Endpoints:
 Access Control:
     super_admin   → Full CRUD on all devices.
     admin         → Full CRUD on all devices.
-    branch_manager → Read-only, see only devices in their assigned branch.
+    spa_manager   → Read-only, see only devices in their assigned branch.
 
 Android Flow:
     1. Admin creates Device → registration_token generated.
@@ -61,13 +61,20 @@ class DeviceViewSet(viewsets.ModelViewSet):
         """
         Return devices filtered by the user's role:
             super_admin / admin → All devices.
-            branch_manager      → Only devices in their assigned branch.
+            spa_manager         → Only devices in their assigned branch.
         """
         user = self.request.user
+        
+        # Handle schema generation and unauthenticated access
+        if not user or not user.is_authenticated or getattr(self, "swagger_fake_view", False):
+            if getattr(self, "swagger_fake_view", False):
+                return Device.objects.all()
+            return Device.objects.none()
+            
         queryset = Device.objects.select_related("branch").all().order_by("-created_at")
 
-        # Branch managers can only see devices in their assigned branch
-        if user.role == "branch_manager":
+        # SPA managers can only see devices in their assigned branch
+        if user.role == "spa_manager":
             if user.branch:
                 queryset = queryset.filter(branch=user.branch)
             else:

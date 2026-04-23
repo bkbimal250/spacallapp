@@ -149,7 +149,7 @@ class BranchViewSet(viewsets.ModelViewSet):
             )
 
         # Branch managers can only see their own assigned branch
-        if user.is_authenticated and hasattr(user, 'role') and user.role == "branch_manager":
+        if user.is_authenticated and hasattr(user, 'role') and user.role == "spa_manager":
             if user.branch:
                 queryset = queryset.filter(id=user.branch.id)
             else:

@@ -14,23 +14,23 @@ def get_branch_filter_ids(user):
     Rules:
         super_admin  → None (empty list) means "see everything, no filter"
         admin        → None (empty list) means "see everything, no filter"
-        branch_manager → [user.branch.id] if branch is assigned, else ['NONE']
+        spa_manager → [user.branch.id] if branch is assigned, else ['NONE']
 
     Returns:
         list[str] : Branch IDs to filter by.
                    Empty list [] = no restriction (admin/super_admin).
-                   ['NONE']      = branch_manager with no branch (should see nothing).
+                   ['NONE']      = spa_manager with no branch (should see nothing).
     """
     if user.role in ["super_admin", "admin"]:
         # Admins see all branches — return empty list to indicate no filter
         return []
 
-    if user.role == "branch_manager":
+    if user.role == "spa_manager":
         if user.branch:
-            # Branch managers see only their one assigned branch
+            # SPA managers see only their one assigned branch
             return [str(user.branch.id)]
         else:
-            # Branch manager with no assigned branch → should see nothing
+            # SPA manager with no assigned branch → should see nothing
             # Return a placeholder that won't match any real branch
             return ["NONE"]
 

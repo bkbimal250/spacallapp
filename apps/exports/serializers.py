@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from drf_spectacular.utils import extend_schema_field
 from .models import ExportJob # Assuming model
 
 class ExportJobSerializer(serializers.ModelSerializer):
@@ -9,11 +10,12 @@ class ExportJobSerializer(serializers.ModelSerializer):
         model = ExportJob
         fields = '__all__'
 
-    def get_filters(self, obj):
+    @extend_schema_field(serializers.DictField())
+    def get_filters(self, obj) -> dict:
         if not obj.error_message:
-            return None
+            return {}
         try:
             import ast
             return ast.literal_eval(obj.error_message)
         except:
-            return None
+            return {}

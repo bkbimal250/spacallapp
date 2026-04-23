@@ -1,8 +1,13 @@
 from rest_framework import serializers
 from .models import Branch, BranchGroups
+from drf_spectacular.utils import extend_schema_field
 
 class BranchGroupSerializer(serializers.ModelSerializer):
-    branch_count = serializers.ReadOnlyField()
+    @extend_schema_field(serializers.IntegerField())
+    def get_branch_count(self, obj):
+        return getattr(obj, 'branch_count', 0)
+
+    branch_count = serializers.SerializerMethodField()
 
     class Meta:
         model = BranchGroups

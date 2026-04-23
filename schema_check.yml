@@ -1,0 +1,6755 @@
+openapi: 3.0.3
+info:
+  title: CallLog System API
+  version: 1.0.0
+  description: Comprehensive API documentation for the CallLog System. Managed call
+    logs, branches, devices, and lead management.
+paths:
+  /api/schema/:
+    get:
+      operationId: api_schema_retrieve
+      description: |-
+        OpenApi3 schema for this API. Format can be selected via content negotiation.
+
+        - YAML: application/vnd.oai.openapi
+        - JSON: application/vnd.oai.openapi+json
+      parameters:
+      - in: query
+        name: format
+        schema:
+          type: string
+          enum:
+          - json
+          - yaml
+      - in: query
+        name: lang
+        schema:
+          type: string
+          enum:
+          - af
+          - ar
+          - ar-dz
+          - ast
+          - az
+          - be
+          - bg
+          - bn
+          - br
+          - bs
+          - ca
+          - ckb
+          - cs
+          - cy
+          - da
+          - de
+          - dsb
+          - el
+          - en
+          - en-au
+          - en-gb
+          - eo
+          - es
+          - es-ar
+          - es-co
+          - es-mx
+          - es-ni
+          - es-ve
+          - et
+          - eu
+          - fa
+          - fi
+          - fr
+          - fy
+          - ga
+          - gd
+          - gl
+          - he
+          - hi
+          - hr
+          - hsb
+          - hu
+          - hy
+          - ia
+          - id
+          - ig
+          - io
+          - is
+          - it
+          - ja
+          - ka
+          - kab
+          - kk
+          - km
+          - kn
+          - ko
+          - ky
+          - lb
+          - lt
+          - lv
+          - mk
+          - ml
+          - mn
+          - mr
+          - ms
+          - my
+          - nb
+          - ne
+          - nl
+          - nn
+          - os
+          - pa
+          - pl
+          - pt
+          - pt-br
+          - ro
+          - ru
+          - sk
+          - sl
+          - sq
+          - sr
+          - sr-latn
+          - sv
+          - sw
+          - ta
+          - te
+          - tg
+          - th
+          - tk
+          - tr
+          - tt
+          - udm
+          - uk
+          - ur
+          - uz
+          - vi
+          - zh-hans
+          - zh-hant
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      - jwtAuth: []
+      - DeviceAuth: []
+        X-Device-Secret: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/vnd.oai.openapi:
+              schema:
+                type: object
+                additionalProperties: {}
+            application/yaml:
+              schema:
+                type: object
+                additionalProperties: {}
+            application/vnd.oai.openapi+json:
+              schema:
+                type: object
+                additionalProperties: {}
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+  /api/v1/analytics/calls/:
+    get:
+      operationId: analytics_calls_retrieve
+      description: Returns daily call volume counts and type breakdown over time.
+      summary: Get call volume trends
+      parameters:
+      - in: query
+        name: branch
+        schema:
+          type: string
+        description: Filter by branch ID
+      - in: query
+        name: end_date
+        schema:
+          type: string
+        description: YYYY-MM-DD
+      - in: query
+        name: start_date
+        schema:
+          type: string
+        description: YYYY-MM-DD
+      - in: query
+        name: time_filter
+        schema:
+          type: string
+        description: Range filter
+      tags:
+      - analytics
+      security:
+      - jwtAuth: []
+      - jwtAuth: []
+      - DeviceAuth: []
+        X-Device-Secret: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CallAnalyticsResponse'
+          description: ''
+  /api/v1/analytics/overview/:
+    get:
+      operationId: analytics_overview_retrieve
+      description: Returns call counts grouped by type (incoming, outgoing, missed,
+        rejected) for the selected range.
+      summary: Get call type distribution
+      parameters:
+      - in: query
+        name: branch
+        schema:
+          type: string
+        description: Filter by branch ID
+      - in: query
+        name: call_type
+        schema:
+          type: string
+        description: 'Filter by call type: incoming, outgoing, missed, rejected'
+      - in: query
+        name: end_date
+        schema:
+          type: string
+        description: 'Format: YYYY-MM-DD'
+      - in: query
+        name: start_date
+        schema:
+          type: string
+        description: 'Format: YYYY-MM-DD'
+      - in: query
+        name: time_filter
+        schema:
+          type: string
+        description: 'Range filter: today, yesterday, last_7_days, last_30_days, this_month,
+          custom'
+      tags:
+      - analytics
+      security:
+      - jwtAuth: []
+      - jwtAuth: []
+      - DeviceAuth: []
+        X-Device-Secret: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnalyticsOverviewResponse'
+          description: ''
+  /api/v1/analytics/peak-hours/:
+    get:
+      operationId: analytics_peak_hours_list
+      description: Returns a 24-hour breakdown of call counts to identify peak hours.
+      summary: Get hourly call volume
+      parameters:
+      - in: query
+        name: branch
+        schema:
+          type: string
+        description: Filter by branch ID
+      - in: query
+        name: call_type
+        schema:
+          type: string
+        description: Filter by call type
+      - in: query
+        name: end_date
+        schema:
+          type: string
+        description: YYYY-MM-DD
+      - in: query
+        name: start_date
+        schema:
+          type: string
+        description: YYYY-MM-DD
+      - in: query
+        name: time_filter
+        schema:
+          type: string
+        description: Range filter
+      tags:
+      - analytics
+      security:
+      - jwtAuth: []
+      - jwtAuth: []
+      - DeviceAuth: []
+        X-Device-Secret: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PeakHoursResponse'
+          description: ''
+  /api/v1/auth/login/:
+    post:
+      operationId: auth_login_create
+      description: Authenticates a user via email and password, returning JWT tokens
+        and profile data.
+      tags:
+      - auth
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      - jwtAuth: []
+      - DeviceAuth: []
+        X-Device-Secret: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginError'
+          description: ''
+  /api/v1/auth/login-history/:
+    get:
+      operationId: auth_login_history_list
+      description: |-
+        Viewset to see login history.
+        Admin/SuperAdmin can see all logs.
+        Branch Manager can only see their own logs (optionally).
+      summary: List Login History
+      parameters:
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      - in: query
+        name: user
+        schema:
+          type: string
+        description: Filter history by user UUID
+      tags:
+      - auth
+      security:
+      - jwtAuth: []
+      - jwtAuth: []
+      - DeviceAuth: []
+        X-Device-Secret: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedUserLoginHistoryList'
+          description: ''
+  /api/v1/auth/login-history/{id}/:
+    get:
+      operationId: auth_login_history_retrieve
+      description: |-
+        Viewset to see login history.
+        Admin/SuperAdmin can see all logs.
+        Branch Manager can only see their own logs (optionally).
+      summary: Retrieve Login History Item
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this User Login History.
+        required: true
+      tags:
+      - auth
+      security:
+      - jwtAuth: []
+      - jwtAuth: []
+      - DeviceAuth: []
+        X-Device-Secret: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserLoginHistory'
+          description: ''
+  /api/v1/auth/otp/request/:
+    post:
+      operationId: auth_otp_request_create
+      description: Sends a one-time password (OTP) to the provided email address if
+        the user exists.
+      tags:
+      - auth
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OTPRequestRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/OTPRequestRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/OTPRequestRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      - jwtAuth: []
+      - DeviceAuth: []
+        X-Device-Secret: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OTPRequestSuccess'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OTPRequestError'
+          description: ''
+  /api/v1/auth/otp/verify/:
+    post:
+      operationId: auth_otp_verify_create
+      description: Verifies the OTP sent to the email and returns JWT tokens if valid.
+      tags:
+      - auth
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OTPVerifyRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/OTPVerifyRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/OTPVerifyRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      - jwtAuth: []
+      - DeviceAuth: []
+        X-Device-Secret: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OTPVerifyResponse'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OTPVerifyError'
+          description: ''
+  /api/v1/auth/profile/:
+    patch:
+      operationId: auth_profile_partial_update
+      description: Updates the profile of the currently logged-in user. Used for FCM
+        token registration.
+      summary: Update Current User Profile
+      tags:
+      - auth
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedUpdateProfileRequestRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedUpdateProfileRequestRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedUpdateProfileRequestRequest'
+      security:
+      - jwtAuth: []
+      - jwtAuth: []
+      - DeviceAuth: []
+        X-Device-Secret: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UpdateProfileResponse'
+          description: ''
+  /api/v1/auth/token/refresh/:
+    post:
+      operationId: auth_token_refresh_create
+      description: |-
+        Takes a refresh type JSON web token and returns an access type JSON web
+        token if the refresh token is valid.
+      tags:
+      - auth
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TokenRefreshRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TokenRefreshRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/TokenRefreshRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      - DeviceAuth: []
+        X-Device-Secret: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenRefresh'
+          description: ''
+  /api/v1/auth/users/:
+    get:
+      operationId: auth_users_list
+      description: List all users with search and filtering for roles and branches.
+      summary: List Users
+      parameters:
+      - in: query
+        name: branch
+        schema:
+          type: string
+        description: Filter by branch UUID
+      - in: query
+        name: is_active
+        schema:
+          type: boolean
+        description: Filter by active status
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - in: query
+        name: role
+        schema:
+          type: string
+        description: Filter by user role
+      - in: query
+        name: search
+        schema:
+          type: string
+        description: Search by name or email
+      tags:
+      - auth
+      security:
+      - jwtAuth: []
+      - jwtAuth: []
+      - DeviceAuth: []
+        X-Device-Secret: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedUserList'
+          description: ''
+    post:
+      operationId: auth_users_create
+      description: |-
+        CRUD for User management.
+
+        Access Rules:
+            - Only admin and super_admin can access this viewset.
+            - A super_admin can create/manage users of any role.
+            - An admin can create spa_manager users and assign branches.
+            - Admin cannot create other admins or super_admins
+              (enforced via serializer or can be added here).
+
+        Filters:
+            ?search=<name_or_email>   → Search by email or full name.
+            ?role=<role>              → Filter by role.
+            ?branch=<branch_uuid>     → Filter by assigned branch.
+            ?is_active=true|false     → Filter by active status.
+      summary: Create User
+      tags:
+      - auth
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/UserRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/UserRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      - jwtAuth: []
+      - DeviceAuth: []
+        X-Device-Secret: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+          description: ''
+  /api/v1/auth/users/{id}/:
+    get:
+      operationId: auth_users_retrieve
+      description: |-
+        CRUD for User management.
+
+        Access Rules:
+            - Only admin and super_admin can access this viewset.
+            - A super_admin can create/manage users of any role.
+            - An admin can create spa_manager users and assign branches.
+            - Admin cannot create other admins or super_admins
+              (enforced via serializer or can be added here).
+
+        Filters:
+            ?search=<name_or_email>   → Search by email or full name.
+            ?role=<role>              → Filter by role.
+            ?branch=<branch_uuid>     → Filter by assigned branch.
+            ?is_active=true|false     → Filter by active status.
+      summary: Retrieve User
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this User.
+        required: true
+      tags:
+      - auth
+      security:
+      - jwtAuth: []
+      - jwtAuth: []
+      - DeviceAuth: []
+        X-Device-Secret: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+          description: ''
+    put:
+      operationId: auth_users_update
+      description: |-
+        CRUD for User management.
+
+        Access Rules:
+            - Only admin and super_admin can access this viewset.
+            - A super_admin can create/manage users of any role.
+            - An admin can create spa_manager users and assign branches.
+            - Admin cannot create other admins or super_admins
+              (enforced via serializer or can be added here).
+
+        Filters:
+            ?search=<name_or_email>   → Search by email or full name.
+            ?role=<role>              → Filter by role.
+            ?branch=<branch_uuid>     → Filter by assigned branch.
+            ?is_active=true|false     → Filter by active status.
+      summary: Update User
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this User.
+        required: true
+      tags:
+      - auth
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/UserRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/UserRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      - jwtAuth: []
+      - DeviceAuth: []
+        X-Device-Secret: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+          description: ''
+    patch:
+      operationId: auth_users_partial_update
+      description: |-
+        CRUD for User management.
+
+        Access Rules:
+            - Only admin and super_admin can access this viewset.
+            - A super_admin can create/manage users of any role.
+            - An admin can create spa_manager users and assign branches.
+            - Admin cannot create other admins or super_admins
+              (enforced via serializer or can be added here).
+
+        Filters:
+            ?search=<name_or_email>   → Search by email or full name.
+            ?role=<role>              → Filter by role.
+            ?branch=<branch_uuid>     → Filter by assigned branch.
+            ?is_active=true|false     → Filter by active status.
+      summary: Partial Update User
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this User.
+        required: true
+      tags:
+      - auth
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedUserRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedUserRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedUserRequest'
+      security:
+      - jwtAuth: []
+      - jwtAuth: []
+      - DeviceAuth: []
+        X-Device-Secret: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+          description: ''
+    delete:
+      operationId: auth_users_destroy
+      description: |-
+        CRUD for User management.
+
+        Access Rules:
+            - Only admin and super_admin can access this viewset.
+            - A super_admin can create/manage users of any role.
+            - An admin can create spa_manager users and assign branches.
+            - Admin cannot create other admins or super_admins
+              (enforced via serializer or can be added here).
+
+        Filters:
+            ?search=<name_or_email>   → Search by email or full name.
+            ?role=<role>              → Filter by role.
+            ?branch=<branch_uuid>     → Filter by assigned branch.
+            ?is_active=true|false     → Filter by active status.
+      summary: Delete User
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this User.
+        required: true
+      tags:
+      - auth
+      security:
+      - jwtAuth: []
+      - jwtAuth: []
+      - DeviceAuth: []
+        X-Device-Secret: []
+      responses:
+        '204':
+          description: No response body
+  /api/v1/auth/users/online/:
+    get:
+      operationId: auth_users_online_list
+      description: Returns a list of users currently marked as online.
+      summary: List Online Users
+      tags:
+      - auth
+      security:
+      - jwtAuth: []
+      - jwtAuth: []
+      - DeviceAuth: []
+        X-Device-Secret: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/OnlineUserListItem'
+          description: ''
+  /api/v1/branches/:
+    get:
+      operationId: branches_list
+      description: List branches with role-based caching.
+      summary: List Branches
+      parameters:
+      - in: query
+        name: all
+        schema:
+          type: boolean
+        description: Set to true to disable pagination
+      - in: query
+        name: city
+        schema:
+          type: string
+        description: Filter by city
+      - in: query
+        name: end_date
+        schema:
+          type: string
+          format: date
+        description: End Date (YYYY-MM-DD)
+      - in: query
+        name: group
+        schema:
+          type: string
+        description: Filter by branch group UUID
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - in: query
+        name: quick_date
+        schema:
+          type: string
+        description: 'Preset: today, yesterday'
+      - in: query
+        name: search
+        schema:
+          type: string
+        description: Search by spa name or branch code
+      - in: query
+        name: start_date
+        schema:
+          type: string
+          format: date
+        description: Start Date (YYYY-MM-DD)
+      - in: query
+        name: state
+        schema:
+          type: string
+        description: Filter by state
+      - in: query
+        name: status
+        schema:
+          type: boolean
+        description: Filter by active status
+      tags:
+      - branches
+      security:
+      - jwtAuth: []
+      - jwtAuth: []
+      - DeviceAuth: []
+        X-Device-Secret: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedBranchListList'
+          description: ''
+    post:
+      operationId: branches_create
+      description: |-
+        CRUD for Branch (Spa locations).
+
+        Access:
+            All authenticated users can list/read branches.
+            Only admin and super_admin can create/update/delete.
+            Branch managers only see their own assigned branch.
+      tags:
+      - branches
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BranchRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/BranchRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/BranchRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      - jwtAuth: []
+      - DeviceAuth: []
+        X-Device-Secret: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Branch'
+          description: ''
+  /api/v1/branches/{id}/:
+    get:
+      operationId: branches_retrieve
+      description: |-
+        CRUD for Branch (Spa locations).
+
+        Access:
+            All authenticated users can list/read branches.
+            Only admin and super_admin can create/update/delete.
+            Branch managers only see their own assigned branch.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this Branch.
+        required: true
+      tags:
+      - branches
+      security:
+      - jwtAuth: []
+      - jwtAuth: []
+      - DeviceAuth: []
+        X-Device-Secret: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Branch'
+          description: ''
+    put:
+      operationId: branches_update
+      description: |-
+        CRUD for Branch (Spa locations).
+
+        Access:
+            All authenticated users can list/read branches.
+            Only admin and super_admin can create/update/delete.
+            Branch managers only see their own assigned branch.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this Branch.
+        required: true
+      tags:
+      - branches
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BranchRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/BranchRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/BranchRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      - jwtAuth: []
+      - DeviceAuth: []
+        X-Device-Secret: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Branch'
+          description: ''
+    patch:
+      operationId: branches_partial_update
+      description: |-
+        CRUD for Branch (Spa locations).
+
+        Access:
+            All authenticated users can list/read branches.
+            Only admin and super_admin can create/update/delete.
+            Branch managers only see their own assigned branch.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this Branch.
+        required: true
+      tags:
+      - branches
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedBranchRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedBranchRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedBranchRequest'
+      security:
+      - jwtAuth: []
+      - jwtAuth: []
+      - DeviceAuth: []
+        X-Device-Secret: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Branch'
+          description: ''
+    delete:
+      operationId: branches_destroy
+      description: |-
+        CRUD for Branch (Spa locations).
+
+        Access:
+            All authenticated users can list/read branches.
+            Only admin and super_admin can create/update/delete.
+            Branch managers only see their own assigned branch.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this Branch.
+        required: true
+      tags:
+      - branches
+      security:
+      - jwtAuth: []
+      - jwtAuth: []
+      - DeviceAuth: []
+        X-Device-Secret: []
+      responses:
+        '204':
+          description: No response body
+  /api/v1/branches/groups/:
+    get:
+      operationId: branches_groups_list
+      description: CRUD for Branch Groups.
+      summary: List Branch Groups
+      parameters:
+      - in: query
+        name: end_date
+        schema:
+          type: string
+          format: date
+        description: End Date (YYYY-MM-DD)
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - in: query
+        name: quick_date
+        schema:
+          type: string
+        description: 'Preset: today, yesterday'
+      - in: query
+        name: search
+        schema:
+          type: string
+      - in: query
+        name: start_date
+        schema:
+          type: string
+          format: date
+        description: Start Date (YYYY-MM-DD)
+      - in: query
+        name: status
+        schema:
+          type: boolean
+      tags:
+      - branches
+      security:
+      - jwtAuth: []
+      - jwtAuth: []
+      - DeviceAuth: []
+        X-Device-Secret: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedBranchGroupList'
+          description: ''
+    post:
+      operationId: branches_groups_create
+      description: CRUD for Branch Groups.
+      summary: Create Branch Group
+      tags:
+      - branches
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BranchGroupRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/BranchGroupRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/BranchGroupRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      - jwtAuth: []
+      - DeviceAuth: []
+        X-Device-Secret: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BranchGroup'
+          description: ''
+  /api/v1/branches/groups/{id}/:
+    get:
+      operationId: branches_groups_retrieve
+      description: CRUD for Branch Groups.
+      summary: Retrieve Branch Group
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this Branch Group.
+        required: true
+      tags:
+      - branches
+      security:
+      - jwtAuth: []
+      - jwtAuth: []
+      - DeviceAuth: []
+        X-Device-Secret: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BranchGroup'
+          description: ''
+    put:
+      operationId: branches_groups_update
+      description: CRUD for Branch Groups.
+      summary: Update Branch Group
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this Branch Group.
+        required: true
+      tags:
+      - branches
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BranchGroupRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/BranchGroupRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/BranchGroupRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      - jwtAuth: []
+      - DeviceAuth: []
+        X-Device-Secret: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BranchGroup'
+          description: ''
+    patch:
+      operationId: branches_groups_partial_update
+      description: CRUD for Branch Groups.
+      summary: Partial Update Branch Group
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this Branch Group.
+        required: true
+      tags:
+      - branches
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedBranchGroupRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedBranchGroupRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedBranchGroupRequest'
+      security:
+      - jwtAuth: []
+      - jwtAuth: []
+      - DeviceAuth: []
+        X-Device-Secret: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BranchGroup'
+          description: ''
+    delete:
+      operationId: branches_groups_destroy
+      description: CRUD for Branch Groups.
+      summary: Delete Branch Group
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this Branch Group.
+        required: true
+      tags:
+      - branches
+      security:
+      - jwtAuth: []
+      - jwtAuth: []
+      - DeviceAuth: []
+        X-Device-Secret: []
+      responses:
+        '204':
+          description: No response body
+  /api/v1/branches/groups/{id}/assign_branches/:
+    post:
+      operationId: branches_groups_assign_branches_create
+      description: Bulk assign a list of branch IDs to this group (replacing current
+        members).
+      summary: Assign Branches to Group
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this Branch Group.
+        required: true
+      tags:
+      - branches
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AssignBranchesRequestRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/AssignBranchesRequestRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/AssignBranchesRequestRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      - jwtAuth: []
+      - DeviceAuth: []
+        X-Device-Secret: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssignBranchesResponse'
+          description: ''
+  /api/v1/calllogs/:
+    get:
+      operationId: calllogs_list
+      description: Returns a paginated list of call logs with extensive filtering
+        options.
+      summary: List/Filter Call Logs
+      parameters:
+      - in: query
+        name: branch
+        schema:
+          type: string
+        description: Branch UUID
+      - in: query
+        name: branch_search
+        schema:
+          type: string
+      - in: query
+        name: call_type
+        schema:
+          type: string
+          enum:
+          - incoming
+          - missed
+          - outgoing
+          - rejected
+      - in: query
+        name: city
+        schema:
+          type: string
+      - in: query
+        name: device
+        schema:
+          type: string
+        description: Device ID string
+      - in: query
+        name: end_date
+        schema:
+          type: string
+        description: YYYY-MM-DD
+      - in: query
+        name: is_unique
+        schema:
+          type: boolean
+        description: If true, returns only the latest call per phone number
+      - in: query
+        name: lead_status
+        schema:
+          type: string
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - in: query
+        name: quick_date
+        schema:
+          type: string
+        description: 'Preset: today, yesterday'
+      - in: query
+        name: search
+        schema:
+          type: string
+        description: Search by number or contact name
+      - in: query
+        name: sla_status
+        schema:
+          type: string
+      - in: query
+        name: start_date
+        schema:
+          type: string
+        description: YYYY-MM-DD
+      - in: query
+        name: status
+        schema:
+          type: string
+      tags:
+      - calllogs
+      security:
+      - jwtAuth: []
+      - jwtAuth: []
+      - DeviceAuth: []
+        X-Device-Secret: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedCallLogListList'
+          description: ''
+    post:
+      operationId: calllogs_create
+      description: |-
+        Call Log CRUD and analytics viewset.
+
+        Used by the web dashboard to view, filter, and analyze call logs.
+        Access is filtered by role — branch_managers only see their branch.
+
+        Key custom actions:
+            stats          → Aggregate counts and durations.
+            branch_summary → Per-branch breakdown of call types.
+            export_excel   → Download all filtered logs as an Excel file.
+            bulk_delete    → Delete multiple logs (super_admin only).
+      tags:
+      - calllogs
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CallLogRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/CallLogRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/CallLogRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      - jwtAuth: []
+      - DeviceAuth: []
+        X-Device-Secret: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CallLog'
+          description: ''
+  /api/v1/calllogs/{id}/:
+    get:
+      operationId: calllogs_retrieve
+      description: |-
+        Call Log CRUD and analytics viewset.
+
+        Used by the web dashboard to view, filter, and analyze call logs.
+        Access is filtered by role — branch_managers only see their branch.
+
+        Key custom actions:
+            stats          → Aggregate counts and durations.
+            branch_summary → Per-branch breakdown of call types.
+            export_excel   → Download all filtered logs as an Excel file.
+            bulk_delete    → Delete multiple logs (super_admin only).
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this Call Log.
+        required: true
+      tags:
+      - calllogs
+      security:
+      - jwtAuth: []
+      - jwtAuth: []
+      - DeviceAuth: []
+        X-Device-Secret: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CallLog'
+          description: ''
+    put:
+      operationId: calllogs_update
+      description: |-
+        Call Log CRUD and analytics viewset.
+
+        Used by the web dashboard to view, filter, and analyze call logs.
+        Access is filtered by role — branch_managers only see their branch.
+
+        Key custom actions:
+            stats          → Aggregate counts and durations.
+            branch_summary → Per-branch breakdown of call types.
+            export_excel   → Download all filtered logs as an Excel file.
+            bulk_delete    → Delete multiple logs (super_admin only).
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this Call Log.
+        required: true
+      tags:
+      - calllogs
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CallLogRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/CallLogRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/CallLogRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      - jwtAuth: []
+      - DeviceAuth: []
+        X-Device-Secret: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CallLog'
+          description: ''
+    patch:
+      operationId: calllogs_partial_update
+      description: |-
+        Call Log CRUD and analytics viewset.
+
+        Used by the web dashboard to view, filter, and analyze call logs.
+        Access is filtered by role — branch_managers only see their branch.
+
+        Key custom actions:
+            stats          → Aggregate counts and durations.
+            branch_summary → Per-branch breakdown of call types.
+            export_excel   → Download all filtered logs as an Excel file.
+            bulk_delete    → Delete multiple logs (super_admin only).
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this Call Log.
+        required: true
+      tags:
+      - calllogs
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedCallLogRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedCallLogRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedCallLogRequest'
+      security:
+      - jwtAuth: []
+      - jwtAuth: []
+      - DeviceAuth: []
+        X-Device-Secret: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CallLog'
+          description: ''
+    delete:
+      operationId: calllogs_destroy
+      description: |-
+        Call Log CRUD and analytics viewset.
+
+        Used by the web dashboard to view, filter, and analyze call logs.
+        Access is filtered by role — branch_managers only see their branch.
+
+        Key custom actions:
+            stats          → Aggregate counts and durations.
+            branch_summary → Per-branch breakdown of call types.
+            export_excel   → Download all filtered logs as an Excel file.
+            bulk_delete    → Delete multiple logs (super_admin only).
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this Call Log.
+        required: true
+      tags:
+      - calllogs
+      security:
+      - jwtAuth: []
+      - jwtAuth: []
+      - DeviceAuth: []
+        X-Device-Secret: []
+      responses:
+        '204':
+          description: No response body
+  /api/v1/calllogs/branch_summary/:
+    get:
+      operationId: calllogs_branch_summary_list
+      description: Returns an overview of call counts for each branch.
+      summary: Get per-branch summaries
+      parameters:
+      - in: query
+        name: branch
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: branch_search
+        schema:
+          type: string
+      - in: query
+        name: call_type
+        schema:
+          type: string
+          enum:
+          - incoming
+          - missed
+          - outgoing
+          - rejected
+        description: |-
+          Type of call: incoming, outgoing, missed, or rejected.
+
+          * `incoming` - Incoming
+          * `outgoing` - Outgoing
+          * `missed` - Missed
+          * `rejected` - Rejected
+      - in: query
+        name: city
+        schema:
+          type: string
+      - in: query
+        name: device
+        schema:
+          type: string
+      - in: query
+        name: end_date
+        schema:
+          type: string
+          format: date
+        description: End Date (YYYY-MM-DD)
+      - in: query
+        name: is_unique
+        schema:
+          type: boolean
+      - in: query
+        name: lead_status
+        schema:
+          type: string
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - in: query
+        name: quick_date
+        schema:
+          type: string
+        description: 'Preset: today, yesterday'
+      - in: query
+        name: search
+        schema:
+          type: string
+      - in: query
+        name: sla_status
+        schema:
+          type: string
+      - in: query
+        name: start_date
+        schema:
+          type: string
+          format: date
+        description: Start Date (YYYY-MM-DD)
+      - in: query
+        name: status
+        schema:
+          type: string
+          enum:
+          - active
+          - inactive
+      tags:
+      - calllogs
+      security:
+      - jwtAuth: []
+      - jwtAuth: []
+      - DeviceAuth: []
+        X-Device-Secret: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedBranchSummaryResponseList'
+          description: ''
+  /api/v1/calllogs/bulk_delete/:
+    post:
+      operationId: calllogs_bulk_delete_create
+      description: Delete a large batch of call logs at once. Restricted to super_admin.
+      summary: Bulk delete call logs
+      tags:
+      - calllogs
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BulkDeleteRequestRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/BulkDeleteRequestRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/BulkDeleteRequestRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      - jwtAuth: []
+      - DeviceAuth: []
+        X-Device-Secret: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BulkDeleteResponse'
+          description: ''
+  /api/v1/calllogs/export_excel/:
+    get:
+      operationId: calllogs_export_excel_retrieve
+      description: |-
+        Export call logs as an Excel (.xlsx) file.
+        Applies same role-based and filter-based queryset restrictions.
+        Uses .iterator() for memory efficiency with large datasets.
+      tags:
+      - calllogs
+      security:
+      - jwtAuth: []
+      - jwtAuth: []
+      - DeviceAuth: []
+        X-Device-Secret: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CallLog'
+          description: ''
+  /api/v1/calllogs/followup/:
+    get:
+      operationId: calllogs_followup_list
+      description: ViewSet for tracking and reporting on missed call follow-up performance.
+      parameters:
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      tags:
+      - calllogs
+      security:
+      - jwtAuth: []
+      - jwtAuth: []
+      - DeviceAuth: []
+        X-Device-Secret: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedMissedCallFollowUpList'
+          description: ''
+  /api/v1/calllogs/followup/{id}/:
+    get:
+      operationId: calllogs_followup_retrieve
+      description: ViewSet for tracking and reporting on missed call follow-up performance.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this Missed Call Follow-Up.
+        required: true
+      tags:
+      - calllogs
+      security:
+      - jwtAuth: []
+      - jwtAuth: []
+      - DeviceAuth: []
+        X-Device-Secret: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MissedCallFollowUp'
+          description: ''
+  /api/v1/calllogs/followup/branch_performance/:
+    get:
+      operationId: calllogs_followup_branch_performance_retrieve
+      description: Returns missed call follow-up performance breakdown per branch.
+      tags:
+      - calllogs
+      security:
+      - jwtAuth: []
+      - jwtAuth: []
+      - DeviceAuth: []
+        X-Device-Secret: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MissedCallFollowUp'
+          description: ''
+  /api/v1/calllogs/followup/stats/:
+    get:
+      operationId: calllogs_followup_stats_retrieve
+      description: 'Returns aggregate stats: Followed vs Not Followed, and SLA breakdown.'
+      tags:
+      - calllogs
+      security:
+      - jwtAuth: []
+      - jwtAuth: []
+      - DeviceAuth: []
+        X-Device-Secret: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MissedCallFollowUp'
+          description: ''
+  /api/v1/calllogs/followup/today_missed/:
+    get:
+      operationId: calllogs_followup_today_missed_retrieve
+      description: Returns all missed calls received today.
+      tags:
+      - calllogs
+      security:
+      - jwtAuth: []
+      - jwtAuth: []
+      - DeviceAuth: []
+        X-Device-Secret: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MissedCallFollowUp'
+          description: ''
+  /api/v1/calllogs/stats/:
+    get:
+      operationId: calllogs_stats_retrieve
+      description: Calculates totals and averages for the currently filtered set of
+        logs.
+      summary: Get call log summary stats
+      parameters:
+      - in: query
+        name: branch
+        schema:
+          type: string
+      - in: query
+        name: call_type
+        schema:
+          type: string
+      - in: query
+        name: end_date
+        schema:
+          type: string
+      - in: query
+        name: search
+        schema:
+          type: string
+      - in: query
+        name: start_date
+        schema:
+          type: string
+      tags:
+      - calllogs
+      security:
+      - jwtAuth: []
+      - jwtAuth: []
+      - DeviceAuth: []
+        X-Device-Secret: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CallLogStatsResponse'
+          description: ''
+  /api/v1/calllogs/sync/:
+    post:
+      operationId: calllogs_sync_create
+      description: Batch upload call logs from the Android app. HMAC authentication
+        required.
+      summary: Sync call logs (Android)
+      tags:
+      - calllogs
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: '#/components/schemas/CallLogSyncRequestRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              type: array
+              items:
+                $ref: '#/components/schemas/CallLogSyncRequestRequest'
+          multipart/form-data:
+            schema:
+              type: array
+              items:
+                $ref: '#/components/schemas/CallLogSyncRequestRequest'
+        required: true
+      security:
+      - DeviceAuth: []
+      - jwtAuth: []
+      - DeviceAuth: []
+        X-Device-Secret: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CallLogSyncResponse'
+          description: ''
+  /api/v1/contacts/:
+    get:
+      operationId: contacts_list
+      description: |-
+        Contact CRUD viewset.
+
+        Contacts are global records (phone_number is unique across the system).
+        SPA managers can see contacts relevant to their branch calls
+        but cannot see contacts that belong to other branches.
+
+        Filters:
+            ?search=<name_or_phone>    → Search by name or phone number.
+      summary: List Contacts
+      parameters:
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      tags:
+      - contacts
+      security:
+      - jwtAuth: []
+      - jwtAuth: []
+      - DeviceAuth: []
+        X-Device-Secret: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedContactList'
+          description: ''
+    post:
+      operationId: contacts_create
+      description: |-
+        Contact CRUD viewset.
+
+        Contacts are global records (phone_number is unique across the system).
+        SPA managers can see contacts relevant to their branch calls
+        but cannot see contacts that belong to other branches.
+
+        Filters:
+            ?search=<name_or_phone>    → Search by name or phone number.
+      summary: Create Contact
+      tags:
+      - contacts
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ContactRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ContactRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ContactRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      - jwtAuth: []
+      - DeviceAuth: []
+        X-Device-Secret: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Contact'
+          description: ''
+  /api/v1/contacts/{id}/:
+    get:
+      operationId: contacts_retrieve
+      description: |-
+        Contact CRUD viewset.
+
+        Contacts are global records (phone_number is unique across the system).
+        SPA managers can see contacts relevant to their branch calls
+        but cannot see contacts that belong to other branches.
+
+        Filters:
+            ?search=<name_or_phone>    → Search by name or phone number.
+      summary: Retrieve Contact
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      tags:
+      - contacts
+      security:
+      - jwtAuth: []
+      - jwtAuth: []
+      - DeviceAuth: []
+        X-Device-Secret: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Contact'
+          description: ''
+    put:
+      operationId: contacts_update
+      description: |-
+        Contact CRUD viewset.
+
+        Contacts are global records (phone_number is unique across the system).
+        SPA managers can see contacts relevant to their branch calls
+        but cannot see contacts that belong to other branches.
+
+        Filters:
+            ?search=<name_or_phone>    → Search by name or phone number.
+      summary: Update Contact
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      tags:
+      - contacts
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ContactRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ContactRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ContactRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      - jwtAuth: []
+      - DeviceAuth: []
+        X-Device-Secret: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Contact'
+          description: ''
+    patch:
+      operationId: contacts_partial_update
+      description: |-
+        Contact CRUD viewset.
+
+        Contacts are global records (phone_number is unique across the system).
+        SPA managers can see contacts relevant to their branch calls
+        but cannot see contacts that belong to other branches.
+
+        Filters:
+            ?search=<name_or_phone>    → Search by name or phone number.
+      summary: Partial Update Contact
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      tags:
+      - contacts
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedContactRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedContactRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedContactRequest'
+      security:
+      - jwtAuth: []
+      - jwtAuth: []
+      - DeviceAuth: []
+        X-Device-Secret: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Contact'
+          description: ''
+    delete:
+      operationId: contacts_destroy
+      description: |-
+        Contact CRUD viewset.
+
+        Contacts are global records (phone_number is unique across the system).
+        SPA managers can see contacts relevant to their branch calls
+        but cannot see contacts that belong to other branches.
+
+        Filters:
+            ?search=<name_or_phone>    → Search by name or phone number.
+      summary: Delete Contact (SuperAdmin Only)
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      tags:
+      - contacts
+      security:
+      - jwtAuth: []
+      - jwtAuth: []
+      - DeviceAuth: []
+        X-Device-Secret: []
+      responses:
+        '204':
+          description: No response body
+  /api/v1/dashboard/stats/:
+    get:
+      operationId: dashboard_stats_retrieve
+      description: Returns global or branch-specific statistics for the web dashboard.
+      summary: Get dashboard KPI metrics
+      parameters:
+      - in: query
+        name: branch
+        schema:
+          type: string
+        description: Filter results by Branch UUID
+      - in: query
+        name: lead_source
+        schema:
+          type: string
+          enum:
+          - direct
+          - manual
+        description: Filter by lead creation source
+      tags:
+      - dashboard
+      security:
+      - jwtAuth: []
+      - jwtAuth: []
+      - DeviceAuth: []
+        X-Device-Secret: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DashboardStatsResponse'
+          description: ''
+  /api/v1/devices/:
+    get:
+      operationId: devices_list
+      description: |-
+        CRUD for Device management.
+
+        Each device represents one Android phone installed at a branch.
+        Devices are pre-registered by admin; Android app claims them via token.
+      parameters:
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      tags:
+      - devices
+      security:
+      - jwtAuth: []
+      - jwtAuth: []
+      - DeviceAuth: []
+        X-Device-Secret: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedDeviceList'
+          description: ''
+    post:
+      operationId: devices_create
+      description: |-
+        CRUD for Device management.
+
+        Each device represents one Android phone installed at a branch.
+        Devices are pre-registered by admin; Android app claims them via token.
+      tags:
+      - devices
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeviceRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/DeviceRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/DeviceRequest'
+      security:
+      - jwtAuth: []
+      - jwtAuth: []
+      - DeviceAuth: []
+        X-Device-Secret: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Device'
+          description: ''
+  /api/v1/devices/{id}/:
+    get:
+      operationId: devices_retrieve
+      description: |-
+        CRUD for Device management.
+
+        Each device represents one Android phone installed at a branch.
+        Devices are pre-registered by admin; Android app claims them via token.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      tags:
+      - devices
+      security:
+      - jwtAuth: []
+      - jwtAuth: []
+      - DeviceAuth: []
+        X-Device-Secret: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Device'
+          description: ''
+    put:
+      operationId: devices_update
+      description: |-
+        CRUD for Device management.
+
+        Each device represents one Android phone installed at a branch.
+        Devices are pre-registered by admin; Android app claims them via token.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      tags:
+      - devices
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeviceRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/DeviceRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/DeviceRequest'
+      security:
+      - jwtAuth: []
+      - jwtAuth: []
+      - DeviceAuth: []
+        X-Device-Secret: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Device'
+          description: ''
+    patch:
+      operationId: devices_partial_update
+      description: |-
+        CRUD for Device management.
+
+        Each device represents one Android phone installed at a branch.
+        Devices are pre-registered by admin; Android app claims them via token.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      tags:
+      - devices
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedDeviceRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedDeviceRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedDeviceRequest'
+      security:
+      - jwtAuth: []
+      - jwtAuth: []
+      - DeviceAuth: []
+        X-Device-Secret: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Device'
+          description: ''
+    delete:
+      operationId: devices_destroy
+      description: |-
+        CRUD for Device management.
+
+        Each device represents one Android phone installed at a branch.
+        Devices are pre-registered by admin; Android app claims them via token.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      tags:
+      - devices
+      security:
+      - jwtAuth: []
+      - jwtAuth: []
+      - DeviceAuth: []
+        X-Device-Secret: []
+      responses:
+        '204':
+          description: No response body
+  /api/v1/devices/{id}/regenerate_token/:
+    post:
+      operationId: devices_regenerate_token_create
+      description: Invalidates current registration and generates a new token. Use
+        this if a device needs to be re-setup.
+      summary: Regenerate Registration Token
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      tags:
+      - devices
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeviceRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/DeviceRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/DeviceRequest'
+      security:
+      - jwtAuth: []
+      - jwtAuth: []
+      - DeviceAuth: []
+        X-Device-Secret: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegenerateTokenResponse'
+          description: ''
+  /api/v1/devices/claim-registration/:
+    post:
+      operationId: devices_claim_registration_create
+      description: Android app registers itself using a one-time token. Returns device
+        credentials.
+      summary: Claim a device (Android)
+      tags:
+      - devices
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClaimRegistrationRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ClaimRegistrationRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ClaimRegistrationRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      - jwtAuth: []
+      - DeviceAuth: []
+        X-Device-Secret: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClaimRegistrationResponse'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClaimErrorResponse'
+          description: ''
+  /api/v1/devices/stats/:
+    get:
+      operationId: devices_stats_retrieve
+      description: Returns counts of total, registered, online/offline, and blocked
+        devices.
+      summary: Get aggregate device stats
+      tags:
+      - devices
+      security:
+      - jwtAuth: []
+      - jwtAuth: []
+      - DeviceAuth: []
+        X-Device-Secret: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeviceStatsResponse'
+          description: ''
+  /api/v1/devices/update-fcm-token/:
+    post:
+      operationId: devices_update_fcm_token_create
+      description: Updates the push notification token for the authenticated device.
+      summary: Update Device FCM Token
+      tags:
+      - devices
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateFCMTokenRequestRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/UpdateFCMTokenRequestRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/UpdateFCMTokenRequestRequest'
+        required: true
+      security:
+      - DeviceAuth: []
+      - jwtAuth: []
+      - DeviceAuth: []
+        X-Device-Secret: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UpdateFCMTokenResponse'
+          description: ''
+  /api/v1/exports/:
+    get:
+      operationId: exports_list
+      summary: List Export Jobs
+      parameters:
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      tags:
+      - exports
+      security:
+      - jwtAuth: []
+      - jwtAuth: []
+      - DeviceAuth: []
+        X-Device-Secret: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedExportJobList'
+          description: ''
+    post:
+      operationId: exports_create
+      tags:
+      - exports
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExportJobRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ExportJobRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ExportJobRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      - jwtAuth: []
+      - DeviceAuth: []
+        X-Device-Secret: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExportJob'
+          description: ''
+  /api/v1/exports/{id}/:
+    get:
+      operationId: exports_retrieve
+      summary: Retrieve Export Job
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this export job.
+        required: true
+      tags:
+      - exports
+      security:
+      - jwtAuth: []
+      - jwtAuth: []
+      - DeviceAuth: []
+        X-Device-Secret: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExportJob'
+          description: ''
+    put:
+      operationId: exports_update
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this export job.
+        required: true
+      tags:
+      - exports
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExportJobRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ExportJobRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ExportJobRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      - jwtAuth: []
+      - DeviceAuth: []
+        X-Device-Secret: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExportJob'
+          description: ''
+    patch:
+      operationId: exports_partial_update
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this export job.
+        required: true
+      tags:
+      - exports
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedExportJobRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedExportJobRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedExportJobRequest'
+      security:
+      - jwtAuth: []
+      - jwtAuth: []
+      - DeviceAuth: []
+        X-Device-Secret: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExportJob'
+          description: ''
+    delete:
+      operationId: exports_destroy
+      summary: Delete Export Job
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this export job.
+        required: true
+      tags:
+      - exports
+      security:
+      - jwtAuth: []
+      - jwtAuth: []
+      - DeviceAuth: []
+        X-Device-Secret: []
+      responses:
+        '204':
+          description: No response body
+  /api/v1/exports/{id}/download/:
+    get:
+      operationId: exports_download_retrieve
+      description: Returns the generated Excel file for a completed export job.
+      summary: Download Export File
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - exports
+      security:
+      - jwtAuth: []
+      - jwtAuth: []
+      - DeviceAuth: []
+        X-Device-Secret: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: string
+                format: binary
+          description: The generated Excel file (.xlsx)
+  /api/v1/exports/generate/:
+    post:
+      operationId: exports_generate_create
+      description: Initiates an Excel export for call logs or other data types.
+      summary: Generate Export
+      tags:
+      - exports
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GenerateExportRequestRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/GenerateExportRequestRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/GenerateExportRequestRequest'
+      security:
+      - jwtAuth: []
+      - jwtAuth: []
+      - DeviceAuth: []
+        X-Device-Secret: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExportJob'
+          description: ''
+  /api/v1/leadmanagement/:
+    get:
+      operationId: leadmanagement_list
+      description: List all leads in the user's scope. Supports filtering and search.
+      summary: List Leads
+      parameters:
+      - in: query
+        name: branch
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: branch_search
+        schema:
+          type: string
+      - in: query
+        name: branch_status
+        schema:
+          type: string
+      - in: query
+        name: city
+        schema:
+          type: string
+      - in: query
+        name: end_date
+        schema:
+          type: string
+          format: date
+        description: End Date (YYYY-MM-DD)
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - in: query
+        name: quick_date
+        schema:
+          type: string
+        description: 'Preset: today, yesterday'
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      - in: query
+        name: start_date
+        schema:
+          type: string
+          format: date
+        description: Start Date (YYYY-MM-DD)
+      - in: query
+        name: status
+        schema:
+          type: string
+      tags:
+      - leadmanagement
+      security:
+      - jwtAuth: []
+      - jwtAuth: []
+      - DeviceAuth: []
+        X-Device-Secret: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedLeadManagementListList'
+          description: ''
+    post:
+      operationId: leadmanagement_create
+      description: Manually create a lead. Branch and contact can be auto-filled if
+        calllog is provided.
+      summary: Create Lead
+      tags:
+      - leadmanagement
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LeadManagementRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/LeadManagementRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/LeadManagementRequest'
+      security:
+      - jwtAuth: []
+      - jwtAuth: []
+      - DeviceAuth: []
+        X-Device-Secret: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeadManagement'
+          description: ''
+  /api/v1/leadmanagement/{id}/:
+    get:
+      operationId: leadmanagement_retrieve
+      description: |-
+        Lead Management viewset for the web dashboard.
+
+        Auto-created leads (from call log sync) are listed here.
+        Branch managers update lead status as they follow up with customers.
+
+        Filtering:
+            ?status=pending|ringing|coming|interested|not_interested
+            ?search=<phone_number_or_remarks>
+            ?branch=<uuid>   (admin only)
+            ?ordering=created_at|booking_date|status
+      summary: Retrieve Lead
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this Lead.
+        required: true
+      tags:
+      - leadmanagement
+      security:
+      - jwtAuth: []
+      - jwtAuth: []
+      - DeviceAuth: []
+        X-Device-Secret: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeadManagement'
+          description: ''
+    put:
+      operationId: leadmanagement_update
+      description: |-
+        Lead Management viewset for the web dashboard.
+
+        Auto-created leads (from call log sync) are listed here.
+        Branch managers update lead status as they follow up with customers.
+
+        Filtering:
+            ?status=pending|ringing|coming|interested|not_interested
+            ?search=<phone_number_or_remarks>
+            ?branch=<uuid>   (admin only)
+            ?ordering=created_at|booking_date|status
+      summary: Update Lead
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this Lead.
+        required: true
+      tags:
+      - leadmanagement
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LeadManagementRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/LeadManagementRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/LeadManagementRequest'
+      security:
+      - jwtAuth: []
+      - jwtAuth: []
+      - DeviceAuth: []
+        X-Device-Secret: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeadManagement'
+          description: ''
+    patch:
+      operationId: leadmanagement_partial_update
+      description: |-
+        Lead Management viewset for the web dashboard.
+
+        Auto-created leads (from call log sync) are listed here.
+        Branch managers update lead status as they follow up with customers.
+
+        Filtering:
+            ?status=pending|ringing|coming|interested|not_interested
+            ?search=<phone_number_or_remarks>
+            ?branch=<uuid>   (admin only)
+            ?ordering=created_at|booking_date|status
+      summary: Partial Update Lead
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this Lead.
+        required: true
+      tags:
+      - leadmanagement
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedLeadManagementRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedLeadManagementRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedLeadManagementRequest'
+      security:
+      - jwtAuth: []
+      - jwtAuth: []
+      - DeviceAuth: []
+        X-Device-Secret: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeadManagement'
+          description: ''
+    delete:
+      operationId: leadmanagement_destroy
+      description: |-
+        Lead Management viewset for the web dashboard.
+
+        Auto-created leads (from call log sync) are listed here.
+        Branch managers update lead status as they follow up with customers.
+
+        Filtering:
+            ?status=pending|ringing|coming|interested|not_interested
+            ?search=<phone_number_or_remarks>
+            ?branch=<uuid>   (admin only)
+            ?ordering=created_at|booking_date|status
+      summary: Delete Lead (Admin Only)
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this Lead.
+        required: true
+      tags:
+      - leadmanagement
+      security:
+      - jwtAuth: []
+      - jwtAuth: []
+      - DeviceAuth: []
+        X-Device-Secret: []
+      responses:
+        '204':
+          description: No response body
+  /api/v1/leadmanagement/branch_summary/:
+    get:
+      operationId: leadmanagement_branch_summary_list
+      description: Returns per-branch lead statistics (total vs status counts).
+      summary: Branch Lead Summary
+      parameters:
+      - in: query
+        name: branch
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: branch_search
+        schema:
+          type: string
+        description: Search by branch name or code
+      - in: query
+        name: branch_status
+        schema:
+          type: string
+        description: Filter by branch status (active/inactive)
+      - in: query
+        name: city
+        schema:
+          type: string
+        description: Filter by branch city
+      - in: query
+        name: end_date
+        schema:
+          type: string
+          format: date
+        description: End Date (YYYY-MM-DD)
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - in: query
+        name: quick_date
+        schema:
+          type: string
+        description: 'Preset: today, yesterday'
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      - in: query
+        name: start_date
+        schema:
+          type: string
+          format: date
+        description: Start Date (YYYY-MM-DD)
+      - in: query
+        name: status
+        schema:
+          type: string
+      tags:
+      - leadmanagement
+      security:
+      - jwtAuth: []
+      - jwtAuth: []
+      - DeviceAuth: []
+        X-Device-Secret: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedBranchLeadSummaryList'
+          description: ''
+  /api/v1/leadmanagement/sync/:
+    post:
+      operationId: leadmanagement_sync_create
+      description: Bulk upload leads captured manually on the Android device.
+      summary: Batch Sync Leads (Device)
+      tags:
+      - leadmanagement
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: '#/components/schemas/BatchLeadSyncRequestRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              type: array
+              items:
+                $ref: '#/components/schemas/BatchLeadSyncRequestRequest'
+          multipart/form-data:
+            schema:
+              type: array
+              items:
+                $ref: '#/components/schemas/BatchLeadSyncRequestRequest'
+        required: true
+      security:
+      - DeviceAuth: []
+      - jwtAuth: []
+      - DeviceAuth: []
+        X-Device-Secret: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BatchLeadSyncResponse'
+          description: ''
+  /api/v1/monitoring/device-events/:
+    get:
+      operationId: monitoring_device_events_list
+      description: |-
+        Device Event log viewset (read/filter).
+
+        Events are logged automatically when devices go offline, change SIM cards,
+        or encounter errors. This viewset is read-only for branch managers.
+
+        Filters:
+            ?event_type=offline|sim_change|error
+            ?branch=<uuid>
+            ?resolved=true|false
+      summary: List Device Events
+      parameters:
+      - in: query
+        name: branch
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: end_date
+        schema:
+          type: string
+          format: date
+        description: End Date (YYYY-MM-DD)
+      - in: query
+        name: event_type
+        schema:
+          type: string
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - in: query
+        name: quick_date
+        schema:
+          type: string
+        description: 'Preset: today, yesterday'
+      - in: query
+        name: resolved
+        schema:
+          type: boolean
+      - in: query
+        name: start_date
+        schema:
+          type: string
+          format: date
+        description: Start Date (YYYY-MM-DD)
+      tags:
+      - monitoring
+      security:
+      - jwtAuth: []
+      - jwtAuth: []
+      - DeviceAuth: []
+        X-Device-Secret: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedDeviceEventList'
+          description: ''
+    post:
+      operationId: monitoring_device_events_create
+      description: |-
+        Device Event log viewset (read/filter).
+
+        Events are logged automatically when devices go offline, change SIM cards,
+        or encounter errors. This viewset is read-only for branch managers.
+
+        Filters:
+            ?event_type=offline|sim_change|error
+            ?branch=<uuid>
+            ?resolved=true|false
+      tags:
+      - monitoring
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeviceEventRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/DeviceEventRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/DeviceEventRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      - jwtAuth: []
+      - DeviceAuth: []
+        X-Device-Secret: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeviceEvent'
+          description: ''
+  /api/v1/monitoring/device-events/{id}/:
+    get:
+      operationId: monitoring_device_events_retrieve
+      description: |-
+        Device Event log viewset (read/filter).
+
+        Events are logged automatically when devices go offline, change SIM cards,
+        or encounter errors. This viewset is read-only for branch managers.
+
+        Filters:
+            ?event_type=offline|sim_change|error
+            ?branch=<uuid>
+            ?resolved=true|false
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this device event.
+        required: true
+      tags:
+      - monitoring
+      security:
+      - jwtAuth: []
+      - jwtAuth: []
+      - DeviceAuth: []
+        X-Device-Secret: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeviceEvent'
+          description: ''
+    put:
+      operationId: monitoring_device_events_update
+      description: |-
+        Device Event log viewset (read/filter).
+
+        Events are logged automatically when devices go offline, change SIM cards,
+        or encounter errors. This viewset is read-only for branch managers.
+
+        Filters:
+            ?event_type=offline|sim_change|error
+            ?branch=<uuid>
+            ?resolved=true|false
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this device event.
+        required: true
+      tags:
+      - monitoring
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeviceEventRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/DeviceEventRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/DeviceEventRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      - jwtAuth: []
+      - DeviceAuth: []
+        X-Device-Secret: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeviceEvent'
+          description: ''
+    patch:
+      operationId: monitoring_device_events_partial_update
+      description: |-
+        Device Event log viewset (read/filter).
+
+        Events are logged automatically when devices go offline, change SIM cards,
+        or encounter errors. This viewset is read-only for branch managers.
+
+        Filters:
+            ?event_type=offline|sim_change|error
+            ?branch=<uuid>
+            ?resolved=true|false
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this device event.
+        required: true
+      tags:
+      - monitoring
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedDeviceEventRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedDeviceEventRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedDeviceEventRequest'
+      security:
+      - jwtAuth: []
+      - jwtAuth: []
+      - DeviceAuth: []
+        X-Device-Secret: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeviceEvent'
+          description: ''
+    delete:
+      operationId: monitoring_device_events_destroy
+      description: |-
+        Device Event log viewset (read/filter).
+
+        Events are logged automatically when devices go offline, change SIM cards,
+        or encounter errors. This viewset is read-only for branch managers.
+
+        Filters:
+            ?event_type=offline|sim_change|error
+            ?branch=<uuid>
+            ?resolved=true|false
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this device event.
+        required: true
+      tags:
+      - monitoring
+      security:
+      - jwtAuth: []
+      - jwtAuth: []
+      - DeviceAuth: []
+        X-Device-Secret: []
+      responses:
+        '204':
+          description: No response body
+  /api/v1/monitoring/device-events/{id}/resolve/:
+    post:
+      operationId: monitoring_device_events_resolve_create
+      description: Mark a single device event as resolved.
+      summary: Resolve Event
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this device event.
+        required: true
+      tags:
+      - monitoring
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeviceEventRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/DeviceEventRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/DeviceEventRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      - jwtAuth: []
+      - DeviceAuth: []
+        X-Device-Secret: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResolveEventResponse'
+          description: ''
+  /api/v1/monitoring/device-events/resolve_all/:
+    post:
+      operationId: monitoring_device_events_resolve_all_create
+      description: Mark all unresolved events in the user's current scope as resolved.
+      summary: Resolve All Events
+      tags:
+      - monitoring
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeviceEventRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/DeviceEventRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/DeviceEventRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      - jwtAuth: []
+      - DeviceAuth: []
+        X-Device-Secret: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResolveAllEventsResponse'
+          description: ''
+  /api/v1/monitoring/heartbeat/:
+    post:
+      operationId: monitoring_heartbeat_create
+      description: Updates device heartbeat and health metrics. Triggered periodically
+        by the Android app.
+      summary: Device Heartbeat
+      tags:
+      - monitoring
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/HeartbeatPayloadRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/HeartbeatPayloadRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/HeartbeatPayloadRequest'
+      security:
+      - DeviceAuth: []
+      - jwtAuth: []
+      - DeviceAuth: []
+        X-Device-Secret: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HeartbeatResponse'
+          description: ''
+  /api/v1/monitoring/status/:
+    get:
+      operationId: monitoring_status_retrieve
+      description: Returns aggregate health counts for the management dashboard.
+      summary: Device Monitoring Status Summary
+      parameters:
+      - in: query
+        name: branch
+        schema:
+          type: string
+        description: Optional branch ID to filter stats (Admin only)
+      tags:
+      - monitoring
+      security:
+      - jwtAuth: []
+      - jwtAuth: []
+      - DeviceAuth: []
+        X-Device-Secret: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeviceStatusSummary'
+          description: ''
+  /api/v1/notifications/logs/:
+    get:
+      operationId: notifications_logs_list
+      description: View summary and delete history of sent notifications.
+      summary: List Notifications
+      parameters:
+      - in: query
+        name: branch
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: end_date
+        schema:
+          type: string
+          format: date
+        description: End Date (YYYY-MM-DD)
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - in: query
+        name: quick_date
+        schema:
+          type: string
+        description: 'Preset: today, yesterday'
+      - in: query
+        name: start_date
+        schema:
+          type: string
+          format: date
+        description: Start Date (YYYY-MM-DD)
+      - in: query
+        name: type
+        schema:
+          type: string
+      tags:
+      - notifications
+      security:
+      - jwtAuth: []
+      - jwtAuth: []
+      - DeviceAuth: []
+        X-Device-Secret: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedNotificationList'
+          description: ''
+    post:
+      operationId: notifications_logs_create
+      description: View summary and delete history of sent notifications.
+      tags:
+      - notifications
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NotificationRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/NotificationRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/NotificationRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      - jwtAuth: []
+      - DeviceAuth: []
+        X-Device-Secret: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Notification'
+          description: ''
+  /api/v1/notifications/logs/{id}/:
+    get:
+      operationId: notifications_logs_retrieve
+      description: View summary and delete history of sent notifications.
+      summary: Retrieve Notification
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this Notification.
+        required: true
+      tags:
+      - notifications
+      security:
+      - jwtAuth: []
+      - jwtAuth: []
+      - DeviceAuth: []
+        X-Device-Secret: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Notification'
+          description: ''
+    put:
+      operationId: notifications_logs_update
+      description: View summary and delete history of sent notifications.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this Notification.
+        required: true
+      tags:
+      - notifications
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NotificationRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/NotificationRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/NotificationRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      - jwtAuth: []
+      - DeviceAuth: []
+        X-Device-Secret: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Notification'
+          description: ''
+    patch:
+      operationId: notifications_logs_partial_update
+      description: View summary and delete history of sent notifications.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this Notification.
+        required: true
+      tags:
+      - notifications
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedNotificationRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedNotificationRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedNotificationRequest'
+      security:
+      - jwtAuth: []
+      - jwtAuth: []
+      - DeviceAuth: []
+        X-Device-Secret: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Notification'
+          description: ''
+    delete:
+      operationId: notifications_logs_destroy
+      description: View summary and delete history of sent notifications.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this Notification.
+        required: true
+      tags:
+      - notifications
+      security:
+      - jwtAuth: []
+      - jwtAuth: []
+      - DeviceAuth: []
+        X-Device-Secret: []
+      responses:
+        '204':
+          description: No response body
+  /api/v1/notifications/logs/delete_all/:
+    delete:
+      operationId: notifications_logs_delete_all_destroy
+      description: Permanently deletes all notification logs within the user's branch/global
+        scope.
+      summary: Delete All Notifications
+      tags:
+      - notifications
+      security:
+      - jwtAuth: []
+      - jwtAuth: []
+      - DeviceAuth: []
+        X-Device-Secret: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeleteAllNotificationsResponse'
+          description: ''
+  /api/v1/notifications/send-manual/:
+    post:
+      operationId: notifications_send_manual_create
+      description: Allows managers to send push notifications to one or more devices.
+      summary: Send Manual Notification
+      tags:
+      - notifications
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SendNotificationRequestRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/SendNotificationRequestRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/SendNotificationRequestRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      - jwtAuth: []
+      - DeviceAuth: []
+        X-Device-Secret: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SendNotificationResponse'
+          description: ''
+  /api/v1/notifications/stats/:
+    get:
+      operationId: notifications_stats_retrieve
+      description: Returns aggregate health metrics for the notification system (delivery
+        rates).
+      summary: Notification Statistics
+      tags:
+      - notifications
+      security:
+      - jwtAuth: []
+      - jwtAuth: []
+      - DeviceAuth: []
+        X-Device-Secret: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationStats'
+          description: ''
+components:
+  schemas:
+    AnalyticsOverviewResponse:
+      type: object
+      properties:
+        distribution:
+          type: array
+          items:
+            $ref: '#/components/schemas/CallTypeStat'
+      required:
+      - distribution
+    AssignBranchesRequestRequest:
+      type: object
+      properties:
+        branch_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+      required:
+      - branch_ids
+    AssignBranchesResponse:
+      type: object
+      properties:
+        status:
+          type: string
+      required:
+      - status
+    BatchLeadSyncRequestRequest:
+      type: object
+      properties:
+        phone_number:
+          type: string
+          minLength: 1
+        call_hash:
+          type: string
+          minLength: 1
+        status:
+          type: string
+          minLength: 1
+        remarks:
+          type: string
+          minLength: 1
+        booking_date:
+          type: string
+          format: date
+      required:
+      - phone_number
+    BatchLeadSyncResponse:
+      type: object
+      properties:
+        status:
+          type: string
+        synced_count:
+          type: integer
+      required:
+      - status
+      - synced_count
+    Branch:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        branch_group_name:
+          type: string
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+        is_deleted:
+          type: boolean
+        spa_name:
+          type: string
+          description: Full name of the Spa location.
+          maxLength: 255
+        code:
+          type: string
+          description: Unique short code identifying this branch (e.g. 'SPA-001').
+          maxLength: 20
+        state:
+          type: string
+          maxLength: 100
+        city:
+          type: string
+          maxLength: 100
+        area:
+          type: string
+          maxLength: 100
+        postal_code:
+          type: integer
+          maximum: 2147483647
+          minimum: 0
+        address:
+          type: string
+        phone:
+          type: string
+          nullable: true
+          description: Branch contact phone number.
+          maxLength: 20
+        is_active:
+          type: boolean
+        branch_group:
+          type: string
+          format: uuid
+          nullable: true
+          description: Each branch belongs to only one group
+      required:
+      - address
+      - branch_group_name
+      - city
+      - code
+      - created_at
+      - id
+      - postal_code
+      - spa_name
+      - state
+      - updated_at
+    BranchGroup:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        branch_count:
+          type: string
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+        is_deleted:
+          type: boolean
+        name:
+          type: string
+          maxLength: 255
+        is_active:
+          type: boolean
+      required:
+      - branch_count
+      - created_at
+      - id
+      - name
+      - updated_at
+    BranchGroupRequest:
+      type: object
+      properties:
+        is_deleted:
+          type: boolean
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        is_active:
+          type: boolean
+      required:
+      - name
+    BranchLeadSummary:
+      type: object
+      properties:
+        branch_id:
+          type: string
+          format: uuid
+        branch_name:
+          type: string
+        city:
+          type: string
+        area:
+          type: string
+        total_leads:
+          type: integer
+        total_pending:
+          type: integer
+        total_ringing:
+          type: integer
+        total_coming:
+          type: integer
+        total_interested:
+          type: integer
+        total_not_interested:
+          type: integer
+      required:
+      - area
+      - branch_id
+      - branch_name
+      - city
+      - total_coming
+      - total_interested
+      - total_leads
+      - total_not_interested
+      - total_pending
+      - total_ringing
+    BranchList:
+      type: object
+      description: |-
+        Lean serializer for branch list view.
+        Includes only essential fields to prevent N+1 queries for excluded fields.
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        spa_name:
+          type: string
+          description: Full name of the Spa location.
+          maxLength: 255
+        code:
+          type: string
+          description: Unique short code identifying this branch (e.g. 'SPA-001').
+          maxLength: 20
+        city:
+          type: string
+          maxLength: 100
+        state:
+          type: string
+          maxLength: 100
+        is_active:
+          type: boolean
+        branch_group:
+          type: string
+          format: uuid
+          nullable: true
+          description: Each branch belongs to only one group
+        branch_group_name:
+          type: string
+          readOnly: true
+      required:
+      - branch_group_name
+      - city
+      - code
+      - id
+      - spa_name
+      - state
+    BranchPerformance:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        calls:
+          type: integer
+        incoming:
+          type: integer
+        outgoing:
+          type: integer
+        missed:
+          type: integer
+        conversion:
+          type: integer
+        status:
+          type: string
+      required:
+      - calls
+      - conversion
+      - id
+      - incoming
+      - missed
+      - name
+      - outgoing
+      - status
+    BranchRequest:
+      type: object
+      properties:
+        is_deleted:
+          type: boolean
+        spa_name:
+          type: string
+          minLength: 1
+          description: Full name of the Spa location.
+          maxLength: 255
+        code:
+          type: string
+          minLength: 1
+          description: Unique short code identifying this branch (e.g. 'SPA-001').
+          maxLength: 20
+        state:
+          type: string
+          minLength: 1
+          maxLength: 100
+        city:
+          type: string
+          minLength: 1
+          maxLength: 100
+        area:
+          type: string
+          maxLength: 100
+        postal_code:
+          type: integer
+          maximum: 2147483647
+          minimum: 0
+        address:
+          type: string
+          minLength: 1
+        phone:
+          type: string
+          nullable: true
+          description: Branch contact phone number.
+          maxLength: 20
+        is_active:
+          type: boolean
+        branch_group:
+          type: string
+          format: uuid
+          nullable: true
+          description: Each branch belongs to only one group
+      required:
+      - address
+      - city
+      - code
+      - postal_code
+      - spa_name
+      - state
+    BranchSummaryResponse:
+      type: object
+      properties:
+        branch_id:
+          type: string
+          format: uuid
+        branch_name:
+          type: string
+        city:
+          type: string
+        area:
+          type: string
+        total_calls:
+          type: integer
+        total_missed:
+          type: integer
+        total_outgoing:
+          type: integer
+        total_incoming:
+          type: integer
+      required:
+      - area
+      - branch_id
+      - branch_name
+      - city
+      - total_calls
+      - total_incoming
+      - total_missed
+      - total_outgoing
+    BulkDeleteRequestRequest:
+      type: object
+      properties:
+        ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+      required:
+      - ids
+    BulkDeleteResponse:
+      type: object
+      properties:
+        status:
+          type: string
+        message:
+          type: string
+      required:
+      - message
+      - status
+    CallAnalyticsResponse:
+      type: object
+      properties:
+        trends:
+          type: array
+          items:
+            $ref: '#/components/schemas/TrendStat'
+        daily_breakdown:
+          type: array
+          items:
+            $ref: '#/components/schemas/DailyBreakdown'
+      required:
+      - daily_breakdown
+      - trends
+    CallLog:
+      type: object
+      description: Full detail serializer for CallLog.
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        branch:
+          type: string
+          format: uuid
+          nullable: true
+          description: The branch where this call was captured. Inherited from device.branch.
+        branch_name:
+          type: string
+          description: Full name of the Spa location.
+          readOnly: true
+        branch_code:
+          type: string
+          description: Unique short code identifying this branch (e.g. 'SPA-001').
+          readOnly: true
+        device:
+          type: string
+          format: uuid
+          description: The device that captured this call log.
+        device_uid:
+          type: string
+          nullable: true
+          description: Unique device identifier assigned after successful registration.
+          readOnly: true
+        phone_name:
+          type: string
+          nullable: true
+          description: Custom name for the phone (e.g. 'Reception Desk').
+          readOnly: true
+        contact:
+          type: string
+          format: uuid
+          nullable: true
+          description: Known contact linked by phone number (auto-matched by last
+            10 digits).
+        contact_name:
+          type: string
+          readOnly: true
+        phone_number:
+          type: string
+          description: Phone number of the external party (caller or callee).
+          maxLength: 20
+        call_type:
+          allOf:
+          - $ref: '#/components/schemas/CallTypeBdeEnum'
+          description: |-
+            Type of call: incoming, outgoing, missed, or rejected.
+
+            * `incoming` - Incoming
+            * `outgoing` - Outgoing
+            * `missed` - Missed
+            * `rejected` - Rejected
+        duration:
+          type: integer
+          maximum: 2147483647
+          minimum: -2147483648
+          description: Call duration in seconds. 0 for missed or rejected calls.
+        sim_slot:
+          type: integer
+          maximum: 2147483647
+          minimum: -2147483648
+          description: 'SIM slot that handled this call: 1 or 2.'
+        receiver_number:
+          type: string
+          readOnly: true
+        call_time:
+          type: string
+          format: date-time
+          description: Exact date and time of the call.
+        call_hash:
+          type: string
+          description: Unique hash for deduplication. Prevents duplicate call log
+            entries.
+          maxLength: 64
+        lead_status:
+          allOf:
+          - $ref: '#/components/schemas/LeadStatusEnum'
+          description: |-
+            Current follow-up status of this lead.
+
+            * `pending` - Pending
+            * `ringing` - Ringing
+            * `coming` - Coming
+            * `interested` - Interested
+            * `not_interested` - Not Interested
+          readOnly: true
+        lead_id:
+          type: string
+          format: uuid
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - branch_code
+      - branch_name
+      - call_hash
+      - call_time
+      - call_type
+      - contact_name
+      - created_at
+      - device
+      - device_uid
+      - duration
+      - id
+      - lead_id
+      - lead_status
+      - phone_name
+      - phone_number
+      - receiver_number
+      - sim_slot
+    CallLogList:
+      type: object
+      description: |-
+        Lightweight serializer for dashboard list views.
+        Reduced field count and optimized relation access to minimize payload.
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        phone_number:
+          type: string
+          description: Phone number of the external party (caller or callee).
+          maxLength: 20
+        contact_name:
+          type: string
+          readOnly: true
+        call_type:
+          allOf:
+          - $ref: '#/components/schemas/CallTypeBdeEnum'
+          description: |-
+            Type of call: incoming, outgoing, missed, or rejected.
+
+            * `incoming` - Incoming
+            * `outgoing` - Outgoing
+            * `missed` - Missed
+            * `rejected` - Rejected
+        duration:
+          type: integer
+          maximum: 2147483647
+          minimum: -2147483648
+          description: Call duration in seconds. 0 for missed or rejected calls.
+        device_uid:
+          type: string
+          nullable: true
+          description: Unique device identifier assigned after successful registration.
+          readOnly: true
+        phone_name:
+          type: string
+          nullable: true
+          description: Custom name for the phone (e.g. 'Reception Desk').
+          readOnly: true
+        call_time:
+          type: string
+          format: date-time
+          description: Exact date and time of the call.
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        branch_name:
+          type: string
+          description: Full name of the Spa location.
+          readOnly: true
+        lead_status:
+          allOf:
+          - $ref: '#/components/schemas/LeadStatusEnum'
+          description: |-
+            Current follow-up status of this lead.
+
+            * `pending` - Pending
+            * `ringing` - Ringing
+            * `coming` - Coming
+            * `interested` - Interested
+            * `not_interested` - Not Interested
+          readOnly: true
+        lead_id:
+          type: string
+          format: uuid
+          readOnly: true
+        followup_status:
+          allOf:
+          - $ref: '#/components/schemas/FollowupStatusEnum'
+          readOnly: true
+        is_followed_up:
+          type: boolean
+          readOnly: true
+      required:
+      - branch_name
+      - call_time
+      - call_type
+      - contact_name
+      - created_at
+      - device_uid
+      - duration
+      - followup_status
+      - id
+      - is_followed_up
+      - lead_id
+      - lead_status
+      - phone_name
+      - phone_number
+    CallLogRequest:
+      type: object
+      description: Full detail serializer for CallLog.
+      properties:
+        branch:
+          type: string
+          format: uuid
+          nullable: true
+          description: The branch where this call was captured. Inherited from device.branch.
+        device:
+          type: string
+          format: uuid
+          description: The device that captured this call log.
+        contact:
+          type: string
+          format: uuid
+          nullable: true
+          description: Known contact linked by phone number (auto-matched by last
+            10 digits).
+        phone_number:
+          type: string
+          minLength: 1
+          description: Phone number of the external party (caller or callee).
+          maxLength: 20
+        call_type:
+          allOf:
+          - $ref: '#/components/schemas/CallTypeBdeEnum'
+          description: |-
+            Type of call: incoming, outgoing, missed, or rejected.
+
+            * `incoming` - Incoming
+            * `outgoing` - Outgoing
+            * `missed` - Missed
+            * `rejected` - Rejected
+        duration:
+          type: integer
+          maximum: 2147483647
+          minimum: -2147483648
+          description: Call duration in seconds. 0 for missed or rejected calls.
+        sim_slot:
+          type: integer
+          maximum: 2147483647
+          minimum: -2147483648
+          description: 'SIM slot that handled this call: 1 or 2.'
+        call_time:
+          type: string
+          format: date-time
+          description: Exact date and time of the call.
+        call_hash:
+          type: string
+          minLength: 1
+          description: Unique hash for deduplication. Prevents duplicate call log
+            entries.
+          maxLength: 64
+      required:
+      - call_hash
+      - call_time
+      - call_type
+      - device
+      - duration
+      - phone_number
+      - sim_slot
+    CallLogStatsResponse:
+      type: object
+      properties:
+        total:
+          type: integer
+        incoming:
+          type: integer
+        outgoing:
+          type: integer
+        missed:
+          type: integer
+        rejected:
+          type: integer
+        unique_count:
+          type: integer
+        total_duration:
+          type: integer
+        avg_duration:
+          type: number
+          format: double
+      required:
+      - avg_duration
+      - incoming
+      - missed
+      - outgoing
+      - rejected
+      - total
+      - total_duration
+      - unique_count
+    CallLogSyncRequestCallTypeEnum:
+      enum:
+      - incoming
+      - outgoing
+      - missed
+      - rejected
+      type: string
+      description: |-
+        * `incoming` - incoming
+        * `outgoing` - outgoing
+        * `missed` - missed
+        * `rejected` - rejected
+    CallLogSyncRequestRequest:
+      type: object
+      properties:
+        phone_number:
+          type: string
+          minLength: 1
+          description: External caller's number
+        call_type:
+          $ref: '#/components/schemas/CallLogSyncRequestCallTypeEnum'
+        duration:
+          type: integer
+          description: Duration in seconds
+        sim_slot:
+          type: integer
+          description: 'Android slot: 0 or 1'
+        call_time:
+          type: string
+          format: date-time
+        call_hash:
+          type: string
+          minLength: 1
+          description: Unique hash of the call record
+      required:
+      - call_hash
+      - call_time
+      - call_type
+      - duration
+      - phone_number
+      - sim_slot
+    CallLogSyncResponse:
+      type: object
+      properties:
+        status:
+          type: string
+        synced_count:
+          type: integer
+        leads_created:
+          type: integer
+      required:
+      - leads_created
+      - status
+      - synced_count
+    CallTypeBdeEnum:
+      enum:
+      - incoming
+      - outgoing
+      - missed
+      - rejected
+      type: string
+      description: |-
+        * `incoming` - Incoming
+        * `outgoing` - Outgoing
+        * `missed` - Missed
+        * `rejected` - Rejected
+    CallTypeStat:
+      type: object
+      properties:
+        name:
+          type: string
+        value:
+          type: integer
+      required:
+      - name
+      - value
+    ClaimErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+      - error
+    ClaimRegistrationRequest:
+      type: object
+      properties:
+        token:
+          type: string
+          minLength: 1
+          maxLength: 32
+      required:
+      - token
+    ClaimRegistrationResponse:
+      type: object
+      properties:
+        status:
+          type: string
+        device_id:
+          type: string
+        secret_key:
+          type: string
+        branch_name:
+          type: string
+        branch_id:
+          type: string
+          format: uuid
+      required:
+      - branch_id
+      - branch_name
+      - device_id
+      - secret_key
+      - status
+    Contact:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        name:
+          type: string
+          maxLength: 255
+        phone_number:
+          type: string
+          maxLength: 20
+        email:
+          type: string
+          format: email
+          nullable: true
+          maxLength: 255
+        country:
+          type: string
+          nullable: true
+          maxLength: 255
+        city:
+          type: string
+          nullable: true
+          maxLength: 200
+        created_by:
+          type: string
+          format: uuid
+          nullable: true
+        updated_by:
+          type: string
+          format: uuid
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        total_calls:
+          type: integer
+          readOnly: true
+      required:
+      - created_at
+      - id
+      - name
+      - phone_number
+      - total_calls
+    ContactRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        phone_number:
+          type: string
+          minLength: 1
+          maxLength: 20
+        email:
+          type: string
+          format: email
+          nullable: true
+          maxLength: 255
+        country:
+          type: string
+          nullable: true
+          maxLength: 255
+        city:
+          type: string
+          nullable: true
+          maxLength: 200
+        created_by:
+          type: string
+          format: uuid
+          nullable: true
+        updated_by:
+          type: string
+          format: uuid
+          nullable: true
+      required:
+      - name
+      - phone_number
+    DailyBreakdown:
+      type: object
+      properties:
+        date:
+          type: string
+          format: date
+        incoming:
+          type: integer
+        outgoing:
+          type: integer
+        missed:
+          type: integer
+      required:
+      - date
+      - incoming
+      - missed
+      - outgoing
+    DashboardStatsResponse:
+      type: object
+      properties:
+        total_calls:
+          type: integer
+        active_devices:
+          type: integer
+        total_devices:
+          type: integer
+        missed_calls:
+          type: integer
+        total_leads:
+          type: integer
+        total_branches:
+          type: integer
+        total_contacts:
+          type: integer
+        total_users:
+          type: integer
+        total_exports:
+          type: integer
+        today_total_calls:
+          type: integer
+        avg_duration:
+          type: string
+          description: 'Format: 5m 30s'
+        call_volume_trends:
+          type: array
+          items:
+            $ref: '#/components/schemas/TrendPoint'
+        branch_performance:
+          type: array
+          items:
+            $ref: '#/components/schemas/BranchPerformance'
+      required:
+      - active_devices
+      - avg_duration
+      - branch_performance
+      - call_volume_trends
+      - missed_calls
+      - today_total_calls
+      - total_branches
+      - total_calls
+      - total_contacts
+      - total_devices
+      - total_exports
+      - total_leads
+      - total_users
+    DeleteAllNotificationsResponse:
+      type: object
+      properties:
+        status:
+          type: string
+        count:
+          type: integer
+      required:
+      - count
+      - status
+    Device:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        branch:
+          type: string
+          format: uuid
+          nullable: true
+          description: The branch this device is physically installed at.
+        branch_name:
+          type: string
+          readOnly: true
+          nullable: true
+        phone_name:
+          type: string
+          nullable: true
+          description: Custom name for the phone (e.g. 'Reception Desk').
+          maxLength: 255
+        device_id:
+          type: string
+          nullable: true
+          description: Unique device identifier assigned after successful registration.
+          maxLength: 255
+        registration_token:
+          type: string
+          nullable: true
+          description: Short token displayed to admin for Android app registration.
+          maxLength: 32
+        sim_1_number:
+          type: string
+          nullable: true
+          maxLength: 20
+        sim_2_number:
+          type: string
+          nullable: true
+          maxLength: 20
+        last_sync:
+          type: string
+          format: date-time
+          nullable: true
+          description: Last time this device successfully synced call logs.
+        last_heartbeat:
+          type: string
+          format: date-time
+          nullable: true
+          description: Last heartbeat ping received from this device.
+        is_registered:
+          type: boolean
+          description: Whether the device has been claimed by the Android app.
+        is_active:
+          type: boolean
+          description: Active devices can sync data.
+        is_blocked:
+          type: boolean
+          description: Blocked devices are rejected at API auth level.
+        status:
+          type: string
+          readOnly: true
+        is_online:
+          type: string
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        branch_is_active:
+          type: boolean
+          readOnly: true
+          default: false
+      required:
+      - branch_is_active
+      - branch_name
+      - created_at
+      - id
+      - is_online
+      - status
+    DeviceEvent:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        device_uid:
+          type: string
+          readOnly: true
+        branch_name:
+          type: string
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+        event_type:
+          $ref: '#/components/schemas/EventTypeEnum'
+        description:
+          type: string
+        resolved:
+          type: boolean
+        resolved_at:
+          type: string
+          format: date-time
+          nullable: true
+        device:
+          type: string
+          format: uuid
+      required:
+      - branch_name
+      - created_at
+      - device
+      - device_uid
+      - event_type
+      - id
+      - updated_at
+    DeviceEventRequest:
+      type: object
+      properties:
+        event_type:
+          $ref: '#/components/schemas/EventTypeEnum'
+        description:
+          type: string
+        resolved:
+          type: boolean
+        resolved_at:
+          type: string
+          format: date-time
+          nullable: true
+        device:
+          type: string
+          format: uuid
+      required:
+      - device
+      - event_type
+    DeviceRequest:
+      type: object
+      properties:
+        branch:
+          type: string
+          format: uuid
+          nullable: true
+          description: The branch this device is physically installed at.
+        phone_name:
+          type: string
+          nullable: true
+          description: Custom name for the phone (e.g. 'Reception Desk').
+          maxLength: 255
+        device_id:
+          type: string
+          nullable: true
+          description: Unique device identifier assigned after successful registration.
+          maxLength: 255
+        registration_token:
+          type: string
+          nullable: true
+          description: Short token displayed to admin for Android app registration.
+          maxLength: 32
+        sim_1_number:
+          type: string
+          nullable: true
+          maxLength: 20
+        sim_2_number:
+          type: string
+          nullable: true
+          maxLength: 20
+        last_sync:
+          type: string
+          format: date-time
+          nullable: true
+          description: Last time this device successfully synced call logs.
+        last_heartbeat:
+          type: string
+          format: date-time
+          nullable: true
+          description: Last heartbeat ping received from this device.
+        is_registered:
+          type: boolean
+          description: Whether the device has been claimed by the Android app.
+        is_active:
+          type: boolean
+          description: Active devices can sync data.
+        is_blocked:
+          type: boolean
+          description: Blocked devices are rejected at API auth level.
+    DeviceStatsResponse:
+      type: object
+      properties:
+        total:
+          type: integer
+        registered:
+          type: integer
+        unregistered:
+          type: integer
+        online:
+          type: integer
+        offline:
+          type: integer
+        blocked:
+          type: integer
+        inactive:
+          type: integer
+      required:
+      - blocked
+      - inactive
+      - offline
+      - online
+      - registered
+      - total
+      - unregistered
+    DeviceStatusSummary:
+      type: object
+      properties:
+        total_devices:
+          type: integer
+        active_devices:
+          type: integer
+        online_devices:
+          type: integer
+        offline_alerts:
+          type: integer
+        sim_change_alerts:
+          type: integer
+      required:
+      - active_devices
+      - offline_alerts
+      - online_devices
+      - sim_change_alerts
+      - total_devices
+    EventTypeEnum:
+      enum:
+      - offline
+      - sim_change
+      - sync_failure
+      - battery_low
+      - storage_full
+      - permission_denied
+      - app_crash
+      type: string
+      description: |-
+        * `offline` - Device Offline
+        * `sim_change` - SIM Card Changed
+        * `sync_failure` - Sync Failure
+        * `battery_low` - Battery Low
+        * `storage_full` - Storage Full
+        * `permission_denied` - Permission Denied
+        * `app_crash` - App Crash
+    ExportJob:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        user_email:
+          type: string
+          readOnly: true
+        filters:
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+        export_type:
+          type: string
+          maxLength: 50
+        status:
+          $ref: '#/components/schemas/ExportJobStatusEnum'
+        file_url:
+          type: string
+          format: uri
+          nullable: true
+          maxLength: 200
+        file_name:
+          type: string
+          nullable: true
+          maxLength: 255
+        error_message:
+          type: string
+          nullable: true
+        user:
+          type: string
+          format: uuid
+      required:
+      - created_at
+      - filters
+      - id
+      - updated_at
+      - user
+      - user_email
+    ExportJobRequest:
+      type: object
+      properties:
+        export_type:
+          type: string
+          minLength: 1
+          maxLength: 50
+        status:
+          $ref: '#/components/schemas/ExportJobStatusEnum'
+        file_url:
+          type: string
+          format: uri
+          nullable: true
+          maxLength: 200
+        file_name:
+          type: string
+          nullable: true
+          maxLength: 255
+        error_message:
+          type: string
+          nullable: true
+        user:
+          type: string
+          format: uuid
+      required:
+      - user
+    ExportJobStatusEnum:
+      enum:
+      - pending
+      - processing
+      - completed
+      - failed
+      type: string
+      description: |-
+        * `pending` - Pending
+        * `processing` - Processing
+        * `completed` - Completed
+        * `failed` - Failed
+    FollowupStatusEnum:
+      enum:
+      - GOOD
+      - OK
+      - LATE
+      - MISSED
+      type: string
+      description: |-
+        * `GOOD` - Within 10 mins
+        * `OK` - Within 30 mins
+        * `LATE` - Within 1 hour
+        * `MISSED` - No follow-up / > 1 hour
+    GenerateExportRequestRequest:
+      type: object
+      properties:
+        type:
+          type: string
+          minLength: 1
+          default: call_logs
+        branch:
+          type: string
+          format: uuid
+        group:
+          type: string
+          format: uuid
+        start_date:
+          type: string
+          format: date
+        end_date:
+          type: string
+          format: date
+    HeartbeatPayloadRequest:
+      type: object
+      properties:
+        battery_level:
+          type: integer
+        signal_strength:
+          type: integer
+        app_version:
+          type: string
+          minLength: 1
+        storage_used_mb:
+          type: number
+          format: double
+    HeartbeatResponse:
+      type: object
+      properties:
+        status:
+          type: string
+      required:
+      - status
+    LeadManagement:
+      type: object
+      description: Full detail serializer for LeadManagement.
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        branch_name:
+          type: string
+          description: Full name of the Spa location.
+          readOnly: true
+        contact_name:
+          type: string
+          readOnly: true
+        created_by_name:
+          type: string
+          readOnly: true
+        updated_by_name:
+          type: string
+          readOnly: true
+        phone_number:
+          type: string
+          description: Phone number of the external party (caller or callee).
+          readOnly: true
+        call_type:
+          allOf:
+          - $ref: '#/components/schemas/CallTypeBdeEnum'
+          description: |-
+            Type of call: incoming, outgoing, missed, or rejected.
+
+            * `incoming` - Incoming
+            * `outgoing` - Outgoing
+            * `missed` - Missed
+            * `rejected` - Rejected
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+        status:
+          allOf:
+          - $ref: '#/components/schemas/Status4f2Enum'
+          description: |-
+            Current follow-up status of this lead.
+
+            * `pending` - Pending
+            * `ringing` - Ringing
+            * `coming` - Coming
+            * `interested` - Interested
+            * `not_interested` - Not Interested
+        booking_date:
+          type: string
+          format: date
+          nullable: true
+          description: Scheduled visit/appointment date. Only used for 'coming' or
+            'interested' leads.
+        remarks:
+          type: string
+          nullable: true
+          description: Notes from branch manager about follow-up conversation.
+        calllog:
+          type: string
+          format: uuid
+          nullable: true
+          description: The originating call log for this lead.
+        branch:
+          type: string
+          format: uuid
+          nullable: true
+          description: The branch this lead belongs to. Auto-set from calllog.branch.
+        contact:
+          type: string
+          format: uuid
+          nullable: true
+          description: Known contact for this lead (auto-matched from call log's phone
+            number).
+        created_by:
+          type: string
+          format: uuid
+          readOnly: true
+          nullable: true
+          description: User who created this lead (system user for auto-created leads).
+        updated_by:
+          type: string
+          format: uuid
+          readOnly: true
+          nullable: true
+          description: User who last updated this lead's status.
+      required:
+      - branch_name
+      - call_type
+      - contact_name
+      - created_at
+      - created_by
+      - created_by_name
+      - id
+      - phone_number
+      - updated_at
+      - updated_by
+      - updated_by_name
+    LeadManagementList:
+      type: object
+      description: Minimal serializer for Lead Management dashbaord list.
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        status:
+          allOf:
+          - $ref: '#/components/schemas/Status4f2Enum'
+          description: |-
+            Current follow-up status of this lead.
+
+            * `pending` - Pending
+            * `ringing` - Ringing
+            * `coming` - Coming
+            * `interested` - Interested
+            * `not_interested` - Not Interested
+        booking_date:
+          type: string
+          format: date
+          nullable: true
+          description: Scheduled visit/appointment date. Only used for 'coming' or
+            'interested' leads.
+        branch_name:
+          type: string
+          description: Full name of the Spa location.
+          readOnly: true
+        contact_name:
+          type: string
+          readOnly: true
+        phone_number:
+          type: string
+          description: Phone number of the external party (caller or callee).
+          readOnly: true
+        call_type:
+          allOf:
+          - $ref: '#/components/schemas/CallTypeBdeEnum'
+          description: |-
+            Type of call: incoming, outgoing, missed, or rejected.
+
+            * `incoming` - Incoming
+            * `outgoing` - Outgoing
+            * `missed` - Missed
+            * `rejected` - Rejected
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - branch_name
+      - call_type
+      - contact_name
+      - created_at
+      - id
+      - phone_number
+    LeadManagementRequest:
+      type: object
+      description: Full detail serializer for LeadManagement.
+      properties:
+        status:
+          allOf:
+          - $ref: '#/components/schemas/Status4f2Enum'
+          description: |-
+            Current follow-up status of this lead.
+
+            * `pending` - Pending
+            * `ringing` - Ringing
+            * `coming` - Coming
+            * `interested` - Interested
+            * `not_interested` - Not Interested
+        booking_date:
+          type: string
+          format: date
+          nullable: true
+          description: Scheduled visit/appointment date. Only used for 'coming' or
+            'interested' leads.
+        remarks:
+          type: string
+          nullable: true
+          description: Notes from branch manager about follow-up conversation.
+        calllog:
+          type: string
+          format: uuid
+          nullable: true
+          description: The originating call log for this lead.
+        branch:
+          type: string
+          format: uuid
+          nullable: true
+          description: The branch this lead belongs to. Auto-set from calllog.branch.
+        contact:
+          type: string
+          format: uuid
+          nullable: true
+          description: Known contact for this lead (auto-matched from call log's phone
+            number).
+    LeadStatusEnum:
+      enum:
+      - pending
+      - ringing
+      - coming
+      - interested
+      - not_interested
+      type: string
+      description: |-
+        * `pending` - Pending
+        * `ringing` - Ringing
+        * `coming` - Coming
+        * `interested` - Interested
+        * `not_interested` - Not Interested
+    LoginError:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+      - error
+    LoginRequest:
+      type: object
+      description: Validates email + password for JWT login.
+      properties:
+        email:
+          type: string
+          format: email
+          minLength: 1
+        password:
+          type: string
+          writeOnly: true
+          minLength: 1
+        client:
+          type: string
+          minLength: 1
+          default: android
+      required:
+      - email
+      - password
+    LoginResponse:
+      type: object
+      properties:
+        message:
+          type: string
+        refresh:
+          type: string
+        access:
+          type: string
+      required:
+      - access
+      - message
+      - refresh
+    MissedCallFollowUp:
+      type: object
+      description: Serializer for tracking and reporting missed call follow-ups.
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        missed_call:
+          type: string
+          format: uuid
+        phone_number:
+          type: string
+          description: Phone number of the external party (caller or callee).
+          readOnly: true
+        missed_call_time:
+          type: string
+          format: date-time
+          description: Exact date and time of the call.
+          readOnly: true
+        branch:
+          type: string
+          format: uuid
+        branch_name:
+          type: string
+          description: Full name of the Spa location.
+          readOnly: true
+        followup_call:
+          type: string
+          format: uuid
+          nullable: true
+        followup_call_time:
+          type: string
+          format: date-time
+          description: Exact date and time of the call.
+          readOnly: true
+        is_followed_up:
+          type: boolean
+        first_followup_time:
+          type: string
+          format: date-time
+          nullable: true
+        followup_attempt_count:
+          type: integer
+          maximum: 2147483647
+          minimum: -2147483648
+        sla_status:
+          $ref: '#/components/schemas/SlaStatusEnum'
+        notification_step:
+          type: integer
+          maximum: 2147483647
+          minimum: -2147483648
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - branch
+      - branch_name
+      - created_at
+      - followup_call_time
+      - id
+      - missed_call
+      - missed_call_time
+      - phone_number
+    Notification:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        device:
+          type: string
+          format: uuid
+          description: The device this notification was sent to.
+        device_name:
+          type: string
+          readOnly: true
+        branch_name:
+          type: string
+          readOnly: true
+        title:
+          type: string
+          maxLength: 255
+        body:
+          type: string
+        notification_type:
+          $ref: '#/components/schemas/NotificationTypeEnum'
+        is_sent:
+          type: boolean
+        firebase_message_id:
+          type: string
+          nullable: true
+          maxLength: 255
+        error_message:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - body
+      - branch_name
+      - created_at
+      - device
+      - device_name
+      - id
+      - notification_type
+      - title
+    NotificationRequest:
+      type: object
+      properties:
+        device:
+          type: string
+          format: uuid
+          description: The device this notification was sent to.
+        title:
+          type: string
+          minLength: 1
+          maxLength: 255
+        body:
+          type: string
+          minLength: 1
+        notification_type:
+          $ref: '#/components/schemas/NotificationTypeEnum'
+        is_sent:
+          type: boolean
+        firebase_message_id:
+          type: string
+          nullable: true
+          maxLength: 255
+        error_message:
+          type: string
+          nullable: true
+      required:
+      - body
+      - device
+      - notification_type
+      - title
+    NotificationStats:
+      type: object
+      properties:
+        total_sent:
+          type: integer
+        delivery_rate:
+          type: string
+        active_devices:
+          type: integer
+      required:
+      - active_devices
+      - delivery_rate
+      - total_sent
+    NotificationTypeEnum:
+      enum:
+      - reminder
+      - alert
+      - system
+      - sync_issue
+      type: string
+      description: |-
+        * `reminder` - Reminder
+        * `alert` - Alert / Warning
+        * `system` - System Announcement
+        * `sync_issue` - Device Stopped Syncing
+    OTPRequestError:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+      - error
+    OTPRequestRequest:
+      type: object
+      description: Validates the email address for OTP request.
+      properties:
+        email:
+          type: string
+          format: email
+          minLength: 1
+      required:
+      - email
+    OTPRequestSuccess:
+      type: object
+      properties:
+        message:
+          type: string
+      required:
+      - message
+    OTPVerifyError:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+      - error
+    OTPVerifyRequest:
+      type: object
+      description: Validates email + OTP code for OTP-based login.
+      properties:
+        email:
+          type: string
+          format: email
+          minLength: 1
+        otp:
+          type: string
+          minLength: 1
+          maxLength: 6
+        client:
+          type: string
+          minLength: 1
+          default: android
+      required:
+      - email
+      - otp
+    OTPVerifyResponse:
+      type: object
+      properties:
+        message:
+          type: string
+        refresh:
+          type: string
+        access:
+          type: string
+      required:
+      - access
+      - message
+      - refresh
+    OnlineUserListItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        full_name:
+          type: string
+        role:
+          type: string
+        branch:
+          type: string
+        last_login_at:
+          type: string
+          format: date-time
+      required:
+      - branch
+      - full_name
+      - id
+      - last_login_at
+      - role
+    PaginatedBranchGroupList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/BranchGroup'
+    PaginatedBranchLeadSummaryList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/BranchLeadSummary'
+    PaginatedBranchListList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/BranchList'
+    PaginatedBranchSummaryResponseList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/BranchSummaryResponse'
+    PaginatedCallLogListList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/CallLogList'
+    PaginatedContactList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/Contact'
+    PaginatedDeviceEventList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/DeviceEvent'
+    PaginatedDeviceList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/Device'
+    PaginatedExportJobList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/ExportJob'
+    PaginatedLeadManagementListList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/LeadManagementList'
+    PaginatedMissedCallFollowUpList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/MissedCallFollowUp'
+    PaginatedNotificationList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/Notification'
+    PaginatedUserList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/User'
+    PaginatedUserLoginHistoryList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/UserLoginHistory'
+    PatchedBranchGroupRequest:
+      type: object
+      properties:
+        is_deleted:
+          type: boolean
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        is_active:
+          type: boolean
+    PatchedBranchRequest:
+      type: object
+      properties:
+        is_deleted:
+          type: boolean
+        spa_name:
+          type: string
+          minLength: 1
+          description: Full name of the Spa location.
+          maxLength: 255
+        code:
+          type: string
+          minLength: 1
+          description: Unique short code identifying this branch (e.g. 'SPA-001').
+          maxLength: 20
+        state:
+          type: string
+          minLength: 1
+          maxLength: 100
+        city:
+          type: string
+          minLength: 1
+          maxLength: 100
+        area:
+          type: string
+          maxLength: 100
+        postal_code:
+          type: integer
+          maximum: 2147483647
+          minimum: 0
+        address:
+          type: string
+          minLength: 1
+        phone:
+          type: string
+          nullable: true
+          description: Branch contact phone number.
+          maxLength: 20
+        is_active:
+          type: boolean
+        branch_group:
+          type: string
+          format: uuid
+          nullable: true
+          description: Each branch belongs to only one group
+    PatchedCallLogRequest:
+      type: object
+      description: Full detail serializer for CallLog.
+      properties:
+        branch:
+          type: string
+          format: uuid
+          nullable: true
+          description: The branch where this call was captured. Inherited from device.branch.
+        device:
+          type: string
+          format: uuid
+          description: The device that captured this call log.
+        contact:
+          type: string
+          format: uuid
+          nullable: true
+          description: Known contact linked by phone number (auto-matched by last
+            10 digits).
+        phone_number:
+          type: string
+          minLength: 1
+          description: Phone number of the external party (caller or callee).
+          maxLength: 20
+        call_type:
+          allOf:
+          - $ref: '#/components/schemas/CallTypeBdeEnum'
+          description: |-
+            Type of call: incoming, outgoing, missed, or rejected.
+
+            * `incoming` - Incoming
+            * `outgoing` - Outgoing
+            * `missed` - Missed
+            * `rejected` - Rejected
+        duration:
+          type: integer
+          maximum: 2147483647
+          minimum: -2147483648
+          description: Call duration in seconds. 0 for missed or rejected calls.
+        sim_slot:
+          type: integer
+          maximum: 2147483647
+          minimum: -2147483648
+          description: 'SIM slot that handled this call: 1 or 2.'
+        call_time:
+          type: string
+          format: date-time
+          description: Exact date and time of the call.
+        call_hash:
+          type: string
+          minLength: 1
+          description: Unique hash for deduplication. Prevents duplicate call log
+            entries.
+          maxLength: 64
+    PatchedContactRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        phone_number:
+          type: string
+          minLength: 1
+          maxLength: 20
+        email:
+          type: string
+          format: email
+          nullable: true
+          maxLength: 255
+        country:
+          type: string
+          nullable: true
+          maxLength: 255
+        city:
+          type: string
+          nullable: true
+          maxLength: 200
+        created_by:
+          type: string
+          format: uuid
+          nullable: true
+        updated_by:
+          type: string
+          format: uuid
+          nullable: true
+    PatchedDeviceEventRequest:
+      type: object
+      properties:
+        event_type:
+          $ref: '#/components/schemas/EventTypeEnum'
+        description:
+          type: string
+        resolved:
+          type: boolean
+        resolved_at:
+          type: string
+          format: date-time
+          nullable: true
+        device:
+          type: string
+          format: uuid
+    PatchedDeviceRequest:
+      type: object
+      properties:
+        branch:
+          type: string
+          format: uuid
+          nullable: true
+          description: The branch this device is physically installed at.
+        phone_name:
+          type: string
+          nullable: true
+          description: Custom name for the phone (e.g. 'Reception Desk').
+          maxLength: 255
+        device_id:
+          type: string
+          nullable: true
+          description: Unique device identifier assigned after successful registration.
+          maxLength: 255
+        registration_token:
+          type: string
+          nullable: true
+          description: Short token displayed to admin for Android app registration.
+          maxLength: 32
+        sim_1_number:
+          type: string
+          nullable: true
+          maxLength: 20
+        sim_2_number:
+          type: string
+          nullable: true
+          maxLength: 20
+        last_sync:
+          type: string
+          format: date-time
+          nullable: true
+          description: Last time this device successfully synced call logs.
+        last_heartbeat:
+          type: string
+          format: date-time
+          nullable: true
+          description: Last heartbeat ping received from this device.
+        is_registered:
+          type: boolean
+          description: Whether the device has been claimed by the Android app.
+        is_active:
+          type: boolean
+          description: Active devices can sync data.
+        is_blocked:
+          type: boolean
+          description: Blocked devices are rejected at API auth level.
+    PatchedExportJobRequest:
+      type: object
+      properties:
+        export_type:
+          type: string
+          minLength: 1
+          maxLength: 50
+        status:
+          $ref: '#/components/schemas/ExportJobStatusEnum'
+        file_url:
+          type: string
+          format: uri
+          nullable: true
+          maxLength: 200
+        file_name:
+          type: string
+          nullable: true
+          maxLength: 255
+        error_message:
+          type: string
+          nullable: true
+        user:
+          type: string
+          format: uuid
+    PatchedLeadManagementRequest:
+      type: object
+      description: Full detail serializer for LeadManagement.
+      properties:
+        status:
+          allOf:
+          - $ref: '#/components/schemas/Status4f2Enum'
+          description: |-
+            Current follow-up status of this lead.
+
+            * `pending` - Pending
+            * `ringing` - Ringing
+            * `coming` - Coming
+            * `interested` - Interested
+            * `not_interested` - Not Interested
+        booking_date:
+          type: string
+          format: date
+          nullable: true
+          description: Scheduled visit/appointment date. Only used for 'coming' or
+            'interested' leads.
+        remarks:
+          type: string
+          nullable: true
+          description: Notes from branch manager about follow-up conversation.
+        calllog:
+          type: string
+          format: uuid
+          nullable: true
+          description: The originating call log for this lead.
+        branch:
+          type: string
+          format: uuid
+          nullable: true
+          description: The branch this lead belongs to. Auto-set from calllog.branch.
+        contact:
+          type: string
+          format: uuid
+          nullable: true
+          description: Known contact for this lead (auto-matched from call log's phone
+            number).
+    PatchedNotificationRequest:
+      type: object
+      properties:
+        device:
+          type: string
+          format: uuid
+          description: The device this notification was sent to.
+        title:
+          type: string
+          minLength: 1
+          maxLength: 255
+        body:
+          type: string
+          minLength: 1
+        notification_type:
+          $ref: '#/components/schemas/NotificationTypeEnum'
+        is_sent:
+          type: boolean
+        firebase_message_id:
+          type: string
+          nullable: true
+          maxLength: 255
+        error_message:
+          type: string
+          nullable: true
+    PatchedUpdateProfileRequestRequest:
+      type: object
+      properties:
+        fcm_token:
+          type: string
+          minLength: 1
+        full_name:
+          type: string
+          minLength: 1
+    PatchedUserRequest:
+      type: object
+      description: |-
+        Full user serializer for create, update, and list operations.
+
+        Notes:
+            - first_name and last_name are virtual write-only fields that get
+              combined into full_name on save.
+            - branch_name is a read-only display field for the assigned branch.
+            - Only admin and super_admin users should be able to create/update users.
+      properties:
+        email:
+          type: string
+          format: email
+          minLength: 1
+          maxLength: 254
+        first_name:
+          type: string
+          writeOnly: true
+          minLength: 1
+        last_name:
+          type: string
+          writeOnly: true
+          minLength: 1
+        role:
+          $ref: '#/components/schemas/RoleEnum'
+        branch:
+          type: string
+          format: uuid
+          nullable: true
+          description: The primary/active branch this user is assigned to.
+        is_active:
+          type: boolean
+        password:
+          type: string
+          writeOnly: true
+          minLength: 1
+          maxLength: 128
+        password_plain:
+          type: string
+          nullable: true
+          maxLength: 255
+    PeakHoursResponse:
+      type: object
+      properties:
+        hour:
+          type: string
+        calls:
+          type: integer
+      required:
+      - calls
+      - hour
+    RegenerateTokenResponse:
+      type: object
+      properties:
+        status:
+          type: string
+        new_token:
+          type: string
+      required:
+      - new_token
+      - status
+    ResolveAllEventsResponse:
+      type: object
+      properties:
+        status:
+          type: string
+        count:
+          type: integer
+      required:
+      - count
+      - status
+    ResolveEventResponse:
+      type: object
+      properties:
+        status:
+          type: string
+      required:
+      - status
+    RoleEnum:
+      enum:
+      - super_admin
+      - admin
+      - spa_manager
+      type: string
+      description: |-
+        * `super_admin` - Super Admin
+        * `admin` - Admin
+        * `spa_manager` - SPA Manager
+    SendNotificationRequestRequest:
+      type: object
+      properties:
+        device_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+        title:
+          type: string
+          minLength: 1
+        body:
+          type: string
+          minLength: 1
+        type:
+          type: string
+          minLength: 1
+          default: system
+      required:
+      - body
+      - title
+    SendNotificationResponse:
+      type: object
+      properties:
+        status:
+          type: string
+        sent_count:
+          type: integer
+        total_count:
+          type: integer
+      required:
+      - sent_count
+      - status
+      - total_count
+    SlaStatusEnum:
+      enum:
+      - GOOD
+      - OK
+      - LATE
+      - MISSED
+      type: string
+      description: |-
+        * `GOOD` - Within 10 mins
+        * `OK` - Within 30 mins
+        * `LATE` - Within 1 hour
+        * `MISSED` - No follow-up / > 1 hour
+    Status4f2Enum:
+      enum:
+      - pending
+      - ringing
+      - coming
+      - interested
+      - not_interested
+      type: string
+      description: |-
+        * `pending` - Pending
+        * `ringing` - Ringing
+        * `coming` - Coming
+        * `interested` - Interested
+        * `not_interested` - Not Interested
+    TokenRefresh:
+      type: object
+      properties:
+        access:
+          type: string
+          readOnly: true
+        refresh:
+          type: string
+      required:
+      - access
+      - refresh
+    TokenRefreshRequest:
+      type: object
+      properties:
+        refresh:
+          type: string
+          minLength: 1
+      required:
+      - refresh
+    TrendPoint:
+      type: object
+      properties:
+        name:
+          type: string
+          description: 'Day of week: Mon, Tue'
+        calls:
+          type: integer
+      required:
+      - calls
+      - name
+    TrendStat:
+      type: object
+      properties:
+        date:
+          type: string
+          format: date
+        count:
+          type: integer
+      required:
+      - count
+      - date
+    UpdateFCMTokenRequestRequest:
+      type: object
+      properties:
+        fcm_token:
+          type: string
+          minLength: 1
+      required:
+      - fcm_token
+    UpdateFCMTokenResponse:
+      type: object
+      properties:
+        status:
+          type: string
+        message:
+          type: string
+      required:
+      - message
+      - status
+    UpdateProfileResponse:
+      type: object
+      properties:
+        status:
+          type: string
+      required:
+      - status
+    User:
+      type: object
+      description: |-
+        Full user serializer for create, update, and list operations.
+
+        Notes:
+            - first_name and last_name are virtual write-only fields that get
+              combined into full_name on save.
+            - branch_name is a read-only display field for the assigned branch.
+            - Only admin and super_admin users should be able to create/update users.
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        email:
+          type: string
+          format: email
+          maxLength: 254
+        full_name:
+          type: string
+          readOnly: true
+        role:
+          $ref: '#/components/schemas/RoleEnum'
+        branch:
+          type: string
+          format: uuid
+          nullable: true
+          description: The primary/active branch this user is assigned to.
+        branch_name:
+          type: string
+          readOnly: true
+        is_active:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        password_plain:
+          type: string
+          nullable: true
+          maxLength: 255
+      required:
+      - branch_name
+      - created_at
+      - email
+      - full_name
+      - id
+      - role
+    UserLoginHistory:
+      type: object
+      description: Serializer for login audit logs.
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        user:
+          type: string
+          format: uuid
+        user_name:
+          type: string
+          readOnly: true
+        user_email:
+          type: string
+          format: email
+          readOnly: true
+        user_role:
+          type: string
+          readOnly: true
+        branch_name:
+          type: string
+          readOnly: true
+          default: N/A
+        ip_address:
+          type: string
+          nullable: true
+        user_agent:
+          type: string
+          nullable: true
+        login_at:
+          type: string
+          format: date-time
+          readOnly: true
+        status:
+          type: string
+          maxLength: 20
+      required:
+      - branch_name
+      - id
+      - login_at
+      - user
+      - user_email
+      - user_name
+      - user_role
+    UserRequest:
+      type: object
+      description: |-
+        Full user serializer for create, update, and list operations.
+
+        Notes:
+            - first_name and last_name are virtual write-only fields that get
+              combined into full_name on save.
+            - branch_name is a read-only display field for the assigned branch.
+            - Only admin and super_admin users should be able to create/update users.
+      properties:
+        email:
+          type: string
+          format: email
+          minLength: 1
+          maxLength: 254
+        first_name:
+          type: string
+          writeOnly: true
+          minLength: 1
+        last_name:
+          type: string
+          writeOnly: true
+          minLength: 1
+        role:
+          $ref: '#/components/schemas/RoleEnum'
+        branch:
+          type: string
+          format: uuid
+          nullable: true
+          description: The primary/active branch this user is assigned to.
+        is_active:
+          type: boolean
+        password:
+          type: string
+          writeOnly: true
+          minLength: 1
+          maxLength: 128
+        password_plain:
+          type: string
+          nullable: true
+          maxLength: 255
+      required:
+      - email
+      - role
+  securitySchemes:
+    DeviceAuth:
+      type: apiKey
+      in: header
+      name: X-Device-ID
+    X-Device-Secret:
+      type: apiKey
+      in: header
+      name: X-Device-Secret
+    jwtAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT

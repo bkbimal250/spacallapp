@@ -172,6 +172,9 @@ class DeviceEventViewSet(viewsets.ModelViewSet):
         """
         Filter queryset based on user role and query parameters.
         """
+        if getattr(self, "swagger_fake_view", False):
+            return DeviceEvent.objects.none()
+
         user = self.request.user
         queryset = DeviceEvent.objects.all().select_related('device', 'device__branch')
 

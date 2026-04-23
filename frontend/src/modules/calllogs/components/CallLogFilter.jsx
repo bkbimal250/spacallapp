@@ -55,7 +55,7 @@ const CallLogFilter = ({
     const [isUnique, setIsUnique] = useState(initialUnique);
     const [loadingDevices, setLoadingDevices] = useState(false);
 
-    const isRestrictedManager = user?.role === 'branch_manager' || user?.role === 'regional_manager';
+    const isRestrictedManager = user?.role === 'spa_manager' || user?.role === 'regional_manager';
 
     useEffect(() => {
         setSearch(initialSearch);
@@ -156,37 +156,31 @@ const CallLogFilter = ({
         onFilter(filters);
     }, [search, quickDate, singleDate, dateRange, dateMode, selectedBranch, selectedDevice, selectedCallType, isRestrictedManager, isUnique, onFilter]);
 
+    const getActiveFilters = useCallback((overrides = {}) => {
+        const filters = {
+            search: overrides.search !== undefined ? overrides.search : search,
+            quick_date: overrides.quick_date !== undefined ? overrides.quick_date : (dateMode === 'preset' ? quickDate : undefined),
+            start_date: overrides.start_date !== undefined ? overrides.start_date : (dateMode !== 'preset' ? (dateMode === 'single' ? singleDate : dateRange.startDate) : undefined),
+            end_date: overrides.end_date !== undefined ? overrides.end_date : (dateMode !== 'preset' ? (dateMode === 'single' ? singleDate : dateRange.endDate) : undefined),
+            branch: overrides.branch !== undefined ? overrides.branch : (selectedBranch && !isRestrictedManager ? selectedBranch : undefined),
+            device: overrides.device !== undefined ? overrides.device : selectedDevice,
+            call_type: overrides.call_type !== undefined ? overrides.call_type : selectedCallType,
+            followup_status: overrides.followup_status !== undefined ? overrides.followup_status : selectedFollowupStatus,
+            is_unique: overrides.is_unique !== undefined ? overrides.is_unique : isUnique
+        };
+        return Object.fromEntries(Object.entries(filters).filter(([_, v]) => v !== undefined && v !== ''));
+    }, [search, quickDate, singleDate, dateRange, dateMode, selectedBranch, selectedDevice, selectedCallType, selectedFollowupStatus, isUnique, isRestrictedManager]);
+
     const handleQuickDateChange = (preset) => {
         setQuickDate(preset);
         setDateMode('preset');
-        
-        // Auto-apply on quick date change
-        const filters = {
-            search,
-            quick_date: preset,
-            branch: (selectedBranch && !isRestrictedManager) ? selectedBranch : undefined,
-            device: selectedDevice,
-            call_type: selectedCallType,
-            followup_status: selectedFollowupStatus,
-            is_unique: isUnique
-        };
-        onFilter(Object.fromEntries(Object.entries(filters).filter(([_, v]) => v !== undefined && v !== '')));
+        onFilter(getActiveFilters({ quick_date: preset, start_date: '', end_date: '' }));
     };
 
     const handleSingleDateChange = (date) => {
         setSingleDate(date);
         if (date) {
-            const filters = {
-                search,
-                start_date: date,
-                end_date: date,
-                branch: (selectedBranch && !isRestrictedManager) ? selectedBranch : undefined,
-                device: selectedDevice,
-                call_type: selectedCallType,
-                followup_status: selectedFollowupStatus,
-                is_unique: isUnique
-            };
-            onFilter(Object.fromEntries(Object.entries(filters).filter(([_, v]) => v !== undefined && v !== '')));
+            onFilter(getActiveFilters({ start_date: date, end_date: date, quick_date: '' }));
         }
     };
 
@@ -331,15 +325,7 @@ const CallLogFilter = ({
                                 onChange={(val) => {
                                     setSelectedBranch(val);
                                     setSelectedDevice('');
-                                    // Auto-apply branch change
-                                    const filters = {
-                                        search,
-                                        branch: (val && !isRestrictedManager) ? val : undefined,
-                                        quick_date: quickDate,
-                                        call_type: selectedCallType,
-                                        is_unique: isUnique
-                                    };
-                                    onFilter(Object.fromEntries(Object.entries(filters).filter(([_, v]) => v !== undefined && v !== '')));
+                                    onFilter(getActiveFilters({ branch: val, device: '' }));
                                 }}
                                 className="w-full"
                             />

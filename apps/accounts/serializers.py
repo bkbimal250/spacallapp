@@ -44,6 +44,7 @@ class LoginSerializer(serializers.Serializer):
     """Validates email + password for JWT login."""
     email = serializers.EmailField()
     password = serializers.CharField(write_only=True)
+    client = serializers.CharField(required=False, default="android")
 
 
 class OTPRequestSerializer(serializers.Serializer):
@@ -55,6 +56,7 @@ class OTPVerifySerializer(serializers.Serializer):
     """Validates email + OTP code for OTP-based login."""
     email = serializers.EmailField()
     otp = serializers.CharField(max_length=6)
+    client = serializers.CharField(required=False, default="android")
 
 
 # ─── User Serializer ──────────────────────────────────────────────────────────
@@ -131,14 +133,14 @@ class UserSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         """
-        Business rule: branch_manager must have a branch assigned.
+        Business rule: spa_manager must have a branch assigned.
         """
         role = attrs.get("role", getattr(self.instance, "role", None))
         branch = attrs.get("branch", getattr(self.instance, "branch", None))
 
-        if role == "branch_manager" and not branch:
+        if role == "spa_manager" and not branch:
             raise serializers.ValidationError(
-                {"branch": "A branch must be assigned when creating a Branch Manager."}
+                {"branch": "A branch must be assigned when creating a SPA Manager."}
             )
         return attrs
 

@@ -48,12 +48,23 @@ class WebSocketService {
             };
 
             this.socket.onmessage = (event) => {
-                try {
-                    const data = JSON.parse(event.data);
-                    this.listeners.forEach(listener => listener(data));
-                } catch (error) {
-                    console.error('❌ WebSocket JSON parse error:', error);
-                }
+                const rawData = event.data;
+                // Move parsing and execution to next tick to avoid blocking the main thread
+                // This resolves the [Violation] 'message' handler warnings
+                setTimeout(() => {
+                    try {
+                        const data = JSON.parse(rawData);
+                        this.listeners.forEach(listener => {
+                            try {
+                                listener(data);
+                            } catch (e) {
+                                console.error('❌ Error in WebSocket listener:', e);
+                            }
+                        });
+                    } catch (error) {
+                        console.error('❌ WebSocket JSON parse error:', error);
+                    }
+                }, 0);
             };
 
             this.socket.onclose = (event) => {

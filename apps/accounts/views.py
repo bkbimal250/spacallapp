@@ -19,7 +19,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework_simplejwt.tokens import RefreshToken
-from rest_framework import viewsets, status
+from rest_framework import viewsets, status, exceptions
 from django.contrib.auth import authenticate
 from django.utils import timezone
 from .services.realtime import RealTimeService
@@ -88,11 +88,12 @@ class LoginView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        if not user.is_active:
-            return Response(
-                {"error": "Your account has been deactivated. Contact your administrator."},
-                status=status.HTTP_403_FORBIDDEN
-            )
+        # Enforce role-based access and branch assignment
+        client = serializer.validated_data.get("client", "web")
+        try:
+            AuthService.validate_user_access(user, client)
+        except exceptions.AuthenticationFailed as e:
+            return Response({"error": str(e.detail)}, status=status.HTTP_403_FORBIDDEN)
 
         # Update user status fields
         user.last_login_at = timezone.now()
@@ -192,6 +193,10 @@ class VerifyOTPView(APIView):
                 serializer.validated_data["otp"],
             )
 
+            # Enforce role-based access and branch assignment
+            client = serializer.validated_data.get("client", "web")
+            AuthService.validate_user_access(user, client)
+
             # Update user status fields
             user.last_login_at = timezone.now()
             user.last_seen_at = timezone.now()
@@ -230,7 +235,7 @@ class UserViewSet(viewsets.ModelViewSet):
     Access Rules:
         - Only admin and super_admin can access this viewset.
         - A super_admin can create/manage users of any role.
-        - An admin can create branch_manager users and assign branches.
+        - An admin can create spa_manager users and assign branches.
         - Admin cannot create other admins or super_admins
           (enforced via serializer or can be added here).
 
@@ -314,7 +319,7 @@ class UserViewSet(viewsets.ModelViewSet):
         An admin cannot create super_admin — only super_admin can.
         """
         requesting_user = self.request.user
-        role = serializer.validated_data.get("role", "branch_manager")
+        role = serializer.validated_data.get("role", "spa_manager")
 
         # Prevent admin from creating super_admin users
         if requesting_user.role == "admin" and role == "super_admin":

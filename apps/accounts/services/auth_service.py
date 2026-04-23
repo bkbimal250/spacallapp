@@ -67,3 +67,27 @@ class AuthService:
         otp_obj.save()
 
         return user
+
+    @staticmethod
+    def validate_user_access(user, client='web'):
+        """
+        Enforce role-based access control for different clients (Web vs Android).
+        
+        Rules:
+        1. SuperAdmin & Admin: Only allowed on 'web'.
+        2. SPA Manager: Only allowed on 'android', and MUST have an assigned branch.
+        """
+        if not user.is_active:
+            raise AuthenticationFailed("Account Deactivated: Your account has been disabled. Please contact system support.")
+
+        if user.role == 'spa_manager':
+            if not user.branch:
+                raise AuthenticationFailed("Branch Missing: No spa branch has been assigned to your account. Please contact an Administrator.")
+            if client == 'web':
+                raise AuthenticationFailed("Access Restricted: SPA Manager accounts can only log in via the Mobile App.")
+        
+        elif user.role in ['admin', 'super_admin']:
+            if client == 'android':
+                raise AuthenticationFailed("Access Restricted: Administrator accounts can only log in via the Web Dashboard.")
+        
+        return True

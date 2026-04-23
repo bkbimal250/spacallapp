@@ -1,7 +1,7 @@
 import axiosInstance from '../../shared/services/axiosInstance';
 
 export const authAPI = {
-    login: (credentials) => axiosInstance.post('/auth/login/', credentials),
+    login: (credentials) => axiosInstance.post('/auth/login/', { ...credentials, client: credentials.client || 'web' }),
     requestOTP: (email) => axiosInstance.post('/auth/otp/request/', { email }),
-    verifyOTP: (data) => axiosInstance.post('/auth/otp/verify/', data),
+    verifyOTP: (data) => axiosInstance.post('/auth/otp/verify/', { ...data, client: data.client || 'web' }),
 };

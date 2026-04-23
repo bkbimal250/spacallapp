@@ -81,7 +81,7 @@ const AnalyticsDashboard = () => {
                 // Batch updates into a single state change to avoid violation warnings
                 setData({
                     peakData: peakRes.data || [],
-                    callDistribution: overviewRes.data?.conversion_rates || [],
+                    callDistribution: overviewRes.data?.distribution || [],
                     callTrends: callsRes.data?.trends || []
                 });
 

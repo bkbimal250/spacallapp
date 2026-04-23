@@ -6,7 +6,7 @@ When a call log comes in, the phone number is matched to a contact.
 
 Access Control:
     super_admin / admin → See and manage all contacts.
-    branch_manager      → See only contacts whose call logs belong to their branch,
+    spa_manager         → See only contacts whose call logs belong to their branch,
                           or contacts they created themselves.
 """
 
@@ -29,7 +29,7 @@ class ContactViewSet(viewsets.ModelViewSet):
     Contact CRUD viewset.
 
     Contacts are global records (phone_number is unique across the system).
-    Branch managers can see contacts relevant to their branch calls
+    SPA managers can see contacts relevant to their branch calls
     but cannot see contacts that belong to other branches.
 
     Filters:
@@ -76,12 +76,15 @@ class ContactViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         """
         Return contacts filtered by the user's role and branch access.
-
-        super_admin / admin → All contacts.
-        branch_manager      → Contacts that have call logs in their branch,
-                              OR contacts they created themselves.
         """
         user = self.request.user
+
+        # Handle schema generation and unauthenticated access
+        if not user or not user.is_authenticated or getattr(self, "swagger_fake_view", False):
+            if getattr(self, "swagger_fake_view", False):
+                return Contact.objects.annotate(total_calls=Count("call_logs")).all()
+            return Contact.objects.none()
+
         queryset = Contact.objects.annotate(
             total_calls=Count("call_logs")
         ).all().order_by("-created_at")
@@ -96,7 +99,7 @@ class ContactViewSet(viewsets.ModelViewSet):
         if user.role in ["super_admin", "admin"]:
             pass  # No additional filter needed
 
-        elif user.role == "branch_manager":
+        elif user.role == "spa_manager":
             if user.branch:
                 # Show contacts that have call activity in this branch,
                 # OR were manually created by someone in this branch
@@ -106,7 +109,7 @@ class ContactViewSet(viewsets.ModelViewSet):
                     Q(created_by__branch=user.branch)
                 ).distinct()
             else:
-                # Branch manager with no assigned branch — return nothing
+                # SPA manager with no assigned branch — return nothing
                 return queryset.none()
 
         # Search filter is now handled by DjangoFilterBackend via ContactFilter

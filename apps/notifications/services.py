@@ -29,19 +29,24 @@ class NotificationService:
                     logger.warning("Firebase not initialized. Push notifications will be logged but not sent.")
 
     @staticmethod
-    def _broadcast_refresh():
-        """Broadcast a refresh signal to the dashboard group."""
+    def _broadcast_refresh(branch_id=None):
+        """Broadcast a refresh signal to the dashboard group and specific branch group."""
         try:
             channel_layer = get_channel_layer()
-            async_to_sync(channel_layer.group_send)(
-                "crm_dashboard",
-                {
-                    "type": "broadcast_message",
-                    "message": {
-                        "type": "refresh_notifications"
+            groups = ["crm_dashboard"]
+            if branch_id:
+                groups.append(f"branch_{branch_id}")
+
+            for group in groups:
+                async_to_sync(channel_layer.group_send)(
+                    group,
+                    {
+                        "type": "broadcast_message",
+                        "message": {
+                            "type": "refresh_notifications"
+                        }
                     }
-                }
-            )
+                )
         except Exception as e:
             logger.error(f"Failed to broadcast refresh: {e}")
 
@@ -50,25 +55,32 @@ class NotificationService:
         """Broadcast notification to the dashboard group for real-time updates."""
         try:
             channel_layer = get_channel_layer()
-            async_to_sync(channel_layer.group_send)(
-                "crm_dashboard",
-                {
-                    "type": "broadcast_message",
-                    "message": {
-                        "type": "notification_created",
-                        "notification": {
-                            "id": str(notification_log.id),
-                            "title": notification_log.title,
-                            "body": notification_log.body,
-                            "notification_type": notification_log.notification_type,
-                            "device_name": notification_log.device.device_name,
-                            "branch_name": notification_log.device.branch.spa_name,
-                            "created_at": notification_log.created_at.isoformat(),
-                            "is_sent": notification_log.is_sent
-                        }
+            branch_id = str(notification_log.device.branch_id) if notification_log.device and notification_log.device.branch_id else None
+            
+            groups = ["crm_dashboard"]
+            if branch_id:
+                groups.append(f"branch_{branch_id}")
+
+            payload = {
+                "type": "broadcast_message",
+                "message": {
+                    "type": "notification_created",
+                    "notification": {
+                        "id": str(notification_log.id),
+                        "title": notification_log.title,
+                        "body": notification_log.body,
+                        "notification_type": notification_log.notification_type,
+                        "device_name": notification_log.device.device_name if notification_log.device else "N/A",
+                        "branch_name": notification_log.device.branch.spa_name if notification_log.device and notification_log.device.branch else "N/A",
+                        "created_at": notification_log.created_at.isoformat(),
+                        "is_sent": notification_log.is_sent
                     }
                 }
-            )
+            }
+
+            for group in groups:
+                async_to_sync(channel_layer.group_send)(group, payload)
+                
         except Exception as e:
             logger.error(f"Failed to broadcast notification: {e}")
 
