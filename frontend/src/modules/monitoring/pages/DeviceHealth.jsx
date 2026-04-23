@@ -28,7 +28,7 @@ const DeviceHealth = () => {
     const fetchData = useCallback(async (isBackground = false) => {
         if (!isBackground) setLoading(true);
         setError(null);
-        
+
         try {
             // Fetch everything sequentially to precisely identify where it fails
             let healthData = { total_devices: 0, online_devices: 0, offline_alerts: 0, sim_change_alerts: 0 };
@@ -38,7 +38,7 @@ const DeviceHealth = () => {
             try {
                 const res = await monitoringAPI.getDeviceHealth();
                 healthData = res.data;
-                console.log("Monitoring Stats Success:", healthData);
+                // console.log("Monitoring Stats Success:", healthData);
             } catch (err) {
                 console.error("Monitoring Stats API Failed:", err);
                 // Keep defaults
@@ -47,7 +47,7 @@ const DeviceHealth = () => {
             try {
                 const res = await monitoringAPI.getAlerts({ page, page_size: pageSize });
                 alertsData = res.data;
-                console.log("Monitoring Alerts Success:", alertsData);
+                // console.log("Monitoring Alerts Success:", alertsData);
             } catch (err) {
                 console.error("Monitoring Alerts API Failed:", err);
             }
@@ -55,17 +55,17 @@ const DeviceHealth = () => {
             try {
                 const res = await devicesAPI.getDevices({ page_size: 10 });
                 devicesData = res.data;
-                console.log("Monitoring Devices Success:", devicesData);
+                // console.log("Monitoring Devices Success:", devicesData);
             } catch (err) {
                 console.error("Monitoring Devices API Failed:", err);
             }
 
             setStats(healthData);
-            
+
             const alertsList = alertsData.results || (Array.isArray(alertsData) ? alertsData : []);
             setAlerts(alertsList);
             setTotalCount(alertsData.count || alertsList.length);
-            
+
             const devicesList = devicesData.results || (Array.isArray(devicesData) ? devicesData : []);
             setDevices(devicesList.slice(0, 10));
 
@@ -166,7 +166,7 @@ const DeviceHealth = () => {
                     <h1 className="text-2xl font-bold tracking-tight">Device Health & Monitoring</h1>
                     <p className="text-sm text-text-secondary mt-1">Real-time status and alerts for all registered devices.</p>
                 </div>
-                
+
                 <button
                     onClick={() => fetchData()}
                     disabled={loading}
@@ -274,14 +274,14 @@ const DeviceHealth = () => {
                 <div className="space-y-4">
                     <div className="flex items-center justify-between px-1">
                         <h3 className="text-lg font-semibold flex items-center gap-2">
-                             Critical Issues
+                            Critical Issues
                         </h3>
                         <span className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-danger/10 text-danger text-[10px] font-bold uppercase tracking-wider">
                             <span className="w-1.5 h-1.5 rounded-full bg-danger animate-pulse"></span>
                             Live
                         </span>
                     </div>
-                    
+
                     <div className="space-y-4">
                         {offlineAlerts.length > 0 ? (
                             offlineAlerts.slice(0, 5).map(alert => (
