@@ -3,7 +3,7 @@
 
 > **Version**: 2.4  
 > **Last Updated**: 2026-04-21  
-> **Base URL**: `https://api.spa.branch.call.workspa.in/api/v1/`
+> **Base URL**: `https://apibackend.mastercall.in/api/v1/`
 
 ---
 
@@ -13,16 +13,16 @@ This Android application is **exclusively for Branch Managers**.
 
 | Role | Android App Access |
 |---|---|
-| `branch_manager` | ✅ Allowed |
+| `spa_manager` | ✅ Allowed |
 | `super_admin` | ❌ Blocked |
 | `admin` | ❌ Blocked |
 
-**Android developers MUST enforce this on the client side.** After login, check the `role` field from the API response. If the role is anything other than `branch_manager`, log the user out immediately and show an access denied message.
+**Android developers MUST enforce this on the client side.** After login, check the `role` field from the API response. If the role is anything other than `spa_manager`, log the user out immediately and show an access denied message.
 
 ```kotlin
 // Kotlin — Role Validation After Login
 val role = loginResponse.user.role
-if (role != "branch_manager") {
+if (role != "spa_manager") {
     authManager.clearTokens()
     showError("Access denied. This app is only available for Branch Managers.")
     navigateTo(LoginScreen)
@@ -46,7 +46,7 @@ This isolation applies to:
 
 ```json
 {
-  "role": "branch_manager",
+  "role": "spa_manager",
   "branch": "f1f603d8-b96f-4b19-ab8e-1b1065a93842",
   "branch_name": "Spa Empire Turbhe"
 }
@@ -193,7 +193,7 @@ Branch managers log in using email/password or OTP.
     "id": "550e8400-e29b-41d4-a716-446655440000",
     "email": "manager@workspa.in",
     "full_name": "Rahul Sharma",
-    "role": "branch_manager",
+    "role": "spa_manager",
     "branch": "f1f603d8-b96f-4b19-ab8e-1b1065a93842",
     "branch_name": "Spa Empire Turbhe",
     "is_online": true,
@@ -206,7 +206,7 @@ Branch managers log in using email/password or OTP.
 **Client-Side Role Check — Required**:
 ```kotlin
 fun handleLoginResponse(response: LoginResponse) {
-    if (response.user.role != "branch_manager") {
+    if (response.user.role != "spa_manager") {
         // Clear any stored tokens immediately
         tokenStore.clear()
         showError("This app is for Branch Managers only. Access denied.")
@@ -309,6 +309,29 @@ class JwtInterceptor(private val tokenStore: TokenStore) : Interceptor {
 ```json
 {
   "access": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+}
+```
+
+---
+
+### 3D. Get Current User Profile
+
+Retrieves the full profile details for the currently authenticated user.
+
+- **URL**: `auth/profile/`
+- **Method**: `GET`
+- **Auth**: Bearer JWT Token
+
+**Response (200 OK)**:
+```json
+{
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "email": "manager@workspa.in",
+  "full_name": "Rahul Sharma",
+  "role": "spa_manager",
+  "branch": "f1f603d8-b96f-4b19-ab8e-1b1065a93842",
+  "branch_name": "Spa Empire Turbhe",
+  "is_active": true
 }
 ```
 
@@ -830,7 +853,7 @@ These rules are enforced both on the **backend** and must be respected by the **
 | Branch managers only see their branch data | ✅ JWT-based queryset filtering | ✅ Role check after login |
 | Devices can only upload logs for their branch | ✅ Device → branch is server-resolved | ✅ Never send `branch` in payload |
 | Unauthorized devices get `401` | ✅ `DeviceAuthentication` class | ✅ Show alert if `401` is persistent |
-| Role must be `branch_manager` | ❌ Not enforced by backend login | ✅ **Must be enforced by Android app** |
+| Role must be `spa_manager` | ❌ Not enforced by backend login | ✅ **Must be enforced by Android app** |
 | Tokens stored securely | N/A | ✅ Use `EncryptedSharedPreferences` |
 | Device credentials stored securely | N/A | ✅ Use Android Keystore |
 
@@ -850,7 +873,7 @@ Use this checklist before releasing any version of the app:
 **Security**
 - [ ] Store `access_token` and `refresh_token` in `EncryptedSharedPreferences`
 - [ ] Store `device_id` and `secret_key` in `EncryptedSharedPreferences` or Android Keystore
-- [ ] **Validate `role == "branch_manager"` after every login attempt**
+- [ ] **Validate `role == "spa_manager"` after every login attempt**
 - [ ] Clear all tokens on logout
 
 **Call Log Sync**
@@ -884,9 +907,9 @@ pending | ringing | coming | interested | not_interested
 incoming | outgoing | missed | rejected
 ```
 
-**User Roles** (for reference only — only `branch_manager` is allowed):
+**User Roles** (for reference only — only `spa_manager` is allowed):
 ```
-super_admin | admin | branch_manager
+super_admin | admin | spa_manager
 ```
 
 **Device ID Format**:
@@ -940,9 +963,9 @@ SPA-XXXXXX-XXXXXX   (e.g. SPA-C2C081-93D1F5)
 
 5. Server returns: access + refresh + user profile
 
-6. App checks: user.role === "branch_manager"
-   → If NOT branch_manager: clear tokens, show "Access Denied", stop
-   → If branch_manager: continue
+6. App checks: user.role === "spa_manager"
+   → If NOT spa_manager: clear tokens, show "Access Denied", stop
+   → If spa_manager: continue
 
 7. App stores:
    - access_token (EncryptedSharedPreferences)
@@ -966,7 +989,7 @@ SPA-XXXXXX-XXXXXX   (e.g. SPA-C2C081-93D1F5)
 
 The system uses **Firebase Cloud Messaging (FCM)** to send real-time alerts to the device (Battery alerts, Sync issues, Admin announcements).
 
-### 16A. Register/Update FCM Token
+### 17A. Register/Update FCM Token
 
 The Android app must obtain its FCM registration token and send it to the server immediately after registration and whenever the token changes.
 
@@ -991,7 +1014,7 @@ The Android app must obtain its FCM registration token and send it to the server
 
 ---
 
-### 16B. Notification Payload Structure
+### 17B. Notification Payload Structure
 
 The server sends notifications as **Data Messages** (not Notification Messages) to give the app full control over display logic.
 
@@ -1033,7 +1056,7 @@ override fun onMessageReceived(remoteMessage: RemoteMessage) {
 
 ---
 
-### 16C. Notification Management (Resolve/Clear)
+### 17C. Notification Management (Resolve/Clear)
 
 If the app shows a list of system alerts/notifications, use these endpoints to keep the dashboard and device in sync.
 
@@ -1072,7 +1095,7 @@ The backend monitors device health via the **Heartbeat** and automatically trigg
 - [ ] Implement `FirebaseMessagingService` to handle data-type payloads.
 - [ ] Ensure `battery_level` (0-100) is always included in the `monitoring/heartbeat/` call.
 - [ ] Validate that notifications appear even when the app is in the background.
-- [ ] Role check remains in place: `role === "branch_manager"` only.
+- [ ] Role check remains in place: `role === "spa_manager"` only.
 
 ---
 
@@ -1101,17 +1124,38 @@ The backend performs "intelligence" checks based on the data you send in the Hea
 
 ---
 
-## 21. Real-time User Tracking (WebSockets)
+## 21. Real-time Notifications & User Tracking (WebSockets)
 
-The system supports real-time status tracking for users. When a manager is active on the dashboard, their status is updated automatically.
+The system supports real-time WebSockets to deliver branch-scoped notifications instantly while the app is in the foreground, and to track user status.
 
-- **WebSocket URL**: `ws://{domain}/ws/crm/dashboard/?token={jwt_access_token}`
-- **Auth**: Token must be passed as a query parameter.
+- **WebSocket URL**: `ws://{domain}/ws/crm/?token={jwt_access_token}`
+  - Note: Replace `ws://` with `wss://` in production.
+- **Auth**: The JWT token **must** be passed as a query parameter `?token=...`. Standard `Authorization` headers are not supported by the WebSocket connection.
+- **Branch Scoping**: Upon connection, the backend checks the manager's `role` and automatically assigns the WebSocket to the group `branch_{branch_id}`. The client will only receive notifications/events for their assigned branch.
 
-**Behaviors**:
+**Key Features / Events**:
 - **Connection**: Mark user as `is_online = true`.
 - **Disconnection**: Mark user as `is_online = false`.
-- **Broadcast**: When any user logs in, a `user_login` event is broadcast to all connected admins.
+- **Broadcast Events**: The Android app should listen to the WebSocket stream. The server pushes JSON payloads (e.g., `{"type": "notification", "message": "...", "title": "..."}`) directly to the `branch_{branch_id}` channel.
+
+**Kotlin — Connecting with OkHttp**:
+```kotlin
+val token = tokenStore.getAccessToken()
+val request = Request.Builder()
+    .url("wss://api.spa.branch.call.workspa.in/ws/crm/?token=$token")
+    .build()
+
+val listener = object : WebSocketListener() {
+    override fun onMessage(webSocket: WebSocket, text: String) {
+        val json = JSONObject(text)
+        // Handle incoming real-time branch notifications
+        if (json.optString("type") == "notification") {
+            showInAppBanner(json.getString("title"), json.getString("message"))
+        }
+    }
+}
+val webSocket = okHttpClient.newWebSocket(request, listener)
+```
 
 ---
 
@@ -1136,7 +1180,7 @@ Managers and Admins can view a detailed audit log of all login activities across
       "id": "uuid",
       "user_name": "Rahul Sharma",
       "user_email": "manager@workspa.in",
-      "user_role": "branch_manager",
+      "user_role": "spa_manager",
       "branch_name": "Spa Empire Turbhe",
       "ip_address": "122.161.x.x",
       "user_agent": "Mozilla/5.0 (Linux; Android 13; ...)",

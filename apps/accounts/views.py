@@ -444,3 +444,12 @@ class UpdateProfileView(APIView):
         
         user.save()
         return Response({"status": "profile updated"})
+
+    @extend_schema(
+        summary="Get Current User Profile",
+        description="Returns the profile details of the currently authenticated user.",
+        responses={200: UserSerializer}
+    )
+    def get(self, request):
+        serializer = UserSerializer(request.user, context={"request": request})
+        return Response(serializer.data)
