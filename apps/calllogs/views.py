@@ -498,7 +498,7 @@ class CallLogViewSet(viewsets.ModelViewSet):
         Applies same role-based and filter-based queryset restrictions.
         Uses .iterator() for memory efficiency with large datasets.
         """
-        queryset = self.filter_queryset(self.get_queryset()).select_related("branch", "device").iterator()
+        queryset = self.filter_queryset(self.get_queryset()).select_related("branch", "branch__branch_group", "device").iterator()
 
         workbook = openpyxl.Workbook()
         worksheet = workbook.active
@@ -507,7 +507,7 @@ class CallLogViewSet(viewsets.ModelViewSet):
         # Column headers
         headers = [
             "Type", "Number", "Duration (s)", "SIM Slot",
-            "Receiver Number", "Branch", "Device ID", "Time"
+            "Receiver Number", "Branch Group", "Branch", "Device ID", "Time"
         ]
         header_font = Font(bold=True)
         for col_num, header_title in enumerate(headers, 1):
@@ -530,9 +530,10 @@ class CallLogViewSet(viewsets.ModelViewSet):
             worksheet.cell(row=row_num, column=3).value = log.duration
             worksheet.cell(row=row_num, column=4).value = f"SIM {log.sim_slot}"
             worksheet.cell(row=row_num, column=5).value = receiver
-            worksheet.cell(row=row_num, column=6).value = log.branch.spa_name if log.branch else "N/A"
-            worksheet.cell(row=row_num, column=7).value = log.device.device_id if log.device else "N/A"
-            worksheet.cell(row=row_num, column=8).value = (
+            worksheet.cell(row=row_num, column=6).value = log.branch.branch_group.name if log.branch and log.branch.branch_group else "N/A"
+            worksheet.cell(row=row_num, column=7).value = log.branch.spa_name if log.branch else "N/A"
+            worksheet.cell(row=row_num, column=8).value = log.device.device_id if log.device else "N/A"
+            worksheet.cell(row=row_num, column=9).value = (
                 log.call_time.strftime("%Y-%m-%d %H:%M:%S") if log.call_time else "N/A"
             )
 

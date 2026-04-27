@@ -130,10 +130,10 @@ const ExportHistory = () => {
                 return (
                     <div className="text-xs space-y-1">
                         {f.branch && (
-                            <Badge variant="blue">Branch ID: {f.branch}</Badge>
+                            <Badge variant="blue">Branch: {branches.find(b => b.value == f.branch)?.label || f.branch}</Badge>
                         )}
                         {f.group && (
-                            <Badge variant="indigo">Group ID: {f.group}</Badge>
+                            <Badge variant="indigo">Group: {groups.find(g => g.value == f.group)?.label || f.group}</Badge>
                         )}
                         {(f.start_date || f.end_date) && (
                             <div className="text-text-secondary italic">

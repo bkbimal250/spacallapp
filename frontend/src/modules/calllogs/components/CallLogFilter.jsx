@@ -186,7 +186,7 @@ const CallLogFilter = ({
 
     const handleClear = useCallback(() => {
         setSearch('');
-        setQuickDate('today');
+        setQuickDate('all');
         setSingleDate('');
         setDateRange({ startDate: '', endDate: '' });
         setDateMode('preset');
@@ -195,12 +195,13 @@ const CallLogFilter = ({
         setSelectedCallType('');
         setSelectedFollowupStatus('');
         setIsUnique(false);
-        onFilter({ quick_date: 'today', branch: initialBranch || '' });
+        onFilter({ quick_date: 'all', branch: initialBranch || '' });
     }, [onFilter, initialBranch]);
 
     const datePresets = [
         { id: 'today', label: 'Today' },
         { id: 'yesterday', label: 'Yesterday' },
+        { id: 'all', label: 'All Time' },
     ];
 
     return (

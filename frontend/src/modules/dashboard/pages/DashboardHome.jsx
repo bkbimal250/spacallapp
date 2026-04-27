@@ -45,7 +45,6 @@ const DashboardHome = () => {
         total_users: 0,
         total_exports: 0,
         today_total_calls: 0,
-        avg_duration: '0m 0s'
     });
 
     const [chartData, setChartData] = useState([]);
@@ -131,11 +130,11 @@ const DashboardHome = () => {
         { title: "Total Users", value: stats.total_users, icon: Users, color: "text-primary", bg: "bg-primary/10" },
         { title: "Total Devices", value: stats.total_devices, icon: Smartphone, color: "text-accent-purple", bg: "bg-accent-purple/10" },
         { title: "Active Devices", value: stats.active_devices, icon: Zap, color: "text-warning", bg: "bg-warning/10" },
-        { title: "Total Leads", value: stats.total_leads, icon: Target, color: "text-success", bg: "bg-success/10" },
+        // { title: "Total Leads", value: stats.total_leads, icon: Target, color: "text-success", bg: "bg-success/10" },
         { title: "Total Branches", value: stats.total_branches, icon: Building2, color: "text-info", bg: "bg-info/10" },
         { title: "Total Contacts", value: stats.total_contacts, icon: UserPlus, color: "text-cyan-400", bg: "bg-cyan-500/10" },
         { title: "Total Exports", value: stats.total_exports, icon: FileJson, color: "text-danger", bg: "bg-danger/10" },
-        { title: "Total Calls", value: stats.total_calls, icon: PhoneCall, color: "text-primary", bg: "bg-primary/10" },
+        // { title: "Total Calls", value: stats.total_calls, icon: PhoneCall, color: "text-primary", bg: "bg-primary/10" },
         { title: "Today Total Calls", value: stats.today_total_calls, icon: PhoneCall, color: "text-primary", bg: "bg-primary/10" },
     ], [stats]);
 
@@ -178,8 +177,8 @@ const DashboardHome = () => {
                             isClearable
                         />
                     </div>
-                    
-                    <select 
+
+                    <select
                         value={quickDate}
                         onChange={(e) => setQuickDate(e.target.value)}
                         className="bg-card border border-border text-text-primary rounded-xl px-4 py-2.5 text-sm font-medium focus:ring-2 focus:ring-primary outline-none min-w-[140px] shadow-sm hover:border-primary transition-colors"
@@ -190,7 +189,7 @@ const DashboardHome = () => {
                         <option value="last_7_days">Last 7 Days</option>
                     </select>
 
-                    <select 
+                    <select
                         value={leadSource}
                         onChange={(e) => setLeadSource(e.target.value)}
                         className="bg-card border border-border text-text-primary rounded-xl px-4 py-2.5 text-sm font-medium focus:ring-2 focus:ring-primary outline-none min-w-[140px] shadow-sm hover:border-primary transition-colors"
@@ -226,18 +225,7 @@ const DashboardHome = () => {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 
-                <StatsCard
-                    title="Missed Calls"
-                    value={stats.missed_calls}
-                    icon={<PhoneMissed className="text-danger" size={20} />}
-                    isNegative
-                />
 
-                <StatsCard
-                    title="Avg. Duration"
-                    value={stats.avg_duration}
-                    icon={<Clock className="text-primary" size={20} />}
-                />
 
             </div>
 
@@ -248,7 +236,7 @@ const DashboardHome = () => {
                 <div className="lg:col-span-2">
                     <BranchPerformanceTable data={branchData} />
                 </div>
-                
+
                 <div className="lg:col-span-1">
                     <LiveUsersList />
                 </div>

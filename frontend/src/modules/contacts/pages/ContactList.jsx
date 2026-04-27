@@ -101,7 +101,7 @@ const ContactList = () => {
 
     const handleViewCalls = (phoneNumber) => {
 
-        navigate(`/calllogs/details?search=${encodeURIComponent(phoneNumber)}`);
+        navigate(`/calllogs/details?search=${encodeURIComponent(phoneNumber)}&quick_date=all`);
 
     };
 

@@ -52,7 +52,7 @@ const CallLogList = () => {
         branch: initialBranch,
         device: initialDevice,
         search: initialSearch,
-        quick_date: queryParams.get('quick_date') || 'today',
+        quick_date: queryParams.has('quick_date') ? queryParams.get('quick_date') : (queryParams.has('start_date') || queryParams.has('end_date') ? '' : 'today'),
         start_date: queryParams.get('start_date') || '',
         end_date: queryParams.get('end_date') || '',
         is_unique: queryParams.get('is_unique') === 'true'
@@ -104,7 +104,7 @@ const CallLogList = () => {
             search: queryParams.get('search') || '',
             branch: queryParams.get('branch') || '',
             device: queryParams.get('device') || '',
-            quick_date: queryParams.get('quick_date') || 'today',
+            quick_date: queryParams.has('quick_date') ? queryParams.get('quick_date') : (queryParams.has('start_date') || queryParams.has('end_date') ? '' : 'today'),
             start_date: queryParams.get('start_date') || '',
             end_date: queryParams.get('end_date') || '',
             is_unique: queryParams.get('is_unique') === 'true'

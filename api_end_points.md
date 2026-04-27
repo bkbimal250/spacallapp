@@ -14,6 +14,8 @@ All API endpoints are prefixed with `/api/v1/`.
 | PUT | `https://api.spa.branch.call.workspa.in/api/v1/auth/users/{id}/` | Update user details. |
 | PATCH | `https://api.spa.branch.call.workspa.in/api/v1/auth/users/{id}/` | Partially update user details. |
 | DELETE| `https://api.spa.branch.call.workspa.in/api/v1/auth/users/{id}/` | Delete a user. |
+| GET | `https://api.spa.branch.call.workspa.in/api/v1/auth/profile/` | Retrieve the currently logged-in user's profile. |
+| PATCH | `https://api.spa.branch.call.workspa.in/api/v1/auth/profile/` | Update the currently logged-in user's profile (e.g. FCM token). |
 
 ### Examples
 

@@ -485,7 +485,9 @@ Heartbeat signals to the dashboard that the device is online and healthy.
   "battery_level": 85,
   "signal_strength": -75,
   "app_version": "1.0.4",
-  "storage_used_mb": 450.5
+  "storage_used_mb": 450.5,
+  "sim_1_number": "+919876543210",
+  "sim_2_number": "+918765432109"
 }
 ```
 
@@ -1077,6 +1079,27 @@ If the app shows a list of system alerts/notifications, use these endpoints to k
 
 ---
 
+### 17D. Notification History & Stats (JWT Auth)
+
+If the app needs to display a history of push notifications sent by the server, use these endpoints:
+
+#### 1. List Notification Logs
+- **URL**: `notifications/logs/`
+- **Method**: `GET`
+- **Auth**: Bearer JWT
+
+#### 2. Get Notification Stats (Delivery Rate)
+- **URL**: `notifications/stats/`
+- **Method**: `GET`
+- **Auth**: Bearer JWT
+
+#### 3. Clear All Notification History
+- **URL**: `notifications/logs/delete_all/`
+- **Method**: `DELETE`
+- **Auth**: Bearer JWT
+
+---
+
 ## 18. Automated Alert Triggers (Backend Logic)
 
 The backend monitors device health via the **Heartbeat** and automatically triggers push notifications for these events:
@@ -1084,6 +1107,7 @@ The backend monitors device health via the **Heartbeat** and automatically trigg
 | Event | Logic | Notification Sent |
 |---|---|---|
 | **Critical Battery** | `battery_level` < 15 in Heartbeat payload | **Immediate** "alert" push |
+| **SIM Change** | `sim_1_number` or `sim_2_number` changed in Heartbeat | **Immediate** "alert" push |
 | **Offline Device** | No Heartbeat received for >5 minutes | "sync_issue" push to branch |
 | **Sync Failure** | Reported sync errors from device | "alert" push |
 
