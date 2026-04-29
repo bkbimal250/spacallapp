@@ -570,7 +570,7 @@ GET /api/v1/calllogs/?device={device_id}
 ```json
 {
   "count": 150,
-  "next": "https://api.spa.branch.call.workspa.in/api/v1/calllogs/?page=2",
+  "next": "https://apibackend.mastercall.in/api/v1/calllogs/?page=2",
   "previous": null,
   "results": [
     {
@@ -1166,7 +1166,7 @@ The system supports real-time WebSockets to deliver branch-scoped notifications 
 ```kotlin
 val token = tokenStore.getAccessToken()
 val request = Request.Builder()
-    .url("wss://api.spa.branch.call.workspa.in/ws/crm/?token=$token")
+    .url("wss://apibackend.mastercall.in/ws/crm/?token=$token")
     .build()
 
 val listener = object : WebSocketListener() {

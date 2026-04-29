@@ -5,17 +5,17 @@ All API endpoints are prefixed with `/api/v1/`.
 ## 1. Authentication & Accounts (`/auth/`)
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| POST | `https://api.spa.branch.call.workspa.in/api/v1/auth/login/` | Login with email and password. Returns JWT access and refresh tokens + user profile. |
-| POST | `https://api.spa.branch.call.workspa.in/api/v1/auth/otp/request/` | Request an OTP to be sent to an email. |
-| POST | `https://api.spa.branch.call.workspa.in/api/v1/auth/otp/verify/` | Verify OTP and return authentication tokens. |
-| GET | `https://api.spa.branch.call.workspa.in/api/v1/auth/users/` | List all users (Super Admin only). |
-| POST | `https://api.spa.branch.call.workspa.in/api/v1/auth/users/` | Create a new user (Super Admin only). |
-| GET | `https://api.spa.branch.call.workspa.in/api/v1/auth/users/{id}/` | Retrieve user details. |
-| PUT | `https://api.spa.branch.call.workspa.in/api/v1/auth/users/{id}/` | Update user details. |
-| PATCH | `https://api.spa.branch.call.workspa.in/api/v1/auth/users/{id}/` | Partially update user details. |
-| DELETE| `https://api.spa.branch.call.workspa.in/api/v1/auth/users/{id}/` | Delete a user. |
-| GET | `https://api.spa.branch.call.workspa.in/api/v1/auth/profile/` | Retrieve the currently logged-in user's profile. |
-| PATCH | `https://api.spa.branch.call.workspa.in/api/v1/auth/profile/` | Update the currently logged-in user's profile (e.g. FCM token). |
+| POST | `https://apibackend.mastercall.in/api/v1/auth/login/` | Login with email and password. Returns JWT access and refresh tokens + user profile. |
+| POST | `https://apibackend.mastercall.in/api/v1/auth/otp/request/` | Request an OTP to be sent to an email. |
+| POST | `https://apibackend.mastercall.in/api/v1/auth/otp/verify/` | Verify OTP and return authentication tokens. |
+| GET | `https://apibackend.mastercall.in/api/v1/auth/users/` | List all users (Super Admin only). |
+| POST | `https://apibackend.mastercall.in/api/v1/auth/users/` | Create a new user (Super Admin only). |
+| GET | `https://apibackend.mastercall.in/api/v1/auth/users/{id}/` | Retrieve user details. |
+| PUT | `https://apibackend.mastercall.in/api/v1/auth/users/{id}/` | Update user details. |
+| PATCH | `https://apibackend.mastercall.in/api/v1/auth/users/{id}/` | Partially update user details. |
+| DELETE| `https://apibackend.mastercall.in/api/v1/auth/users/{id}/` | Delete a user. |
+| GET | `https://apibackend.mastercall.in/api/v1/auth/profile/` | Retrieve the currently logged-in user's profile. |
+| PATCH | `https://apibackend.mastercall.in/api/v1/auth/profile/` | Update the currently logged-in user's profile (e.g. FCM token). |
 
 ### Examples
 
@@ -77,12 +77,12 @@ All API endpoints are prefixed with `/api/v1/`.
 ## 2. Branches (`/branches/`)
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `https://api.spa.branch.call.workspa.in/api/v1/branches/` | List all branches. |
-| POST | `https://api.spa.branch.call.workspa.in/api/v1/branches/` | Create a new branch. |
-| GET | `https://api.spa.branch.call.workspa.in/api/v1/branches/{id}/` | Retrieve branch details. |
-| PUT | `https://api.spa.branch.call.workspa.in/api/v1/branches/{id}/` | Update branch details. |
-| PATCH | `https://api.spa.branch.call.workspa.in/api/v1/branches/{id}/` | Partially update branch details. |
-| DELETE| `https://api.spa.branch.call.workspa.in/api/v1/branches/{id}/` | Delete a branch. |
+| GET | `https://apibackend.mastercall.in/api/v1/branches/` | List all branches. |
+| POST | `https://apibackend.mastercall.in/api/v1/branches/` | Create a new branch. |
+| GET | `https://apibackend.mastercall.in/api/v1/branches/{id}/` | Retrieve branch details. |
+| PUT | `https://apibackend.mastercall.in/api/v1/branches/{id}/` | Update branch details. |
+| PATCH | `https://apibackend.mastercall.in/api/v1/branches/{id}/` | Partially update branch details. |
+| DELETE| `https://apibackend.mastercall.in/api/v1/branches/{id}/` | Delete a branch. |
 
 ### Examples
 
@@ -117,13 +117,13 @@ All API endpoints are prefixed with `/api/v1/`.
 ## 3. Devices (`/devices/`)
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `https://api.spa.branch.call.workspa.in/api/v1/devices/` | List all devices. |
-| POST | `https://api.spa.branch.call.workspa.in/api/v1/devices/` | Register a new device (Admin). Generates a registration token. |
-| POST | `https://api.spa.branch.call.workspa.in/api/v1/devices/claim-registration/` | Device claiming endpoint. Returns device_id and secret_key using registration token. |
-| GET | `https://api.spa.branch.call.workspa.in/api/v1/devices/{id}/` | Retrieve device details. |
-| PUT | `https://api.spa.branch.call.workspa.in/api/v1/devices/{id}/` | Update device details. |
-| PATCH | `https://api.spa.branch.call.workspa.in/api/v1/devices/{id}/` | Partially update device details. |
-| DELETE| `https://api.spa.branch.call.workspa.in/api/v1/devices/{id}/` | Delete a device. |
+| GET | `https://apibackend.mastercall.in/api/v1/devices/` | List all devices. |
+| POST | `https://apibackend.mastercall.in/api/v1/devices/` | Register a new device (Admin). Generates a registration token. |
+| POST | `https://apibackend.mastercall.in/api/v1/devices/claim-registration/` | Device claiming endpoint. Returns device_id and secret_key using registration token. |
+| GET | `https://apibackend.mastercall.in/api/v1/devices/{id}/` | Retrieve device details. |
+| PUT | `https://apibackend.mastercall.in/api/v1/devices/{id}/` | Update device details. |
+| PATCH | `https://apibackend.mastercall.in/api/v1/devices/{id}/` | Partially update device details. |
+| DELETE| `https://apibackend.mastercall.in/api/v1/devices/{id}/` | Delete a device. |
 
 ### Examples
 
@@ -158,11 +158,11 @@ All API endpoints are prefixed with `/api/v1/`.
 ## 4. Call Logs (`/calllogs/`)
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `https://api.spa.branch.call.workspa.in/api/v1/calllogs/` | List all call logs. |
-| POST | `https://api.spa.branch.call.workspa.in/api/v1/calllogs/` | Manually record a call log. |
-| POST | `https://api.spa.branch.call.workspa.in/api/v1/calllogs/sync/` | Synchronize call logs from a device. |
-| GET | `https://api.spa.branch.call.workspa.in/api/v1/calllogs/{id}/` | Retrieve call log details. |
-| DELETE| `https://api.spa.branch.call.workspa.in/api/v1/calllogs/{id}/` | Delete a call log record. |
+| GET | `https://apibackend.mastercall.in/api/v1/calllogs/` | List all call logs. |
+| POST | `https://apibackend.mastercall.in/api/v1/calllogs/` | Manually record a call log. |
+| POST | `https://apibackend.mastercall.in/api/v1/calllogs/sync/` | Synchronize call logs from a device. |
+| GET | `https://apibackend.mastercall.in/api/v1/calllogs/{id}/` | Retrieve call log details. |
+| DELETE| `https://apibackend.mastercall.in/api/v1/calllogs/{id}/` | Delete a call log record. |
 
 ### Examples
 
@@ -201,8 +201,8 @@ All API endpoints are prefixed with `/api/v1/`.
 ## 5. Analytics (`/analytics/`)
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `https://api.spa.branch.call.workspa.in/api/v1/analytics/overview/` | General analytics summary. |
-| GET | `https://api.spa.branch.call.workspa.in/api/v1/analytics/peak-hours/` | Analysis of peak call volume hours. |
+| GET | `https://apibackend.mastercall.in/api/v1/analytics/overview/` | General analytics summary. |
+| GET | `https://apibackend.mastercall.in/api/v1/analytics/peak-hours/` | Analysis of peak call volume hours. |
 
 ### Examples
 
@@ -232,10 +232,10 @@ All API endpoints are prefixed with `/api/v1/`.
 ## 6. Exports (`/exports/`)
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `https://api.spa.branch.call.workspa.in/api/v1/exports/` | List all generated export files. |
-| POST | `https://api.spa.branch.call.workspa.in/api/v1/exports/generate/` | Initiate a new data export (CSV/Excel). |
-| GET | `https://api.spa.branch.call.workspa.in/api/v1/exports/{id}/download/` | Download a specific export file. |
-| DELETE| `https://api.spa.branch.call.workspa.in/api/v1/exports/{id}/` | Remove an export record and file. |
+| GET | `https://apibackend.mastercall.in/api/v1/exports/` | List all generated export files. |
+| POST | `https://apibackend.mastercall.in/api/v1/exports/generate/` | Initiate a new data export (CSV/Excel). |
+| GET | `https://apibackend.mastercall.in/api/v1/exports/{id}/download/` | Download a specific export file. |
+| DELETE| `https://apibackend.mastercall.in/api/v1/exports/{id}/` | Remove an export record and file. |
 
 ### Examples
 
@@ -262,10 +262,10 @@ All API endpoints are prefixed with `/api/v1/`.
 ## 7. Monitoring (`/monitoring/`)
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `https://api.spa.branch.call.workspa.in/api/v1/monitoring/status/` | Current health status summary of all devices. |
-| POST | `https://api.spa.branch.call.workspa.in/api/v1/monitoring/heartbeat/` | Device heartbeat endpoint to maintain "Online" status. |
-| GET | `https://api.spa.branch.call.workspa.in/api/v1/monitoring/device-events/` | List system events (offline, battery low, etc.). |
-| GET | `https://api.spa.branch.call.workspa.in/api/v1/monitoring/device-events/{id}/` | Retrieve specific event details. |
+| GET | `https://apibackend.mastercall.in/api/v1/monitoring/status/` | Current health status summary of all devices. |
+| POST | `https://apibackend.mastercall.in/api/v1/monitoring/heartbeat/` | Device heartbeat endpoint to maintain "Online" status. |
+| GET | `https://apibackend.mastercall.in/api/v1/monitoring/device-events/` | List system events (offline, battery low, etc.). |
+| GET | `https://apibackend.mastercall.in/api/v1/monitoring/device-events/{id}/` | Retrieve specific event details. |
 
 ### Examples
 
@@ -291,7 +291,7 @@ All API endpoints are prefixed with `/api/v1/`.
 ## 8. Dashboard (`/dashboard/`)
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `https://api.spa.branch.call.workspa.in/api/v1/dashboard/stats/` | Aggregated statistics for the main dashboard view. |
+| GET | `https://apibackend.mastercall.in/api/v1/dashboard/stats/` | Aggregated statistics for the main dashboard view. |
 
 ### Examples
 
@@ -323,12 +323,12 @@ All API endpoints are prefixed with `/api/v1/`.
 ## 9. Lead Management (`/leadmanagement/`)
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `https://api.spa.branch.call.workspa.in/api/v1/leadmanagement/` | List all leads. Branch Managers only see leads for their assigned branch. |
-| POST | `https://api.spa.branch.call.workspa.in/api/v1/leadmanagement/` | Create a new lead. Supply a `calllog` ID to automatically attach contact information. |
-| GET | `https://api.spa.branch.call.workspa.in/api/v1/leadmanagement/{id}/` | Retrieve lead details. |
-| PUT | `https://api.spa.branch.call.workspa.in/api/v1/leadmanagement/{id}/` | Fully update lead details (e.g., status, remarks, booking date). |
-| PATCH | `https://api.spa.branch.call.workspa.in/api/v1/leadmanagement/{id}/` | Partially update a lead (e.g., updating just the status). |
-| DELETE| `https://api.spa.branch.call.workspa.in/api/v1/leadmanagement/{id}/` | Delete a lead. |
+| GET | `https://apibackend.mastercall.in/api/v1/leadmanagement/` | List all leads. Branch Managers only see leads for their assigned branch. |
+| POST | `https://apibackend.mastercall.in/api/v1/leadmanagement/` | Create a new lead. Supply a `calllog` ID to automatically attach contact information. |
+| GET | `https://apibackend.mastercall.in/api/v1/leadmanagement/{id}/` | Retrieve lead details. |
+| PUT | `https://apibackend.mastercall.in/api/v1/leadmanagement/{id}/` | Fully update lead details (e.g., status, remarks, booking date). |
+| PATCH | `https://apibackend.mastercall.in/api/v1/leadmanagement/{id}/` | Partially update a lead (e.g., updating just the status). |
+| DELETE| `https://apibackend.mastercall.in/api/v1/leadmanagement/{id}/` | Delete a lead. |
 
 ### Examples
 

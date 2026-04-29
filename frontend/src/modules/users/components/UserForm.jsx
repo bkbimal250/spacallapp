@@ -14,7 +14,7 @@ const UserForm = ({ isOpen, onClose, onSubmit, initialData, loading = false }) =
         email: '',
         first_name: '',
         last_name: '',
-        role: 'branch_manager',
+        role: 'spa_manager',
         branch: '',
         password: '',
     });
@@ -38,7 +38,7 @@ const UserForm = ({ isOpen, onClose, onSubmit, initialData, loading = false }) =
                 email: initialData.email || '',
                 first_name: initialData.first_name || '',
                 last_name: initialData.last_name || '',
-                role: initialData.role || 'branch_manager',
+                role: initialData.role || 'spa_manager',
                 branch: initialData.branch || '',
                 password: '',
             });
@@ -47,7 +47,7 @@ const UserForm = ({ isOpen, onClose, onSubmit, initialData, loading = false }) =
                 email: '',
                 first_name: '',
                 last_name: '',
-                role: 'branch_manager',
+                role: 'spa_manager',
                 branch: '',
                 password: '',
             });
@@ -72,7 +72,7 @@ const UserForm = ({ isOpen, onClose, onSubmit, initialData, loading = false }) =
             delete data.password;
         }
 
-        if (data.role !== 'branch_manager') {
+        if (data.role !== 'spa_manager') {
             data.branch = null;
         }
 
@@ -137,12 +137,12 @@ const UserForm = ({ isOpen, onClose, onSubmit, initialData, loading = false }) =
                     >
                         <option value="super_admin">Super Admin</option>
                         <option value="admin">Admin</option>
-                        <option value="branch_manager">Branch Manager</option>
+                        <option value="spa_manager">SPA Manager</option>
                     </select>
 
                 </div>
 
-                {formData.role === 'branch_manager' && (
+                {formData.role === 'spa_manager' && (
                     <div>
                         <SearchableSelect
                             label="Assign Branch"
