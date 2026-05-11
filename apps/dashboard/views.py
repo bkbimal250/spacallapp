@@ -46,6 +46,7 @@ class DashboardStatsView(APIView):
         description="Returns global or branch-specific statistics for the web dashboard.",
         parameters=[
             OpenApiParameter("branch", str, description="Filter results by Branch UUID"),
+            OpenApiParameter("branch_group", str, description="Filter results by Branch Group UUID"),
             OpenApiParameter("lead_source", str, enum=["direct", "manual"], description="Filter by lead creation source"),
         ],
         responses={
@@ -104,6 +105,7 @@ class DashboardStatsView(APIView):
         branch_ids = get_branch_filter_ids(user)
         # Get filter parameters
         branch_id_param = request.query_params.get("branch")
+        branch_group_id_param = request.query_params.get("branch_group")
         lead_source = request.query_params.get("lead_source")
         quick_date = request.query_params.get("quick_date")
         start_date_param = request.query_params.get("start_date")
@@ -171,6 +173,16 @@ class DashboardStatsView(APIView):
             contact_qs = contact_qs.filter(call_logs__branch_id=branch_id_param).distinct()
             user_qs = user_qs.filter(branch_id=branch_id_param)
             export_qs = export_qs.filter(user__branch_id=branch_id_param)
+        elif branch_group_id_param and branch_group_id_param.strip() and branch_group_id_param not in ("undefined", "null"):
+            # Filtering by Branch Group
+            calls_qs = calls_qs.filter(branch__branch_group_id=branch_group_id_param)
+            health_qs = health_qs.filter(device__branch__branch_group_id=branch_group_id_param)
+            branch_qs = branch_qs.filter(branch_group_id=branch_group_id_param)
+            device_qs = device_qs.filter(branch__branch_group_id=branch_group_id_param)
+            lead_qs = lead_qs.filter(branch__branch_group_id=branch_group_id_param)
+            contact_qs = contact_qs.filter(call_logs__branch__branch_group_id=branch_group_id_param).distinct()
+            user_qs = user_qs.filter(branch__branch_group_id=branch_group_id_param)
+            export_qs = export_qs.filter(user__branch__branch_group_id=branch_group_id_param)
         elif branch_ids == ["NONE"]:
             # Branch manager with no branch assigned — show nothing
             calls_qs = calls_qs.none()
@@ -203,8 +215,13 @@ class DashboardStatsView(APIView):
             today_calls_qs = today_calls_qs.filter(branch_id__in=branch_ids)
         elif branch_id_param and branch_id_param.strip() and branch_id_param not in ("undefined", "null"):
             today_calls_qs = today_calls_qs.filter(branch_id=branch_id_param)
+        elif branch_group_id_param and branch_group_id_param.strip() and branch_group_id_param not in ("undefined", "null"):
+            today_calls_qs = today_calls_qs.filter(branch__branch_group_id=branch_group_id_param)
         
         today_total_calls = today_calls_qs.filter(call_time__gte=today_start_absolute).count()
+        today_incoming_calls = today_calls_qs.filter(call_time__gte=today_start_absolute, call_type="incoming").count()
+        today_outgoing_calls = today_calls_qs.filter(call_time__gte=today_start_absolute, call_type="outgoing").count()
+        today_missed_calls = today_calls_qs.filter(call_time__gte=today_start_absolute, call_type="missed").count()
 
         # Average call duration (formatted as "Xm Ys")
         avg_dur = calls_qs.aggregate(Avg("duration"))["duration__avg"]
@@ -288,6 +305,9 @@ class DashboardStatsView(APIView):
             "total_users": total_users,
             "total_exports": total_exports,
             "today_total_calls": today_total_calls,
+            "today_incoming_calls": today_incoming_calls,
+            "today_outgoing_calls": today_outgoing_calls,
+            "today_missed_calls": today_missed_calls,
             "avg_duration": avg_duration_str,
             "call_volume_trends": chart_data,
             "branch_performance": branch_data,

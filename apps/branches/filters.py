@@ -18,11 +18,11 @@ class BranchFilter(BaseDateFilter):
     city = filters.CharFilter(lookup_expr='icontains')
     state = filters.CharFilter(lookup_expr='icontains')
     status = filters.BooleanFilter(field_name='is_active')
-    group = filters.UUIDFilter(field_name='branch_group_id')
+    branch_group = filters.UUIDFilter(field_name='branch_group_id')
 
     class Meta:
         model = Branch
-        fields = ['search', 'city', 'state', 'status', 'group']
+        fields = ['search', 'city', 'state', 'status', 'branch_group']
         date_field = 'created_at'
 
     def filter_search(self, queryset, name, value):

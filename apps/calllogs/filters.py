@@ -20,10 +20,11 @@ class CallLogFilter(BaseDateFilter):
 
     lead_status = filters.CharFilter(field_name='lead__status')
     sla_status = filters.CharFilter(field_name='followup_status__sla_status')
+    branch_group = filters.UUIDFilter(field_name='branch__branch_group_id')
 
     class Meta:
         model = CallLog
-        fields = ['branch', 'device', 'call_type', 'city', 'lead_status', 'sla_status']
+        fields = ['branch', 'device', 'call_type', 'city', 'lead_status', 'sla_status', 'branch_group']
         date_field = 'call_time'
 
     def filter_search(self, queryset, name, value):

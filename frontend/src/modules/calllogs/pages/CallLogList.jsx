@@ -41,7 +41,8 @@ const CallLogList = () => {
     const initialDevice = queryParams.get('device') || '';
     const initialSearch = queryParams.get('search') || '';
     const initialCallType = queryParams.get('call_type') || '';
-    const initialFollowupStatus = queryParams.get('followup_status') || '';
+    const initialSlaStatus = queryParams.get('sla_status') || '';
+    const initialBranchGroup = queryParams.get('branch_group') || '';
 
     const [logs, setLogs] = useState([]);
     const [stats, setStats] = useState(null);
@@ -55,6 +56,9 @@ const CallLogList = () => {
         quick_date: queryParams.has('quick_date') ? queryParams.get('quick_date') : (queryParams.has('start_date') || queryParams.has('end_date') ? '' : 'today'),
         start_date: queryParams.get('start_date') || '',
         end_date: queryParams.get('end_date') || '',
+        call_type: initialCallType,
+        sla_status: initialSlaStatus,
+        branch_group: initialBranchGroup,
         is_unique: queryParams.get('is_unique') === 'true'
     });
 
@@ -107,6 +111,9 @@ const CallLogList = () => {
             quick_date: queryParams.has('quick_date') ? queryParams.get('quick_date') : (queryParams.has('start_date') || queryParams.has('end_date') ? '' : 'today'),
             start_date: queryParams.get('start_date') || '',
             end_date: queryParams.get('end_date') || '',
+            call_type: queryParams.get('call_type') || '',
+            sla_status: queryParams.get('sla_status') || '',
+            branch_group: queryParams.get('branch_group') || '',
             is_unique: queryParams.get('is_unique') === 'true'
         }));
 
@@ -431,8 +438,9 @@ const CallLogList = () => {
                     initialBranch={initialBranch}
                     initialDevice={initialDevice}
                     initialSearch={initialSearch}
-                    initialCallType={initialCallType}
-                    initialFollowupStatus={initialFollowupStatus}
+                    initialCallType={filters.call_type}
+                    initialSlaStatus={filters.sla_status}
+                    initialBranchGroup={filters.branch_group}
                     initialUnique={filters.is_unique}
                     initialQuickDate={filters.quick_date}
                     initialStartDate={filters.start_date}

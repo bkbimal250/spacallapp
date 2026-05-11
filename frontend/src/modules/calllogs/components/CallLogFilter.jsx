@@ -1,10 +1,10 @@
 import React, { useEffect, useState, memo, useCallback } from 'react';
 import { useSelector } from 'react-redux';
-import { 
-    Search, 
-    Building2, 
-    Smartphone, 
-    PhoneCall, 
+import {
+    Search,
+    Building2,
+    Smartphone,
+    PhoneCall,
     Calendar,
     ChevronDown,
     Filter,
@@ -16,13 +16,14 @@ import SearchableSelect from '../../../shared/components/SearchableSelect';
 import { branchesAPI } from '../../branches/api';
 import { devicesAPI } from '../../devices/api';
 
-const CallLogFilter = ({ 
-    onFilter, 
-    initialBranch = '', 
-    initialDevice = '', 
-    initialSearch = '', 
+const CallLogFilter = ({
+    onFilter,
+    initialBranch = '',
+    initialDevice = '',
+    initialSearch = '',
     initialCallType = '',
-    initialFollowupStatus = '',
+    initialSlaStatus = '',
+    initialBranchGroup = '',
     initialUnique = false,
     initialQuickDate = 'today',
     initialStartDate = '',
@@ -31,7 +32,7 @@ const CallLogFilter = ({
     const { user } = useSelector(state => state.auth);
 
     const [search, setSearch] = useState(initialSearch);
-    
+
     // Date states
     const [dateMode, setDateMode] = useState(() => {
         if (initialStartDate && initialEndDate) {
@@ -41,17 +42,19 @@ const CallLogFilter = ({
     });
     const [quickDate, setQuickDate] = useState(initialQuickDate || 'today');
     const [singleDate, setSingleDate] = useState(initialStartDate === initialEndDate ? initialStartDate : '');
-    const [dateRange, setDateRange] = useState({ 
-        startDate: initialStartDate, 
-        endDate: initialEndDate 
+    const [dateRange, setDateRange] = useState({
+        startDate: initialStartDate,
+        endDate: initialEndDate
     });
-    
+
     const [branches, setBranches] = useState([]);
     const [selectedBranch, setSelectedBranch] = useState(initialBranch);
     const [devices, setDevices] = useState([]);
     const [selectedDevice, setSelectedDevice] = useState(initialDevice);
     const [selectedCallType, setSelectedCallType] = useState(initialCallType);
-    const [selectedFollowupStatus, setSelectedFollowupStatus] = useState(initialFollowupStatus);
+    const [selectedSlaStatus, setSelectedSlaStatus] = useState(initialSlaStatus);
+    const [branchGroups, setBranchGroups] = useState([]);
+    const [selectedBranchGroup, setSelectedBranchGroup] = useState(initialBranchGroup);
     const [isUnique, setIsUnique] = useState(initialUnique);
     const [loadingDevices, setLoadingDevices] = useState(false);
 
@@ -62,9 +65,10 @@ const CallLogFilter = ({
         setSelectedBranch(initialBranch);
         setSelectedDevice(initialDevice);
         setSelectedCallType(initialCallType);
-        setSelectedFollowupStatus(initialFollowupStatus);
+        setSelectedSlaStatus(initialSlaStatus);
+        setSelectedBranchGroup(initialBranchGroup);
         setIsUnique(initialUnique);
-        
+
         if (initialStartDate && initialEndDate) {
             if (initialStartDate === initialEndDate) {
                 setDateMode('single');
@@ -81,13 +85,19 @@ const CallLogFilter = ({
             setSingleDate('');
             setDateRange({ startDate: '', endDate: '' });
         }
-    }, [initialSearch, initialBranch, initialDevice, initialCallType, initialFollowupStatus, initialUnique, initialQuickDate, initialStartDate, initialEndDate]);
+    }, [initialSearch, initialBranch, initialDevice, initialCallType, initialSlaStatus, initialBranchGroup, initialUnique, initialQuickDate, initialStartDate, initialEndDate]);
 
     useEffect(() => {
         const fetchBranches = async () => {
             if (isRestrictedManager) return;
             try {
-                const response = await branchesAPI.getBranches({ all: true });
+                // Fetch branches filtered by group if one is selected
+                const params = { all: true };
+                if (selectedBranchGroup) {
+                    params.branch_group = selectedBranchGroup;
+                }
+
+                const response = await branchesAPI.getBranches(params);
                 const branchData = response.data.results || response.data;
                 setBranches(
                     branchData.map(b => ({
@@ -101,6 +111,26 @@ const CallLogFilter = ({
             }
         };
         fetchBranches();
+    }, [isRestrictedManager, selectedBranchGroup]);
+
+    useEffect(() => {
+        const fetchGroups = async () => {
+            if (isRestrictedManager) return;
+            try {
+                const response = await branchesAPI.getGroups({ all: true });
+                const groupData = response.data.results || response.data;
+                setBranchGroups(
+                    groupData.map(g => ({
+                        value: g.id,
+                        label: g.name,
+                        title: g.name
+                    }))
+                );
+            } catch (error) {
+                console.error("Failed to fetch branch groups", error);
+            }
+        };
+        fetchGroups();
     }, [isRestrictedManager]);
 
     useEffect(() => {
@@ -131,45 +161,55 @@ const CallLogFilter = ({
         fetchDevices();
     }, [selectedBranch, isRestrictedManager, user?.branch]);
 
-    const handleFilter = useCallback((additionalFilters = {}) => {
-        const filters = { ...additionalFilters };
-        if (search) filters.search = search;
-        
-        if (dateMode === 'single') {
-            if (singleDate) {
-                filters.start_date = singleDate;
-                filters.end_date = singleDate;
-            }
-        } else if (dateMode === 'range') {
-            if (dateRange.startDate) filters.start_date = dateRange.startDate;
-            if (dateRange.endDate) filters.end_date = dateRange.endDate;
-        } else if (quickDate) {
-            filters.quick_date = quickDate;
+    const getActiveFilters = useCallback((overrides = {}) => {
+        // Base values with safe fallbacks
+        const baseSearch = overrides.search !== undefined ? overrides.search : (search || '');
+        const baseBranch = overrides.branch !== undefined ? overrides.branch : (selectedBranch && !isRestrictedManager ? selectedBranch : undefined);
+        const baseDevice = overrides.device !== undefined ? overrides.device : (selectedDevice || '');
+        const baseBranchGroup = overrides.branch_group !== undefined ? overrides.branch_group : (selectedBranchGroup || '');
+        const baseIsUnique = overrides.is_unique !== undefined ? overrides.is_unique : !!isUnique;
+
+        // Date values
+        const baseQuickDate = overrides.quick_date !== undefined ? overrides.quick_date : (dateMode === 'preset' ? quickDate : undefined);
+        const baseStartDate = overrides.start_date !== undefined ? overrides.start_date : (dateMode !== 'preset' ? (dateMode === 'single' ? singleDate : dateRange.startDate) : undefined);
+        const baseEndDate = overrides.end_date !== undefined ? overrides.end_date : (dateMode !== 'preset' ? (dateMode === 'single' ? singleDate : dateRange.endDate) : undefined);
+
+        // Call Type & SLA logic
+        let baseCallType = overrides.call_type !== undefined ? overrides.call_type : (selectedCallType || '');
+        let baseSlaStatus = overrides.sla_status !== undefined ? overrides.sla_status : (selectedSlaStatus || '');
+
+        // Smart cleanup: If call_type is not missed, clear sla_status
+        if (baseCallType && baseCallType !== 'missed') {
+            baseSlaStatus = undefined;
+        }
+        // If SLA status is selected but type isn't missed, force missed type
+        if (baseSlaStatus && baseCallType !== 'missed') {
+            baseCallType = 'missed';
         }
 
-        if (selectedBranch && !isRestrictedManager) filters.branch = selectedBranch;
-        if (selectedDevice) filters.device = selectedDevice;
-        if (selectedCallType) filters.call_type = selectedCallType;
-        if (selectedFollowupStatus) filters.followup_status = selectedFollowupStatus;
-        if (isUnique) filters.is_unique = true;
-
-        onFilter(filters);
-    }, [search, quickDate, singleDate, dateRange, dateMode, selectedBranch, selectedDevice, selectedCallType, isRestrictedManager, isUnique, onFilter]);
-
-    const getActiveFilters = useCallback((overrides = {}) => {
         const filters = {
-            search: overrides.search !== undefined ? overrides.search : search,
-            quick_date: overrides.quick_date !== undefined ? overrides.quick_date : (dateMode === 'preset' ? quickDate : undefined),
-            start_date: overrides.start_date !== undefined ? overrides.start_date : (dateMode !== 'preset' ? (dateMode === 'single' ? singleDate : dateRange.startDate) : undefined),
-            end_date: overrides.end_date !== undefined ? overrides.end_date : (dateMode !== 'preset' ? (dateMode === 'single' ? singleDate : dateRange.endDate) : undefined),
-            branch: overrides.branch !== undefined ? overrides.branch : (selectedBranch && !isRestrictedManager ? selectedBranch : undefined),
-            device: overrides.device !== undefined ? overrides.device : selectedDevice,
-            call_type: overrides.call_type !== undefined ? overrides.call_type : selectedCallType,
-            followup_status: overrides.followup_status !== undefined ? overrides.followup_status : selectedFollowupStatus,
-            is_unique: overrides.is_unique !== undefined ? overrides.is_unique : isUnique
+            search: baseSearch,
+            quick_date: baseQuickDate,
+            start_date: baseStartDate,
+            end_date: baseEndDate,
+            branch: baseBranch,
+            device: baseDevice,
+            branch_group: baseBranchGroup,
+            call_type: baseCallType,
+            sla_status: baseSlaStatus,
+            is_unique: baseIsUnique
         };
-        return Object.fromEntries(Object.entries(filters).filter(([_, v]) => v !== undefined && v !== ''));
-    }, [search, quickDate, singleDate, dateRange, dateMode, selectedBranch, selectedDevice, selectedCallType, selectedFollowupStatus, isUnique, isRestrictedManager]);
+
+        // Deep filter to remove null/undefined/empty strings
+        return Object.fromEntries(
+            Object.entries(filters).filter(([_, v]) => v !== undefined && v !== null && v !== '')
+        );
+    }, [search, quickDate, singleDate, dateRange, dateMode, selectedBranch, selectedDevice, selectedBranchGroup, selectedCallType, selectedSlaStatus, isUnique, isRestrictedManager]);
+
+    const handleFilter = useCallback((additionalFilters = {}) => {
+        const filters = getActiveFilters(additionalFilters);
+        onFilter(filters);
+    }, [onFilter, getActiveFilters]);
 
     const handleQuickDateChange = (preset) => {
         setQuickDate(preset);
@@ -193,9 +233,19 @@ const CallLogFilter = ({
         setSelectedBranch(initialBranch || '');
         setSelectedDevice('');
         setSelectedCallType('');
-        setSelectedFollowupStatus('');
+        setSelectedSlaStatus('');
+        setSelectedBranchGroup('');
         setIsUnique(false);
-        onFilter({ quick_date: 'all', branch: initialBranch || '' });
+
+        onFilter({
+            quick_date: 'all',
+            branch: initialBranch || '',
+            branch_group: '',
+            search: '',
+            call_type: '',
+            sla_status: '',
+            is_unique: false
+        });
     }, [onFilter, initialBranch]);
 
     const datePresets = [
@@ -219,32 +269,29 @@ const CallLogFilter = ({
                                 <button
                                     key={preset.id}
                                     onClick={() => handleQuickDateChange(preset.id)}
-                                    className={`px-4 py-1.5 rounded-md text-xs font-bold transition-all duration-200 ${
-                                        dateMode === 'preset' && quickDate === preset.id
-                                            ? 'bg-primary text-white shadow-md'
-                                            : 'text-text-secondary hover:bg-cardHover hover:text-text-primary'
-                                    }`}
+                                    className={`px-4 py-1.5 rounded-md text-xs font-bold transition-all duration-200 ${dateMode === 'preset' && quickDate === preset.id
+                                        ? 'bg-primary text-white shadow-md'
+                                        : 'text-text-secondary hover:bg-cardHover hover:text-text-primary'
+                                        }`}
                                 >
                                     {preset.label}
                                 </button>
                             ))}
                             <button
                                 onClick={() => setDateMode('single')}
-                                className={`px-4 py-1.5 rounded-md text-xs font-bold transition-all duration-200 ${
-                                    dateMode === 'single'
-                                        ? 'bg-primary text-white shadow-md'
-                                        : 'text-text-secondary hover:bg-cardHover hover:text-text-primary'
-                                }`}
+                                className={`px-4 py-1.5 rounded-md text-xs font-bold transition-all duration-200 ${dateMode === 'single'
+                                    ? 'bg-primary text-white shadow-md'
+                                    : 'text-text-secondary hover:bg-cardHover hover:text-text-primary'
+                                    }`}
                             >
                                 Quick Date
                             </button>
                             <button
                                 onClick={() => setDateMode('range')}
-                                className={`px-4 py-1.5 rounded-md text-xs font-bold transition-all duration-200 ${
-                                    dateMode === 'range'
-                                        ? 'bg-primary text-white shadow-md'
-                                        : 'text-text-secondary hover:bg-cardHover hover:text-text-primary'
-                                }`}
+                                className={`px-4 py-1.5 rounded-md text-xs font-bold transition-all duration-200 ${dateMode === 'range'
+                                    ? 'bg-primary text-white shadow-md'
+                                    : 'text-text-secondary hover:bg-cardHover hover:text-text-primary'
+                                    }`}
                             >
                                 Custom (Range)
                             </button>
@@ -299,9 +346,9 @@ const CallLogFilter = ({
                                     </div>
                                 </>
                             )}
-                            <Button 
-                                variant="outline" 
-                                size="sm" 
+                            <Button
+                                variant="outline"
+                                size="sm"
                                 className="mt-5 text-xs border-border-light hover:bg-card"
                                 onClick={() => setDateMode('preset')}
                             >
@@ -312,31 +359,52 @@ const CallLogFilter = ({
                 )}
 
                 {/* ── BOTTOM SECTION: ADVANCED FILTERS ── */}
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 pt-2 border-t border-border-light/50">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6 pt-6 border-t border-border-light/30">
                     {!isRestrictedManager && (
-                        <div className="space-y-1.5">
-                            <div className="flex items-center gap-2 mb-1">
-                                <Building2 size={15} className="text-primary/70" />
-                                <span className="text-[10px] uppercase font-bold text-text-secondary tracking-widest">Branch</span>
+                        <>
+                            <div className="space-y-2">
+                                <div className="flex items-center gap-2 px-1">
+                                    <Building2 size={14} className="text-primary/60" />
+                                    <span className="text-[11px] uppercase font-bold text-text-secondary/80 tracking-wider">Group</span>
+                                </div>
+                                <SearchableSelect
+                                    placeholder="Filter by Group"
+                                    options={branchGroups}
+                                    value={selectedBranchGroup}
+                                    onChange={(val) => {
+                                        setSelectedBranchGroup(val);
+                                        setSelectedBranch('');
+                                        setSelectedDevice('');
+                                        onFilter(getActiveFilters({ branch_group: val, branch: '', device: '' }));
+                                    }}
+                                    className="w-full"
+                                />
                             </div>
-                            <SearchableSelect
-                                placeholder="Filter by Branch"
-                                options={branches}
-                                value={selectedBranch}
-                                onChange={(val) => {
-                                    setSelectedBranch(val);
-                                    setSelectedDevice('');
-                                    onFilter(getActiveFilters({ branch: val, device: '' }));
-                                }}
-                                className="w-full"
-                            />
-                        </div>
+
+                            <div className="space-y-2">
+                                <div className="flex items-center gap-2 px-1">
+                                    <Building2 size={14} className="text-primary/60" />
+                                    <span className="text-[11px] uppercase font-bold text-text-secondary/80 tracking-wider">Branch</span>
+                                </div>
+                                <SearchableSelect
+                                    placeholder="Filter by Branch"
+                                    options={branches}
+                                    value={selectedBranch}
+                                    onChange={(val) => {
+                                        setSelectedBranch(val);
+                                        setSelectedDevice('');
+                                        onFilter(getActiveFilters({ branch: val, device: '' }));
+                                    }}
+                                    className="w-full"
+                                />
+                            </div>
+                        </>
                     )}
 
-                    <div className="space-y-1.5">
-                        <div className="flex items-center gap-2 mb-1">
-                            <Smartphone size={15} className="text-primary/70" />
-                            <span className="text-[10px] uppercase font-bold text-text-secondary tracking-widest">Device</span>
+                    <div className="space-y-2">
+                        <div className="flex items-center gap-2 px-1">
+                            <Smartphone size={14} className="text-primary/60" />
+                            <span className="text-[11px] uppercase font-bold text-text-secondary/80 tracking-wider">Device</span>
                         </div>
                         <SearchableSelect
                             placeholder={loadingDevices ? "Loading..." : "All Devices"}
@@ -344,127 +412,121 @@ const CallLogFilter = ({
                             value={selectedDevice}
                             onChange={(val) => {
                                 setSelectedDevice(val);
-                                const filters = {
-                                    search,
-                                    branch: (selectedBranch && !isRestrictedManager) ? selectedBranch : undefined,
-                                    quick_date: quickDate,
-                                    device: val,
-                                    call_type: selectedCallType,
-                                    followup_status: selectedFollowupStatus,
-                                    is_unique: isUnique
-                                };
-                                onFilter(Object.fromEntries(Object.entries(filters).filter(([_, v]) => v !== undefined && v !== '')));
+                                onFilter(getActiveFilters({ device: val }));
                             }}
                             disabled={!selectedBranch && !isRestrictedManager}
+                            className="w-full"
                         />
                     </div>
 
-                    <div className="space-y-1.5">
-                        <div className="flex items-center gap-2 mb-1">
-                            <PhoneCall size={15} className="text-primary/70" />
-                            <span className="text-[10px] uppercase font-bold text-text-secondary tracking-widest">Call Type</span>
+                    <div className="space-y-2">
+                        <div className="flex items-center gap-2 px-1">
+                            <PhoneCall size={14} className="text-primary/60" />
+                            <span className="text-[11px] uppercase font-bold text-text-secondary/80 tracking-wider">Call Type</span>
                         </div>
-                        <select
-                            className="block w-full h-[42px] px-3 bg-background border border-border rounded-lg text-sm text-text-primary focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all outline-none appearance-none cursor-pointer"
-                            value={selectedCallType}
-                            onChange={(e) => {
-                                const val = e.target.value;
-                                setSelectedCallType(val);
-                                const filters = {
-                                    search,
-                                    branch: (selectedBranch && !isRestrictedManager) ? selectedBranch : undefined,
-                                    quick_date: quickDate,
-                                    call_type: val,
-                                    followup_status: selectedFollowupStatus,
-                                    is_unique: isUnique
-                                };
-                                onFilter(Object.fromEntries(Object.entries(filters).filter(([_, v]) => v !== undefined && v !== '')));
-                            }}
-                        >
-                            <option value="">All Types</option>
-                            <option value="incoming">Incoming</option>
-                            <option value="outgoing">Outgoing</option>
-                            <option value="missed">Missed</option>
-                            <option value="rejected">Rejected</option>
-                        </select>
+                        <div className="relative group">
+                            <select
+                                className="block w-full h-[42px] px-4 bg-background border border-border rounded-xl text-sm text-text-primary focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all outline-none appearance-none cursor-pointer hover:border-primary/50 shadow-sm"
+                                value={selectedCallType}
+                                onChange={(e) => {
+                                    const val = e.target.value;
+                                    setSelectedCallType(val);
+                                    if (val !== 'missed') {
+                                        setSelectedSlaStatus('');
+                                    }
+                                    onFilter(getActiveFilters({ call_type: val, sla_status: val !== 'missed' ? '' : undefined }));
+                                }}
+                            >
+                                <option value="">All Types</option>
+                                <option value="incoming">Incoming</option>
+                                <option value="outgoing">Outgoing</option>
+                                <option value="missed">Missed</option>
+                                <option value="rejected">Rejected</option>
+                            </select>
+                            <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-text-muted group-hover:text-primary transition-colors">
+                                <ChevronDown size={16} />
+                            </div>
+                        </div>
                     </div>
 
-                    <div className="space-y-1.5">
-                        <div className="flex items-center gap-2 mb-1">
-                            <Filter size={15} className="text-primary/70" />
-                            <span className="text-[10px] uppercase font-bold text-text-secondary tracking-widest">Follow-up SLA</span>
+                    <div className="space-y-2">
+                        <div className="flex items-center gap-2 px-1">
+                            <Filter size={14} className="text-primary/60" />
+                            <span className="text-[11px] uppercase font-bold text-text-secondary/80 tracking-wider">Follow-up SLA</span>
                         </div>
-                        <select
-                            className="block w-full h-[42px] px-3 bg-background border border-border rounded-lg text-sm text-text-primary focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all outline-none appearance-none cursor-pointer"
-                            value={selectedFollowupStatus}
-                            onChange={(e) => {
-                                const val = e.target.value;
-                                setSelectedFollowupStatus(val);
-                                const filters = {
-                                    search,
-                                    branch: (selectedBranch && !isRestrictedManager) ? selectedBranch : undefined,
-                                    quick_date: quickDate,
-                                    call_type: selectedCallType,
-                                    followup_status: val,
-                                    is_unique: isUnique
-                                };
-                                onFilter(Object.fromEntries(Object.entries(filters).filter(([_, v]) => v !== undefined && v !== '')));
-                            }}
-                        >
-                            <option value="">All Status</option>
-                            <option value="GOOD">Good (&lt; 10m)</option>
-                            <option value="OK">OK (&lt; 30m)</option>
-                            <option value="LATE">Late (&gt; 30m)</option>
-                            <option value="MISSED">Missed SLA</option>
-                        </select>
+                        <div className="relative group">
+                            <select
+                                className="block w-full h-[42px] px-4 bg-background border border-border rounded-xl text-sm text-text-primary focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all outline-none appearance-none cursor-pointer hover:border-primary/50 shadow-sm"
+                                value={selectedSlaStatus}
+                                onChange={(e) => {
+                                    const val = e.target.value;
+                                    setSelectedSlaStatus(val);
+                                    let typeOverride = undefined;
+                                    if (val) {
+                                        setSelectedCallType('missed');
+                                        typeOverride = 'missed';
+                                    }
+                                    onFilter(getActiveFilters({ sla_status: val, call_type: typeOverride }));
+                                }}
+                            >
+                                <option value="">All Status</option>
+                                <option value="GOOD">Good (&lt; 10m)</option>
+                                <option value="OK">OK (&lt; 30m)</option>
+                                <option value="LATE">Late (&gt; 30m)</option>
+                                <option value="MISSED">Missed SLA</option>
+                            </select>
+                            <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-text-muted group-hover:text-primary transition-colors">
+                                <ChevronDown size={16} />
+                            </div>
+                        </div>
                     </div>
 
-                    <div className="flex items-end gap-3">
-                        <div className="flex-1 flex items-center h-[42px] px-4 bg-background border border-border rounded-lg group cursor-pointer hover:border-primary transition-all overflow-hidden">
-                            <label className="flex items-center cursor-pointer w-full">
-                                <div className="relative">
-                                    <input
-                                        type="checkbox"
-                                        className="sr-only"
-                                        checked={isUnique}
-                                        onChange={(e) => {
-                                            const val = e.target.checked;
-                                            setIsUnique(val);
-                                            const filters = {
-                                                search,
-                                                branch: (selectedBranch && !isRestrictedManager) ? selectedBranch : undefined,
-                                                quick_date: quickDate,
-                                                call_type: selectedCallType,
-                                                followup_status: selectedFollowupStatus,
-                                                is_unique: val
-                                            };
-                                            onFilter(Object.fromEntries(Object.entries(filters).filter(([_, v]) => v !== undefined && v !== '')));
-                                        }}
-                                    />
-                                    <div className={`w-9 h-5 rounded-full transition-colors ${isUnique ? 'bg-primary' : 'bg-slate-300'}`}></div>
-                                    <div className={`absolute left-0.5 top-0.5 w-4 h-4 bg-white rounded-full transition-transform ${isUnique ? 'translate-x-4' : 'translate-x-0'} shadow-sm`}></div>
-                                </div>
-                                <span className="ml-3 text-xs font-bold text-text-secondary group-hover:text-primary transition-colors whitespace-nowrap">
-                                    Unique Record
-                                </span>
-                            </label>
+                    {/* UNIQUE TOGGLE CELL */}
+                    <div className="flex items-end h-full pt-[22px]">
+                        <div 
+                            className={`flex items-center justify-between w-full h-[42px] px-4 rounded-xl border transition-all cursor-pointer select-none shadow-sm
+                                ${isUnique ? 'bg-primary/5 border-primary shadow-primary/5' : 'bg-background border-border hover:border-primary/30'}`}
+                            onClick={() => {
+                                const newVal = !isUnique;
+                                setIsUnique(newVal);
+                                onFilter(getActiveFilters({ is_unique: newVal }));
+                            }}
+                        >
+                            <span className={`text-xs font-bold transition-colors ${isUnique ? 'text-primary' : 'text-text-secondary'}`}>
+                                Unique Records
+                            </span>
+                            <div className="relative">
+                                <input
+                                    type="checkbox"
+                                    className="sr-only"
+                                    checked={isUnique}
+                                    readOnly
+                                />
+                                <div className={`w-9 h-5 rounded-full transition-all duration-300 ${isUnique ? 'bg-primary' : 'bg-slate-200'}`}></div>
+                                <div className={`absolute left-0.5 top-0.5 w-4 h-4 bg-white rounded-full transition-transform duration-300 shadow-sm ${isUnique ? 'translate-x-4' : 'translate-x-0'}`}></div>
+                            </div>
                         </div>
-                        
-                        <div className="flex gap-2 h-[42px]">
+                    </div>
+
+                    {/* ACTION BUTTONS CELL */}
+                    <div className="flex items-end gap-3 h-full pt-[22px] sm:col-span-1 md:col-span-1 lg:col-span-2">
+                        <div className="flex gap-2 w-full h-[42px]">
                             <Button
                                 variant="outline"
                                 onClick={handleClear}
-                                className="border-border hover:bg-cardHover text-text-secondary flex items-center gap-2 px-4"
-                                title="Clear All"
+                                className="flex-1 border-border hover:bg-slate-50 text-text-secondary hover:text-danger hover:border-danger/30 rounded-xl transition-all duration-200 flex items-center justify-center gap-2 group"
+                                title="Clear All Filters"
                             >
-                                <X size={16} /> <span className="font-semibold text-xs">Clear</span>
+                                <X size={16} className="group-hover:rotate-90 transition-transform duration-300" /> 
+                                <span className="font-bold text-xs uppercase tracking-tight">Clear</span>
                             </Button>
 
                             <Button
                                 onClick={() => handleFilter()}
-                                className="bg-primary hover:bg-primary-dark text-white px-6 font-bold shadow-lg shadow-primary/20 flex items-center gap-2"
+                                className="flex-[1.5] bg-primary hover:bg-primary-dark text-white rounded-xl font-bold shadow-lg shadow-primary/10 hover:shadow-primary/20 transition-all duration-200 flex items-center justify-center gap-2"
                             >
-                                <Filter size={16} /> Apply
+                                <Filter size={16} /> 
+                                <span className="uppercase text-xs tracking-tight">Apply Filter</span>
                             </Button>
                         </div>
                     </div>
@@ -472,6 +534,9 @@ const CallLogFilter = ({
             </div>
         </div>
     );
+
+
+
 };
 
 export default memo(CallLogFilter);

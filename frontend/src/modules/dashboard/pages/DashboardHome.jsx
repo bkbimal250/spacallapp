@@ -5,7 +5,7 @@ import { dashboardAPI } from '../api';
 import { branchesAPI } from '../../branches/api';
 import SearchableSelect from '../../../shared/components/SearchableSelect';
 import { useAuth } from '../../../shared/hooks/useAuth';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useWebSocket } from '../../../shared/hooks/useWebSocket';
 import LiveUsersList from '../components/LiveUsersList';
 import { useDispatch } from 'react-redux';
@@ -34,6 +34,7 @@ const DashboardHome = () => {
     // Initialize WebSocket for real-time tracking
     useWebSocket('/ws/crm/dashboard/');
 
+    const [searchParams, setSearchParams] = useSearchParams();
     const [stats, setStats] = useState({
         total_calls: 0,
         active_devices: 0,
@@ -45,30 +46,54 @@ const DashboardHome = () => {
         total_users: 0,
         total_exports: 0,
         today_total_calls: 0,
+        today_incoming_calls: 0,
+        today_outgoing_calls: 0,
+        today_missed_calls: 0,
     });
 
     const [chartData, setChartData] = useState([]);
     const [branchData, setBranchData] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [leadSource, setLeadSource] = useState('all');
-    const [quickDate, setQuickDate] = useState('today');
-    const [selectedBranch, setSelectedBranch] = useState('');
+
+    // Filter states synced with URL
+    const quickDate = searchParams.get('quick_date') || 'today';
+    const selectedBranch = searchParams.get('branch') || '';
+    const selectedGroup = searchParams.get('branch_group') || '';
+    const leadSource = searchParams.get('lead_source') || 'all';
+
     const [branches, setBranches] = useState([]);
+    const [groups, setGroups] = useState([]);
 
     const isAdmin = user?.role === 'admin' || user?.role === 'super_admin';
+
+    const updateFilters = (newFilters) => {
+        const params = new URLSearchParams(searchParams);
+        Object.entries(newFilters).forEach(([key, value]) => {
+            if (value) params.set(key, value);
+            else params.delete(key);
+        });
+        setSearchParams(params);
+    };
 
     useEffect(() => {
         const fetchBranches = async () => {
             if (!isAdmin) return;
             try {
-                const response = await branchesAPI.getBranches({ all: true });
+                const params = { all: true };
+                if (selectedGroup) {
+                    params.branch_group = selectedGroup;
+                }
+                const response = await branchesAPI.getBranches(params);
                 const data = response.data.results || response.data;
                 setBranches(data.map(b => ({ value: b.id, label: b.spa_name })));
             } catch (err) {
                 console.error("Failed to fetch branches", err);
             }
         };
+        fetchBranches();
+    }, [isAdmin, selectedGroup]);
 
+    useEffect(() => {
         const fetchOnlineUsers = async () => {
             try {
                 const response = await axiosInstance.get('/auth/users/online/');
@@ -78,129 +103,151 @@ const DashboardHome = () => {
             }
         };
 
-        fetchBranches();
+        const fetchGroups = async () => {
+            if (!isAdmin) return;
+            try {
+                const response = await branchesAPI.getGroups({ all: true });
+                const data = response.data.results || response.data;
+                setGroups(data.map(g => ({ value: g.id, label: g.name })));
+            } catch (err) {
+                console.error("Failed to fetch groups", err);
+            }
+        };
+
+        fetchGroups();
         fetchOnlineUsers();
     }, [isAdmin, dispatch]);
 
     const fetchStats = useCallback(async (isBackground = false) => {
-
         if (!isBackground) setLoading(true);
 
         try {
-
             const params = {
                 quick_date: quickDate
             };
 
             if (leadSource !== 'all') params.lead_source = leadSource;
             if (selectedBranch) params.branch = selectedBranch;
+            if (selectedGroup) params.branch_group = selectedGroup;
 
             const response = await dashboardAPI.getStats(params);
             const payload = response.data?.data || response.data;
 
             if (payload) {
                 setStats(payload);
-
-                if (payload.call_volume_trends)
-                    setChartData(payload.call_volume_trends);
-
-                if (payload.branch_performance)
-                    setBranchData(payload.branch_performance);
+                if (payload.call_volume_trends) setChartData(payload.call_volume_trends);
+                if (payload.branch_performance) setBranchData(payload.branch_performance);
             }
-
         } catch (error) {
             console.error("Failed to fetch dashboard stats", error);
         } finally {
             if (!isBackground) setLoading(false);
         }
-    }, [leadSource, selectedBranch, quickDate]);
+    }, [leadSource, selectedBranch, selectedGroup, quickDate]);
 
     useEffect(() => {
         fetchStats();
-
         const interval = setInterval(() => {
             fetchStats(true);
         }, 10000);
-
         return () => clearInterval(interval);
-
     }, [fetchStats]);
 
     const statCards = useMemo(() => [
-        { title: "Total Users", value: stats.total_users, icon: Users, color: "text-primary", bg: "bg-primary/10" },
-        { title: "Total Devices", value: stats.total_devices, icon: Smartphone, color: "text-accent-purple", bg: "bg-accent-purple/10" },
-        { title: "Active Devices", value: stats.active_devices, icon: Zap, color: "text-warning", bg: "bg-warning/10" },
-        // { title: "Total Leads", value: stats.total_leads, icon: Target, color: "text-success", bg: "bg-success/10" },
-        { title: "Total Branches", value: stats.total_branches, icon: Building2, color: "text-info", bg: "bg-info/10" },
-        { title: "Total Contacts", value: stats.total_contacts, icon: UserPlus, color: "text-cyan-400", bg: "bg-cyan-500/10" },
-        { title: "Total Exports", value: stats.total_exports, icon: FileJson, color: "text-danger", bg: "bg-danger/10" },
-        // { title: "Total Calls", value: stats.total_calls, icon: PhoneCall, color: "text-primary", bg: "bg-primary/10" },
-        { title: "Today Total Calls", value: stats.today_total_calls, icon: PhoneCall, color: "text-primary", bg: "bg-primary/10" },
+        { title: "Today Incoming", value: stats.today_incoming_calls, icon: PhoneCall, color: "text-emerald-600", bg: "bg-emerald-50/50" },
+        { title: "Today Outgoing", value: stats.today_outgoing_calls, icon: PhoneCall, color: "text-blue-600", bg: "bg-blue-50/50" },
+        { title: "Today Missed", value: stats.today_missed_calls, icon: PhoneMissed, color: "text-rose-600", bg: "bg-rose-50/50" },
+        { title: "Today Total", value: stats.today_total_calls, icon: Zap, color: "text-amber-600", bg: "bg-amber-50/50" },
+        { title: "Total Users", value: stats.total_users, icon: Users, color: "text-indigo-600", bg: "bg-indigo-50/50" },
+        { title: "Total Devices", value: stats.total_devices, icon: Smartphone, color: "text-violet-600", bg: "bg-violet-50/50" },
+        { title: "Active Devices", value: stats.active_devices, icon: Zap, color: "text-orange-600", bg: "bg-orange-50/50" },
+        { title: "Total Branches", value: stats.total_branches, icon: Building2, color: "text-cyan-600", bg: "bg-cyan-50/50" },
+        { title: "Total Contacts", value: stats.total_contacts, icon: UserPlus, color: "text-teal-600", bg: "bg-teal-50/50" },
+        { title: "Total Exports", value: stats.total_exports, icon: FileJson, color: "text-fuchsia-600", bg: "bg-fuchsia-50/50" },
     ], [stats]);
 
-    if (loading)
+    if (loading && !stats.total_calls)
         return (
             <div className="flex items-center justify-center min-h-[400px]">
-
-                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
-
+                <div className="flex flex-col items-center gap-4">
+                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+                    <p className="text-text-secondary animate-pulse">Loading analytics...</p>
+                </div>
             </div>
         );
 
     return (
-
-        <div className="space-y-6">
-
-            {/* PAGE HEADER */}
-
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-
-                <div>
-
-                    <h1 className="text-2xl font-bold text-text-primary">
-                        Dashboard Overview
-                    </h1>
-
-                    <p className="text-sm text-text-secondary">
-                        Real-time performance analytics
-                    </p>
-
+        <div className="space-y-6 pb-10">
+            {/* PAGE HEADER & FILTERS */}
+            <div className="bg-card border border-border rounded-2xl p-6 shadow-sm space-y-6">
+                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                    <div>
+                        <h1 className="text-2xl font-bold text-text-primary">
+                            Dashboard Overview
+                        </h1>
+                        <p className="text-sm text-text-secondary">
+                            Real-time performance analytics across {selectedBranch ? 'selected branch' : 'all locations'}
+                        </p>
+                    </div>
                 </div>
 
-                <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
-                    <div className="w-full md:w-64">
-                        <SearchableSelect
-                            options={branches}
-                            value={selectedBranch}
-                            onChange={setSelectedBranch}
-                            placeholder="All Branches"
-                            isClearable
-                        />
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 pt-4 border-t border-border/50">
+                    {isAdmin && (
+                        <>
+                            <div className="space-y-1.5">
+                                <label className="text-[11px] font-bold uppercase tracking-wider text-text-secondary px-1">Branch Group</label>
+                                <SearchableSelect
+                                    options={groups}
+                                    value={selectedGroup}
+                                    onChange={(val) => {
+                                        updateFilters({ branch_group: val, branch: '' });
+                                    }}
+                                    placeholder="All Groups"
+                                    isClearable
+                                />
+                            </div>
+
+                            <div className="space-y-1.5">
+                                <label className="text-[11px] font-bold uppercase tracking-wider text-text-secondary px-1">Branch Location</label>
+                                <SearchableSelect
+                                    options={branches}
+                                    value={selectedBranch}
+                                    onChange={(val) => updateFilters({ branch: val })}
+                                    placeholder="All Branches"
+                                    isClearable
+                                />
+                            </div>
+                        </>
+                    )}
+
+                    <div className="space-y-1.5">
+                        <label className="text-[11px] font-bold uppercase tracking-wider text-text-secondary px-1">Date Range</label>
+                        <select
+                            value={quickDate}
+                            onChange={(e) => updateFilters({ quick_date: e.target.value })}
+                            className="w-full bg-slate-50/50 border border-border text-text-primary rounded-xl px-4 py-2.5 text-sm font-medium focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none shadow-sm hover:border-primary/50 transition-all cursor-pointer appearance-none"
+                        >
+                            <option value="">All Time</option>
+                            <option value="today">Today</option>
+                            <option value="yesterday">Yesterday</option>
+                            <option value="last_7_days">Last 7 Days</option>
+                        </select>
                     </div>
 
-                    <select
-                        value={quickDate}
-                        onChange={(e) => setQuickDate(e.target.value)}
-                        className="bg-card border border-border text-text-primary rounded-xl px-4 py-2.5 text-sm font-medium focus:ring-2 focus:ring-primary outline-none min-w-[140px] shadow-sm hover:border-primary transition-colors"
-                    >
-                        <option value="">All Time</option>
-                        <option value="today">Today</option>
-                        <option value="yesterday">Yesterday</option>
-                        <option value="last_7_days">Last 7 Days</option>
-                    </select>
-
-                    <select
-                        value={leadSource}
-                        onChange={(e) => setLeadSource(e.target.value)}
-                        className="bg-card border border-border text-text-primary rounded-xl px-4 py-2.5 text-sm font-medium focus:ring-2 focus:ring-primary outline-none min-w-[140px] shadow-sm hover:border-primary transition-colors"
-                    >
-                        <option value="all">All Leads</option>
-                        <option value="new">New Leads</option>
-                        <option value="followup">Follow up</option>
-                        <option value="closed">Closed</option>
-                    </select>
+                    <div className="space-y-1.5">
+                        <label className="text-[11px] font-bold uppercase tracking-wider text-text-secondary px-1">Lead Type</label>
+                        <select
+                            value={leadSource}
+                            onChange={(e) => updateFilters({ lead_source: e.target.value })}
+                            className="w-full bg-slate-50/50 border border-border text-text-primary rounded-xl px-4 py-2.5 text-sm font-medium focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none shadow-sm hover:border-primary/50 transition-all cursor-pointer appearance-none"
+                        >
+                            <option value="all">All Leads</option>
+                            <option value="new">New Leads</option>
+                            <option value="followup">Follow up</option>
+                            <option value="closed">Closed</option>
+                        </select>
+                    </div>
                 </div>
-
             </div>
 
             {/* STATS GRID */}
@@ -214,7 +261,7 @@ const DashboardHome = () => {
                         title={card.title}
                         value={card.value}
                         icon={<card.icon className={card.color} size={20} />}
-                        className={`${card.bg} text-center flex flex-col items-center justify-center`}
+                        className={`text-center flex flex-col items-center justify-center`}
                     />
 
                 ))}
