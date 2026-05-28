@@ -18,6 +18,7 @@ from .models import Contact
 from .serializers import ContactSerializer
 from .services import ContactService
 from apps.common.permissions import IsSuperAdmin
+from apps.common.utils import get_branch_filter_ids
 from drf_spectacular.utils import extend_schema, OpenApiParameter, inline_serializer
 from rest_framework import serializers
 from django_filters.rest_framework import DjangoFilterBackend
@@ -99,8 +100,15 @@ class ContactViewSet(viewsets.ModelViewSet):
         if user.role in ["super_admin", "admin"]:
             pass  # No additional filter needed
 
-        elif user.role == "spa_manager":
-            if user.branch:
+        elif user.role in ["spa_manager", "area_manager"]:
+            branch_ids = get_branch_filter_ids(user)
+            if user.role == "area_manager" and branch_ids != ["NONE"]:
+                queryset = queryset.filter(
+                    Q(call_logs__branch_id__in=branch_ids) |
+                    Q(created_by=user) |
+                    Q(created_by__branch_id__in=branch_ids)
+                ).distinct()
+            elif user.role == "spa_manager" and user.branch:
                 # Show contacts that have call activity in this branch,
                 # OR were manually created by someone in this branch
                 queryset = queryset.filter(

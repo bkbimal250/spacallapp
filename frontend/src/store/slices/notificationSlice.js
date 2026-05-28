@@ -11,8 +11,15 @@ const notificationSlice = createSlice({
     initialState,
     reducers: {
         addNotification: (state, action) => {
+            const notificationId = action.payload.id || `local-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+            const existingIndex = state.notifications.findIndex(n => n.id === notificationId);
+
+            if (existingIndex !== -1) {
+                state.notifications.splice(existingIndex, 1);
+            }
+
             state.notifications.unshift({
-                id: action.payload.id || Date.now(),
+                id: notificationId,
                 ...action.payload,
                 timestamp: new Date().toISOString(),
                 read: false,
@@ -21,7 +28,7 @@ const notificationSlice = createSlice({
             if (state.notifications.length > 50) {
                 state.notifications = state.notifications.slice(0, 50);
             }
-            state.unreadCount += 1;
+            state.unreadCount = state.notifications.filter(n => !n.read).length;
         },
         markAsRead: (state, action) => {
             const notification = state.notifications.find(n => n.id === action.payload);
@@ -38,7 +45,7 @@ const notificationSlice = createSlice({
             state.onlineUsers = action.payload;
         },
         updateUserStatus: (state, action) => {
-            const { user_id, is_online, last_seen_at } = action.payload;
+            const { user_id, is_online } = action.payload;
             const userIndex = state.onlineUsers.findIndex(u => u.id === user_id);
             if (userIndex !== -1) {
                 if (!is_online) {

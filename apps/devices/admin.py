@@ -1,11 +1,11 @@
 from django.contrib import admin
-from .models import Device
+from .models import Device, Lastsynchistory
 
 @admin.register(Device)
 class DeviceAdmin(admin.ModelAdmin):
-    list_display = ("device_id", "branch", "is_active", "is_blocked", "last_heartbeat", "last_sync")
+    list_display = ("device_id", "android_id", "branch", "is_active", "is_blocked", "last_heartbeat", "last_sync")
     list_filter = ("is_active", "is_blocked", "branch")
-    search_fields = ("device_id", "branch__spa_name", "sim_1_number", "sim_2_number")
+    search_fields = ("device_id", "android_id", "branch__spa_name", "sim_1_number", "sim_2_number")
     ordering = ("-created_at",)
     readonly_fields = ("secret_key", "last_heartbeat", "last_sync", "created_at")
     
@@ -18,3 +18,11 @@ class DeviceAdmin(admin.ModelAdmin):
     @admin.action(description="Unblock selected devices")
     def unblock_devices(self, request, queryset):
         queryset.update(is_blocked=False)
+
+
+@admin.register(Lastsynchistory)
+class LastSyncHistoryAdmin(admin.ModelAdmin):
+    list_display = ("device", "last_sync_time")
+    search_fields = ("device__device_id", "device__android_id", "device__branch__spa_name")
+    readonly_fields = ("device", "last_sync_time")
+    ordering = ("-last_sync_time",)

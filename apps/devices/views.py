@@ -2,39 +2,75 @@
 Views for the Devices app.
 
 Endpoints:
-    GET /devices/                → List devices (filtered by role).
-    POST /devices/               → Create device record (admin/super_admin only).
-    PUT/PATCH /devices/<id>/     → Update device (admin/super_admin only).
-    DELETE /devices/<id>/        → Delete device (super_admin only).
-    POST /devices/claim/         → Android app claims a device using registration token.
+    GET /devices/                -> List devices (filtered by role).
+    POST /devices/               -> Create device record (admin/super_admin only).
+    PUT/PATCH /devices/<id>/     -> Update device (admin/super_admin only).
+    DELETE /devices/<id>/        -> Delete device (super_admin only).
+    POST /devices/claim/         -> Android app claims a device using registration token.
 
 Access Control:
-    super_admin   → Full CRUD on all devices.
-    admin         → Full CRUD on all devices.
-    spa_manager   → Read-only, see only devices in their assigned branch.
+    super_admin -> Full CRUD on all devices.
+    admin       -> Full CRUD on all devices.
+    spa_manager -> Read-only, see only devices in their assigned branch.
 
 Android Flow:
-    1. Admin creates Device → registration_token generated.
+    1. Admin creates Device -> registration_token generated.
     2. Android app calls POST /devices/claim/ with the token.
     3. System verifies token, assigns device_id + secret_key.
-    4. App uses device_id + secret_key for HMAC auth on every sync.
+    4. App uses device_id + secret_key for every sync.
 """
 
+import logging
 import secrets
-from rest_framework import viewsets, permissions, status, decorators
-from rest_framework.decorators import action
-from rest_framework.views import APIView
-from rest_framework.response import Response
-from django.db import models
-from drf_spectacular.utils import extend_schema, OpenApiParameter, inline_serializer
-from rest_framework import serializers
+
+from django.db import IntegrityError, transaction
 from django_filters.rest_framework import DjangoFilterBackend
-from .filters import DeviceFilter
-from .models import Device
-from .serializers import DeviceSerializer, ClaimRegistrationSerializer
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import permissions, serializers, status, viewsets
+from rest_framework.decorators import action
+from rest_framework.response import Response
+from rest_framework.views import APIView
+
 from apps.common.permissions import IsAdminOrSuperAdmin
+from apps.common.utils import apply_branch_filter
 from core.authentication import DeviceAuthentication
 from core.permissions import IsDevice
+from .filters import DeviceFilter
+from .models import Device
+from .serializers import (
+    ClaimRegistrationSerializer,
+    DeviceSerializer,
+    RestoreRegistrationSerializer,
+)
+
+
+logger = logging.getLogger(__name__)
+
+
+def _request_context(request):
+    return {
+        "remote_addr": request.META.get("REMOTE_ADDR"),
+        "user_agent": request.META.get("HTTP_USER_AGENT", "")[:255],
+    }
+
+
+def _registration_payload(device):
+    branch = device.branch
+    return {
+        "status": "success",
+        "device_id": device.device_id,
+        "secret_key": device.secret_key,
+        "branch_name": branch.spa_name if branch else "Unknown Branch",
+        "branch_id": str(branch.id) if branch else None,
+        "branch": {
+            "id": str(branch.id),
+            "spa_name": branch.spa_name,
+            "code": branch.code,
+            "city": branch.city,
+            "state": branch.state,
+            "is_active": branch.is_active,
+        } if branch else None,
+    }
 
 
 class DeviceViewSet(viewsets.ModelViewSet):
@@ -60,27 +96,20 @@ class DeviceViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         """
         Return devices filtered by the user's role:
-            super_admin / admin → All devices.
-            spa_manager         → Only devices in their assigned branch.
+            super_admin / admin -> All devices.
+            spa_manager         -> Only devices in their assigned branch.
         """
         user = self.request.user
-        
-        # Handle schema generation and unauthenticated access
+
         if not user or not user.is_authenticated or getattr(self, "swagger_fake_view", False):
             if getattr(self, "swagger_fake_view", False):
                 return Device.objects.all()
             return Device.objects.none()
-            
+
         queryset = Device.objects.select_related("branch").all().order_by("-created_at")
 
-        # SPA managers can only see devices in their assigned branch
-        if user.role == "spa_manager":
-            if user.branch:
-                queryset = queryset.filter(branch=user.branch)
-            else:
-                queryset = queryset.none()
+        queryset = apply_branch_filter(queryset, "branch_id", user)
 
-        # Filters are now handled by DjangoFilterBackend via DeviceFilter
         return queryset
 
     @extend_schema(
@@ -107,9 +136,10 @@ class DeviceViewSet(viewsets.ModelViewSet):
         Returns aggregate device statistics respecting role-based filters.
         """
         queryset = self.filter_queryset(self.get_queryset())
-        
-        from django.utils import timezone
+
         from datetime import timedelta
+        from django.utils import timezone
+
         five_minutes_ago = timezone.now() - timedelta(minutes=5)
 
         stats = {
@@ -117,19 +147,19 @@ class DeviceViewSet(viewsets.ModelViewSet):
             "registered": queryset.filter(is_registered=True).count(),
             "unregistered": queryset.filter(is_registered=False).count(),
             "online": queryset.filter(
-                last_heartbeat__gte=five_minutes_ago, 
-                is_active=True, 
-                is_blocked=False
+                last_heartbeat__gte=five_minutes_ago,
+                is_active=True,
+                is_blocked=False,
             ).count(),
             "offline": queryset.filter(
-                is_active=True, 
-                is_blocked=False
+                is_active=True,
+                is_blocked=False,
             ).exclude(last_heartbeat__gte=five_minutes_ago).count(),
             "blocked": queryset.filter(is_blocked=True).count(),
             "inactive": queryset.filter(is_active=False).count(),
         }
         return Response(stats)
-    
+
     @extend_schema(
         summary="Regenerate Registration Token",
         description="Invalidates current registration and generates a new token. Use this if a device needs to be re-setup.",
@@ -145,25 +175,23 @@ class DeviceViewSet(viewsets.ModelViewSet):
     def regenerate_token(self, request, pk=None):
         """
         Invalidates current device credentials and generates a new registration token.
-        Allows a device to be 'claimed' again by an Android phone.
+        Allows a device to be claimed again by an Android phone.
         """
         device = self.get_object()
-        
-        # Generate new token
         new_token = secrets.token_hex(6).upper()
-        
-        # Reset registration status
+
         device.registration_token = new_token
         device.is_registered = False
         device.device_id = None
+        device.android_id = None
         device.secret_key = None
-        device.fcm_token = None # Clear FCM token as well
-        
+        device.fcm_token = None
+
         device.save(update_fields=[
-            "registration_token", "is_registered", "device_id", 
+            "registration_token", "is_registered", "device_id", "android_id",
             "secret_key", "fcm_token"
         ])
-        
+
         return Response({
             "status": "success",
             "new_token": new_token
@@ -174,14 +202,8 @@ class ClaimRegistrationView(APIView):
     """
     Android app uses this to claim a pre-registered device.
 
-    Flow:
-        1. Android app sends the registration_token (shown to admin on dashboard).
-        2. System verifies the token exists and is unclaimed (is_registered=False).
-        3. System assigns a unique device_id and a secure secret_key.
-        4. Android app stores device_id + secret_key for use in future sync requests.
-
-    This endpoint is public (no auth required) because the device is not yet registered.
-    Security is ensured by the one-time-use registration_token.
+    android_id is optional for backward compatibility. Existing deployed app
+    versions can continue claiming with only the one-time registration token.
     """
     permission_classes = [permissions.AllowAny]
 
@@ -197,7 +219,19 @@ class ClaimRegistrationView(APIView):
                     "device_id": serializers.CharField(),
                     "secret_key": serializers.CharField(),
                     "branch_name": serializers.CharField(),
-                    "branch_id": serializers.UUIDField(),
+                    "branch_id": serializers.UUIDField(allow_null=True),
+                    "branch": inline_serializer(
+                        name="ClaimRegistrationBranchResponse",
+                        fields={
+                            "id": serializers.UUIDField(),
+                            "spa_name": serializers.CharField(),
+                            "code": serializers.CharField(allow_null=True),
+                            "city": serializers.CharField(allow_null=True),
+                            "state": serializers.CharField(allow_null=True),
+                            "is_active": serializers.BooleanField(),
+                        },
+                        allow_null=True,
+                    ),
                 }
             ),
             404: inline_serializer(
@@ -212,38 +246,172 @@ class ClaimRegistrationView(APIView):
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
         token = serializer.validated_data["token"]
+        android_id = serializer.validated_data.get("android_id")
 
-        # Look up the device by token — must be unclaimed
         try:
-            device = Device.objects.select_related("branch").get(
-                registration_token=token,
-                is_registered=False
-            )
+            with transaction.atomic():
+                device = Device.objects.select_related("branch").select_for_update().get(
+                    registration_token=token,
+                    is_registered=False,
+                )
+
+                if android_id and Device.objects.filter(
+                    android_id=android_id,
+                    is_registered=True,
+                ).exclude(pk=device.pk).exists():
+                    logger.warning(
+                        "Device claim rejected: android_id already registered",
+                        extra={"android_id": android_id, **_request_context(request)},
+                    )
+                    return Response(
+                        {"error": "This Android device is already registered. Use restore-registration."},
+                        status=status.HTTP_409_CONFLICT,
+                    )
+
+                device_id = f"SPA-{secrets.token_hex(3).upper()}-{secrets.token_hex(3).upper()}"
+                while Device.objects.filter(device_id=device_id).exists():
+                    device_id = f"SPA-{secrets.token_hex(3).upper()}-{secrets.token_hex(3).upper()}"
+
+                device.device_id = device_id
+                device.secret_key = secrets.token_hex(32)
+                device.android_id = android_id or device.android_id
+                device.is_registered = True
+                device.registration_token = None
+
+                update_fields = ["device_id", "secret_key", "is_registered", "registration_token"]
+                if android_id:
+                    update_fields.append("android_id")
+                device.save(update_fields=update_fields)
         except Device.DoesNotExist:
+            logger.warning(
+                "Device claim failed: invalid or already used registration token",
+                extra={"token_present": bool(token), **_request_context(request)},
+            )
             return Response(
                 {"error": "Invalid or already used registration token."},
-                status=status.HTTP_404_NOT_FOUND
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        except IntegrityError:
+            logger.exception(
+                "Device claim failed: credential or android_id uniqueness conflict",
+                extra={"android_id": android_id, **_request_context(request)},
+            )
+            return Response(
+                {"error": "Registration could not be completed. Please retry."},
+                status=status.HTTP_409_CONFLICT,
             )
 
-        # Generate unique device credentials
-        # device_id format: SPA-<6chars>-<6chars> (e.g. SPA-A1B2C3-D4E5F6)
-        device_id = f"SPA-{secrets.token_hex(3).upper()}-{secrets.token_hex(3).upper()}"
-        secret_key = secrets.token_hex(32)  # 64-character hex secret for HMAC signing
+        logger.info(
+            "Device claim succeeded",
+            extra={"device_id": device.device_id, "android_id": android_id, **_request_context(request)},
+        )
+        return Response(_registration_payload(device), status=status.HTTP_200_OK)
 
-        # Update device with credentials and mark as registered
-        device.device_id = device_id
-        device.secret_key = secret_key
-        device.is_registered = True
-        device.registration_token = None  # Invalidate token after use
-        device.save(update_fields=["device_id", "secret_key", "is_registered", "registration_token"])
 
-        return Response({
-            "status": "success",
-            "device_id": device_id,
-            "secret_key": secret_key,
-            "branch_name": device.branch.spa_name if device.branch else "Unknown Branch",
-            "branch_id": str(device.branch.id) if device.branch else None,
-        }, status=status.HTTP_200_OK)
+class RestoreRegistrationView(APIView):
+    """
+    Restore credentials for an already registered Android device.
+
+    This self-healing path only returns existing credentials. It never creates a
+    Device and does not alter the X-Device-ID/X-Device-Secret auth flow used by
+    sync, heartbeat, and FCM endpoints.
+    """
+    permission_classes = [permissions.AllowAny]
+
+    @extend_schema(
+        summary="Restore existing device registration",
+        description="Returns existing credentials for a registered device identified by android_id. Never creates devices.",
+        request=RestoreRegistrationSerializer,
+        responses={
+            200: inline_serializer(
+                name="RestoreRegistrationResponse",
+                fields={
+                    "status": serializers.CharField(),
+                    "device_id": serializers.CharField(),
+                    "secret_key": serializers.CharField(),
+                    "branch_name": serializers.CharField(),
+                    "branch_id": serializers.UUIDField(allow_null=True),
+                    "branch": inline_serializer(
+                        name="RestoreRegistrationBranchResponse",
+                        fields={
+                            "id": serializers.UUIDField(),
+                            "spa_name": serializers.CharField(),
+                            "code": serializers.CharField(allow_null=True),
+                            "city": serializers.CharField(allow_null=True),
+                            "state": serializers.CharField(allow_null=True),
+                            "is_active": serializers.BooleanField(),
+                        },
+                        allow_null=True,
+                    ),
+                }
+            ),
+            403: inline_serializer(
+                name="RestoreForbiddenResponse",
+                fields={"error": serializers.CharField()}
+            ),
+            404: inline_serializer(
+                name="RestoreNotFoundResponse",
+                fields={"error": serializers.CharField()}
+            ),
+        }
+    )
+    def post(self, request):
+        serializer = RestoreRegistrationSerializer(data=request.data)
+        if not serializer.is_valid():
+            logger.warning(
+                "Device restore failed: invalid request payload",
+                extra=_request_context(request),
+            )
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        android_id = serializer.validated_data["android_id"]
+
+        try:
+            device = Device.objects.select_related("branch").get(
+                android_id=android_id,
+                is_registered=True,
+            )
+        except Device.DoesNotExist:
+            logger.warning(
+                "Device restore failed: android_id not registered",
+                extra={"android_id": android_id, **_request_context(request)},
+            )
+            return Response(
+                {"error": "No registered device found for this android_id."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        if not device.device_id or not device.secret_key:
+            logger.error(
+                "Device restore failed: registered device missing credentials",
+                extra={"device_pk": str(device.pk), "android_id": android_id, **_request_context(request)},
+            )
+            return Response(
+                {"error": "Device registration is incomplete. Please contact support."},
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        if not device.is_active or device.is_blocked:
+            logger.warning(
+                "Device restore rejected: device inactive or blocked",
+                extra={
+                    "device_id": device.device_id,
+                    "android_id": android_id,
+                    "is_active": device.is_active,
+                    "is_blocked": device.is_blocked,
+                    **_request_context(request),
+                },
+            )
+            return Response(
+                {"error": "Device is not allowed to restore registration."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        logger.info(
+            "Device restore succeeded",
+            extra={"device_id": device.device_id, "android_id": android_id, **_request_context(request)},
+        )
+        return Response(_registration_payload(device), status=status.HTTP_200_OK)
 
 
 class UpdateFCMTokenView(APIView):
@@ -276,7 +444,7 @@ class UpdateFCMTokenView(APIView):
         if not token:
             return Response({"error": "fcm_token is required"}, status=status.HTTP_400_BAD_REQUEST)
 
-        device = request.user  # The authenticated Device object
+        device = request.user
         device.fcm_token = token
         device.save(update_fields=["fcm_token"])
 

@@ -36,6 +36,7 @@ from .filters import LeadFilter
 from apps.calllogs.models import CallLog
 from apps.contacts.models import Contact
 from apps.common.permissions import IsSuperAdmin
+from apps.common.utils import apply_branch_filter
 from core.authentication import DeviceAuthentication
 from core.permissions import IsDevice
 
@@ -104,8 +105,10 @@ class LeadManagementViewSet(viewsets.ModelViewSet):
             qs = qs.select_related("created_by", "updated_by")
 
         # SPA manager: strict filter to their single assigned branch
-        if user.is_authenticated and hasattr(user, 'role') and user.role == "spa_manager":
-            if user.branch:
+        if user.is_authenticated and hasattr(user, 'role') and user.role in ["spa_manager", "area_manager"]:
+            if user.role == "area_manager":
+                qs = apply_branch_filter(qs, "branch_id", user)
+            elif user.branch:
                 qs = qs.filter(branch=user.branch)
             else:
                 # No branch assigned → return nothing (prevent data leak)

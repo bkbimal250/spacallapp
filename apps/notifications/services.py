@@ -55,7 +55,17 @@ class NotificationService:
         """Broadcast notification to the dashboard group for real-time updates."""
         try:
             channel_layer = get_channel_layer()
-            branch_id = str(notification_log.device.branch_id) if notification_log.device and notification_log.device.branch_id else None
+            branch_id = None
+            if notification_log.device and notification_log.device.branch_id:
+                branch_id = str(notification_log.device.branch_id)
+            elif notification_log.user and notification_log.user.branch_id:
+                branch_id = str(notification_log.user.branch_id)
+
+            recipient_name = "N/A"
+            if notification_log.device:
+                recipient_name = notification_log.device.phone_name or notification_log.device.device_id
+            elif notification_log.user:
+                recipient_name = notification_log.user.full_name or notification_log.user.email
             
             groups = ["crm_dashboard"]
             if branch_id:
@@ -70,8 +80,10 @@ class NotificationService:
                         "title": notification_log.title,
                         "body": notification_log.body,
                         "notification_type": notification_log.notification_type,
-                        "device_name": notification_log.device.device_name if notification_log.device else "N/A",
-                        "branch_name": notification_log.device.branch.spa_name if notification_log.device and notification_log.device.branch else "N/A",
+                        "device_name": notification_log.device.device_id if notification_log.device else "N/A",
+                        "recipient_name": recipient_name,
+                        "recipient_type": "device" if notification_log.device_id else "user" if notification_log.user_id else "unknown",
+                        "branch_name": notification_log.device.branch.spa_name if notification_log.device and notification_log.device.branch else notification_log.user.branch.spa_name if notification_log.user and notification_log.user.branch else "N/A",
                         "created_at": notification_log.created_at.isoformat(),
                         "is_sent": notification_log.is_sent
                     }
@@ -105,6 +117,7 @@ class NotificationService:
         User = get_user_model()
 
         is_device = isinstance(recipient, Device)
+        is_user = isinstance(recipient, User)
         
         # Create the local log record (Note: existing Notification model requires Device)
         # For now, if it's a User, we might need to adjust or skip local logging if we don't have a device reference.
@@ -119,6 +132,15 @@ class NotificationService:
                 body=body,
                 notification_type=notification_type
             )
+        elif is_user:
+            notif_log = Notification.objects.create(
+                user=recipient,
+                title=title,
+                body=body,
+                notification_type=notification_type
+            )
+
+        NotificationService._initialize_firebase()
 
         token = recipient.fcm_token
         if not token:
@@ -179,4 +201,3 @@ class NotificationService:
                 notif_log.save()
                 NotificationService._broadcast_notification(notif_log)
             return False
-

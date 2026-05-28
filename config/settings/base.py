@@ -238,6 +238,26 @@ EMAIL_HOST_USER = env("EMAIL_HOST_USER", default="")
 EMAIL_HOST_PASSWORD = env("EMAIL_HOST_PASSWORD", default="")
 DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="CallLog System <noreply@calllogsystem.com>")
 
+# Hilite Multimedia SMS gateway for phone OTP login.
+SMS_API_URL = env("SMS_API_URL", default="")
+SMS_USERNAME = env("SMS_USERNAME", default="")
+SMS_API_KEY = env("SMS_API_KEY", default="")
+SMS_API_REQUEST = env("SMS_API_REQUEST", default="Text")
+SMS_ROUTE = env("SMS_ROUTE", default="ServiceImplicit")
+SMS_SENDER_ID = env("SMS_SENDER_ID", default="")
+SMS_TEMPLATE_ID = env("SMS_TEMPLATE_ID", default="")
+SMS_MOBILE_COUNTRY_CODE = env("SMS_MOBILE_COUNTRY_CODE", default="")
+SMS_VERIFY_SSL = env.bool("SMS_VERIFY_SSL", default=True)
+SKIP_SMS = env.bool("SKIP_SMS", default=False)
+SMS_OTP_MESSAGE_TEMPLATE = env(
+    "SMS_OTP_MESSAGE_TEMPLATE",
+    default="Dear Customer, your Code for login to Spa Advisor is {otp}. This Code is valid for 5 minutes. Do not share this OTP with anyone. Thank You",
+)
+
+# Dotted path to the approved SMS sender used for phone OTP login.
+# Example signature: sender(phone_number=..., otp=..., user=...)
+PHONE_OTP_SENDER = env("PHONE_OTP_SENDER", default="apps.accounts.services.sms_sender.send_phone_otp")
+
 # Celery Configuration
 CELERY_BROKER_URL = env("CELERY_BROKER_URL", default="redis://localhost:6379/0")
 CELERY_RESULT_BACKEND = env("CELERY_RESULT_BACKEND", default="redis://localhost:6379/1")

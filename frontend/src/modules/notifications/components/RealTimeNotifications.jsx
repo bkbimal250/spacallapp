@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import { useWebSocket } from '../../../shared/hooks/useWebSocket';
 import { markAsRead } from '../../../store/slices/notificationSlice';
@@ -7,25 +7,24 @@ import { Bell, X, UserCheck } from 'lucide-react';
 const RealTimeNotifications = () => {
     const notifications = useSelector((state) => state.notifications.notifications);
     const dispatch = useDispatch();
-    const [visibleToasts, setVisibleToasts] = useState([]);
+    const visibleToasts = useMemo(
+        () => notifications.filter(n => !n.read).slice(0, 3),
+        [notifications]
+    );
 
     // Initialize the shared WebSocket connection
     useWebSocket('/ws/crm/dashboard/');
 
     useEffect(() => {
-        // Only show top 3 most recent notifications as toasts
-        const newToasts = notifications.filter(n => !n.read).slice(0, 3);
-        setVisibleToasts(newToasts);
-
         // Auto hide after 5 seconds
-        const timers = newToasts.map(toast => 
+        const timers = visibleToasts.map(toast =>
             setTimeout(() => {
                 dispatch(markAsRead(toast.id));
             }, 5000)
         );
 
         return () => timers.forEach(clearTimeout);
-    }, [notifications, dispatch]);
+    }, [visibleToasts, dispatch]);
 
     const handleDismiss = (id) => {
         dispatch(markAsRead(id));

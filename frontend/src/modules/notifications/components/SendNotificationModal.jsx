@@ -1,10 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { X, Send, Smartphone, Bell, AlertTriangle, ShieldAlert } from 'lucide-react';
+import { X, Send, Smartphone, Bell, AlertTriangle, ShieldAlert, UserRound, Search } from 'lucide-react';
 import { devicesAPI } from '../../devices/api';
+import { usersAPI } from '../../users/api';
 
 const SendNotificationModal = ({ isOpen, onClose, onSend }) => {
     const [devices, setDevices] = useState([]);
+    const [users, setUsers] = useState([]);
+    const [targetType, setTargetType] = useState('devices');
     const [selectedDevices, setSelectedDevices] = useState([]);
+    const [selectedUsers, setSelectedUsers] = useState([]);
+    const [targetSearch, setTargetSearch] = useState('');
     const [title, setTitle] = useState('');
     const [body, setBody] = useState('');
     const [type, setType] = useState('system');
@@ -12,13 +17,16 @@ const SendNotificationModal = ({ isOpen, onClose, onSend }) => {
     const [fetchingDevices, setFetchingDevices] = useState(false);
 
     useEffect(() => {
-        if (isOpen) fetchDevices();
+        if (isOpen) {
+            fetchDevices();
+            fetchUsers();
+        }
     }, [isOpen]);
 
     const fetchDevices = async () => {
         setFetchingDevices(true);
         try {
-            const res = await devicesAPI.getAll({ is_active: true });
+            const res = await devicesAPI.getDevices({ is_active: true, page_size: 400 });
             setDevices(res.data.results || res.data || []);
         } catch (err) {
             console.error(err);
@@ -27,16 +35,27 @@ const SendNotificationModal = ({ isOpen, onClose, onSend }) => {
         }
     };
 
+    const fetchUsers = async () => {
+        try {
+            const res = await usersAPI.getUsers({ is_active: true, page_size: 400 });
+            setUsers(res.data.results || res.data || []);
+        } catch (err) {
+            console.error(err);
+        }
+    };
+
     const handleSubmit = async (e) => {
         e.preventDefault();
         
-        // Filter out empty strings which represent "All" but shouldn't be sent as individual IDs
         const deviceIds = selectedDevices.filter(id => id !== '');
+        const userIds = selectedUsers.filter(id => id !== '');
         
         setLoading(true);
         try {
             await onSend({
+                target_type: targetType,
                 device_ids: deviceIds,
+                user_ids: userIds,
                 title,
                 body,
                 type
@@ -44,6 +63,7 @@ const SendNotificationModal = ({ isOpen, onClose, onSend }) => {
             setTitle('');
             setBody('');
             setSelectedDevices([]);
+            setSelectedUsers([]);
             onClose();
         } catch (err) {
             console.error('Failed to send notification:', err);
@@ -51,6 +71,32 @@ const SendNotificationModal = ({ isOpen, onClose, onSend }) => {
         } finally {
             setLoading(false);
         }
+    };
+
+    const getDeviceLabel = (device) => {
+        const phone = device.sim_1_number || device.sim_2_number || 'No SIM';
+        return `${device.phone_name || device.device_id} - ${phone} (${device.branch_name})`;
+    };
+
+    const getUserLabel = (user) => (
+        `${user.full_name || user.email} - ${user.phone_number || 'No phone'} (${user.role?.replace('_', ' ')})`
+    );
+
+    const filteredDevices = devices.filter((device) =>
+        getDeviceLabel(device).toLowerCase().includes(targetSearch.toLowerCase())
+    );
+
+    const filteredUsers = users.filter((user) =>
+        getUserLabel(user).toLowerCase().includes(targetSearch.toLowerCase())
+    );
+
+    const toggleSelection = (id, selectedValues, setSelectedValues) => {
+        setSelectedValues((prev) => {
+            const current = prev.length === 0 ? [] : selectedValues;
+            return current.includes(id)
+                ? current.filter(value => value !== id)
+                : [...current, id];
+        });
     };
 
     if (!isOpen) return null;
@@ -117,35 +163,116 @@ const SendNotificationModal = ({ isOpen, onClose, onSend }) => {
 
                     </div>
 
+                    <div className="grid grid-cols-2 gap-3">
+                        {[
+                            { id: 'devices', icon: Smartphone, label: 'Device Phones' },
+                            { id: 'users', icon: UserRound, label: 'User Phones' }
+                        ].map(target => (
+                            <button
+                                key={target.id}
+                                type="button"
+                                onClick={() => {
+                                    setTargetType(target.id);
+                                    setSelectedDevices([]);
+                                    setSelectedUsers([]);
+                                    setTargetSearch('');
+                                }}
+                                className={`flex items-center justify-center gap-2 p-3 rounded-lg border transition ${targetType === target.id
+                                        ? 'border-primary bg-primary/10 text-primary'
+                                        : 'border-border bg-background text-text-secondary hover:bg-cardHover'
+                                    }`}
+                            >
+                                <target.icon size={16} />
+                                <span className="text-xs font-medium">{target.label}</span>
+                            </button>
+                        ))}
+                    </div>
+
                     <div className="space-y-1">
 
                         <label className="text-xs text-text-secondary">
-                            Target Devices
+                            {targetType === 'devices' ? 'Target Device Phones' : 'Target User Phones'}
                         </label>
 
-                        <select
-                            multiple
-                            className="w-full bg-background border border-border rounded-lg p-3 text-sm min-h-[100px]"
-                            value={selectedDevices}
-                            onChange={(e) =>
-                                setSelectedDevices(
-                                    Array.from(e.target.selectedOptions, option => option.value)
-                                )
-                            }
-                        >
+                        <div className="relative">
+                            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
+                            <input
+                                type="search"
+                                value={targetSearch}
+                                onChange={(e) => setTargetSearch(e.target.value)}
+                                placeholder={targetType === 'devices' ? 'Search device, phone, or branch...' : 'Search user, phone, email, or role...'}
+                                className="w-full bg-background border border-border rounded-lg py-2.5 pl-9 pr-3 text-sm outline-none focus:border-primary"
+                            />
+                        </div>
 
-                            <option value="">All Active Devices</option>
+                        <div className="border border-border rounded-lg bg-background overflow-hidden">
+                            <label className="flex items-center gap-3 px-3 py-2.5 border-b border-border cursor-pointer hover:bg-cardHover">
+                                <input
+                                    type="checkbox"
+                                    checked={targetType === 'devices' ? selectedDevices.length === 0 : selectedUsers.length === 0}
+                                    onChange={() => {
+                                        setSelectedDevices([]);
+                                        setSelectedUsers([]);
+                                    }}
+                                    className="h-4 w-4 accent-primary"
+                                />
+                                <span className="text-sm font-medium text-text-primary">
+                                    {targetType === 'devices' ? 'All Active Device Phones' : 'All Users With App Tokens'}
+                                </span>
+                            </label>
 
-                            {devices.map(d => (
-                                <option key={d.id} value={d.id}>
-                                    {d.device_id} ({d.branch_name})
-                                </option>
-                            ))}
-
-                        </select>
+                            <div className="max-h-44 overflow-y-auto divide-y divide-border">
+                                {targetType === 'devices' ? (
+                                    filteredDevices.length > 0 ? filteredDevices.map(device => (
+                                        <label
+                                            key={device.id}
+                                            className="flex items-start gap-3 px-3 py-2.5 cursor-pointer hover:bg-cardHover"
+                                        >
+                                            <input
+                                                type="checkbox"
+                                                checked={selectedDevices.includes(device.id)}
+                                                onChange={() => toggleSelection(device.id, selectedDevices, setSelectedDevices)}
+                                                className="mt-0.5 h-4 w-4 accent-primary"
+                                            />
+                                            <span className="text-sm text-text-secondary">
+                                                {getDeviceLabel(device)}
+                                            </span>
+                                        </label>
+                                    )) : (
+                                        <div className="px-3 py-6 text-center text-sm text-text-muted">
+                                            No device phones found.
+                                        </div>
+                                    )
+                                ) : (
+                                    filteredUsers.length > 0 ? filteredUsers.map(user => (
+                                        <label
+                                            key={user.id}
+                                            className="flex items-start gap-3 px-3 py-2.5 cursor-pointer hover:bg-cardHover"
+                                        >
+                                            <input
+                                                type="checkbox"
+                                                checked={selectedUsers.includes(user.id)}
+                                                onChange={() => toggleSelection(user.id, selectedUsers, setSelectedUsers)}
+                                                className="mt-0.5 h-4 w-4 accent-primary"
+                                            />
+                                            <span className="text-sm text-text-secondary">
+                                                {getUserLabel(user)}
+                                            </span>
+                                        </label>
+                                    )) : (
+                                        <div className="px-3 py-6 text-center text-sm text-text-muted">
+                                            No user phones found.
+                                        </div>
+                                    )
+                                )}
+                            </div>
+                        </div>
 
                         <p className="text-xs text-text-secondary">
-                            Leave empty to send to all devices
+                            {(targetType === 'devices' ? selectedDevices.length : selectedUsers.length) === 0
+                                ? 'All matching phones will receive this notification.'
+                                : `${targetType === 'devices' ? selectedDevices.length : selectedUsers.length} phone(s) selected.`}
+                            {fetchingDevices ? ' Loading phones...' : ''}
                         </p>
 
                     </div>

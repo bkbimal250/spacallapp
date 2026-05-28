@@ -16,7 +16,7 @@ class CRMConsumer(AsyncWebsocketConsumer):
 
         # 2. Authorization Check (Role-based)
         user_role = getattr(self.user, "role", None)
-        allowed_roles = ["admin", "super_admin", "spa_manager"]
+        allowed_roles = ["admin", "super_admin", "area_manager", "spa_manager"]
         
         if user_role not in allowed_roles:
             print(f"❌ WebSocket Reject: Invalid Role ({user_role})")
@@ -27,6 +27,8 @@ class CRMConsumer(AsyncWebsocketConsumer):
         # 3. Successful Connection
         if user_role in ["admin", "super_admin"]:
             self.group_name = "crm_dashboard"
+        elif user_role == "area_manager":
+            self.group_name = f"area_manager_{self.user.id}"
         else:
             # For spa_manager, scope to their branch
             branch_id = str(self.user.branch_id) if self.user.branch_id else "unknown"

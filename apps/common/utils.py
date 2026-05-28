@@ -14,7 +14,8 @@ def get_branch_filter_ids(user):
     Rules:
         super_admin  → None (empty list) means "see everything, no filter"
         admin        → None (empty list) means "see everything, no filter"
-        spa_manager → [user.branch.id] if branch is assigned, else ['NONE']
+        area_manager → assigned area_branches, else ['NONE']
+        spa_manager  → [user.branch.id] if branch is assigned, else ['NONE']
 
     Returns:
         list[str] : Branch IDs to filter by.
@@ -33,6 +34,12 @@ def get_branch_filter_ids(user):
             # SPA manager with no assigned branch → should see nothing
             # Return a placeholder that won't match any real branch
             return ["NONE"]
+
+    if user.role == "area_manager":
+        branch_ids = list(user.area_branches.values_list("id", flat=True))
+        if branch_ids:
+            return [str(branch_id) for branch_id in branch_ids]
+        return ["NONE"]
 
     # Future-proof: any other role sees nothing
     return ["NONE"]

@@ -30,6 +30,8 @@ from .serializers import (
     LoginSerializer,
     OTPRequestSerializer,
     OTPVerifySerializer,
+    PhoneOTPRequestSerializer,
+    PhoneOTPVerifySerializer,
     UserSerializer,
     UserLoginHistorySerializer,
 )
@@ -118,6 +120,7 @@ class LoginView(APIView):
             "message": "Login successful",
             "refresh": str(refresh),
             "access": str(refresh.access_token),
+            "user": UserSerializer(user, context={"request": request}).data,
         })
 
 
@@ -219,6 +222,7 @@ class VerifyOTPView(APIView):
                 "message": "Login successful",
                 "refresh": str(refresh),
                 "access": str(refresh.access_token),
+                "user": UserSerializer(user, context={"request": request}).data,
             })
         except ValueError as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
@@ -227,6 +231,107 @@ class VerifyOTPView(APIView):
 
 
 # ─── User Management Views ────────────────────────────────────────────────────
+
+class RequestPhoneOTPView(APIView):
+    """
+    Request an OTP to be sent to the user's registered phone number.
+
+    This is additive and does not affect email/password or email OTP login.
+    """
+    permission_classes = [AllowAny]
+    serializer_class = PhoneOTPRequestSerializer
+
+    @extend_schema(
+        request=PhoneOTPRequestSerializer,
+        responses={
+            200: inline_serializer(
+                name="PhoneOTPRequestSuccess",
+                fields={"message": serializers.CharField()},
+            ),
+            400: inline_serializer(
+                name="PhoneOTPRequestError",
+                fields={"error": serializers.CharField()},
+            ),
+        },
+        description="Sends a one-time password (OTP) to the registered phone number if the user exists."
+    )
+    def post(self, request):
+        serializer = PhoneOTPRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        try:
+            AuthService.send_phone_otp(serializer.validated_data["phone_number"])
+            return Response({"message": "OTP sent to your phone number."})
+        except ValueError as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            return Response({"error": f"Failed to send OTP: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class VerifyPhoneOTPView(APIView):
+    """
+    Verify the phone OTP and return JWT tokens if valid.
+    """
+    permission_classes = [AllowAny]
+    serializer_class = PhoneOTPVerifySerializer
+
+    @extend_schema(
+        request=PhoneOTPVerifySerializer,
+        responses={
+            200: inline_serializer(
+                name="PhoneOTPVerifyResponse",
+                fields={
+                    "message": serializers.CharField(),
+                    "refresh": serializers.CharField(),
+                    "access": serializers.CharField(),
+                },
+            ),
+            400: inline_serializer(
+                name="PhoneOTPVerifyError",
+                fields={"error": serializers.CharField()},
+            ),
+        },
+        description="Verifies the OTP sent to the phone number and returns JWT tokens if valid."
+    )
+    def post(self, request):
+        serializer = PhoneOTPVerifySerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        try:
+            user = AuthService.verify_phone_otp(
+                serializer.validated_data["phone_number"],
+                serializer.validated_data["otp"],
+            )
+
+            client = serializer.validated_data.get("client", "web")
+            AuthService.validate_user_access(user, client)
+
+            user.last_login_at = timezone.now()
+            user.last_seen_at = timezone.now()
+            user.is_online = True
+            user.save(update_fields=["last_login_at", "last_seen_at", "is_online"])
+
+            RealTimeService.broadcast_user_login(user)
+
+            UserLoginHistory.objects.create(
+                user=user,
+                ip_address=request.META.get("REMOTE_ADDR"),
+                user_agent=request.META.get("HTTP_USER_AGENT"),
+            )
+
+            refresh = RefreshToken.for_user(user)
+
+            return Response({
+                "message": "Login successful",
+                "refresh": str(refresh),
+                "access": str(refresh.access_token),
+                "user": UserSerializer(user, context={"request": request}).data,
+            })
+        except ValueError as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            return Response({"error": str(e)}, status=status.HTTP_401_UNAUTHORIZED)
+
 
 class UserViewSet(viewsets.ModelViewSet):
     """
@@ -252,7 +357,7 @@ class UserViewSet(viewsets.ModelViewSet):
         summary="List Users",
         description="List all users with search and filtering for roles and branches.",
         parameters=[
-            OpenApiParameter("search", type=str, description="Search by name or email"),
+            OpenApiParameter("search", type=str, description="Search by name, email, or phone"),
             OpenApiParameter("role", type=str, description="Filter by user role"),
             OpenApiParameter("branch", type=str, description="Filter by branch UUID"),
             OpenApiParameter("is_active", type=bool, description="Filter by active status"),
@@ -286,13 +391,14 @@ class UserViewSet(viewsets.ModelViewSet):
         Return all users for admin/super_admin.
         Apply optional search filters.
         """
-        queryset = User.objects.select_related("branch").all().order_by("-created_at")
+        queryset = User.objects.select_related("branch").prefetch_related("area_branches").all().order_by("-created_at")
 
-        # Search by email or full name
+        # Search by email, phone, or full name
         search = self.request.query_params.get("search", None)
         if search:
             queryset = queryset.filter(
                 models.Q(email__icontains=search) |
+                models.Q(phone_number__icontains=search) |
                 models.Q(full_name__icontains=search)
             )
 

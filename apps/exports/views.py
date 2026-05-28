@@ -8,11 +8,18 @@ from django.utils import timezone
 import openpyxl
 from openpyxl.styles import Font
 import io
+from apps.common.utils import apply_branch_filter
 
 class ExportViewSet(viewsets.ModelViewSet):
-    queryset = ExportJob.objects.all().order_by('-created_at')
     serializer_class = ExportJobSerializer
     permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        queryset = ExportJob.objects.all().order_by('-created_at')
+        user = self.request.user
+        if getattr(user, "role", None) in ["area_manager", "spa_manager"]:
+            return queryset.filter(user=user)
+        return queryset
 
     @extend_schema(summary="List Export Jobs")
     def list(self, request, *args, **kwargs):
@@ -66,6 +73,7 @@ class GenerateExportView(views.APIView):
             if export_type == 'call_logs':
                 # Generate Excel synchronously for now as requested
                 queryset = CallLog.objects.all().select_related('branch', 'device').order_by('-call_time')
+                queryset = apply_branch_filter(queryset, "branch_id", request.user)
                 
                 # Apply filters
                 branch = request.data.get('branch')
@@ -141,12 +149,16 @@ class DownloadExportView(views.APIView):
     )
     def get(self, request, pk):
         try:
-            job = ExportJob.objects.get(pk=pk)
+            job_qs = ExportJob.objects.all()
+            if getattr(request.user, "role", None) in ["area_manager", "spa_manager"]:
+                job_qs = job_qs.filter(user=request.user)
+            job = job_qs.get(pk=pk)
             if job.status != 'completed':
                 return response.Response({"error": "Export not ready"}, status=status.HTTP_400_BAD_REQUEST)
             
             # Re-generate the file for download (simplified version to avoid storage issues)
             queryset = CallLog.objects.all().select_related('branch', 'device').order_by('-call_time')
+            queryset = apply_branch_filter(queryset, "branch_id", request.user)
             
             # Re-apply filters from stored data
             try:

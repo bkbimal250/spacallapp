@@ -17,14 +17,14 @@ class UserAdmin(BaseUserAdmin):
     Custom admin view for the User model.
     Shows role, branch, and active status clearly.
     """
-    list_display = ("email", "full_name", "role", "branch", "is_active", "created_at")
+    list_display = ("email", "phone_number", "full_name", "role", "branch", "is_active", "created_at")
     list_filter = ("role", "is_active", "branch")
-    search_fields = ("email", "full_name", "branch__spa_name")
+    search_fields = ("email", "phone_number", "full_name", "branch__spa_name")
     ordering = ("-created_at",)
 
     fieldsets = (
-        (None, {"fields": ("email", "password")}),
-        ("Personal Info", {"fields": ("full_name", "branch")}),
+        (None, {"fields": ("email", "phone_number", "password")}),
+        ("Personal Info", {"fields": ("full_name", "branch", "area_branches")}),
         ("Permissions", {"fields": ("role", "is_active", "is_staff", "is_superuser")}),
         ("Important dates", {"fields": ("last_login", "created_at")}),
     )
@@ -33,7 +33,7 @@ class UserAdmin(BaseUserAdmin):
     add_fieldsets = (
         (None, {
             "classes": ("wide",),
-            "fields": ("email", "full_name", "password1", "password2", "role", "branch"),
+            "fields": ("email", "phone_number", "full_name", "password1", "password2", "role", "branch", "area_branches"),
         }),
     )
 

@@ -1,5 +1,5 @@
 from django.utils import timezone
-from .models import Device
+from .models import Device, Lastsynchistory
 
 
 class DeviceService:
@@ -17,6 +17,11 @@ class DeviceService:
     def update_sync_time(device):
         device.last_sync = timezone.now()
         device.save(update_fields=["last_sync"])
+        Lastsynchistory.objects.update_or_create(
+            device=device,
+            defaults={"last_sync_time": device.last_sync},
+        )
+        return device.last_sync
 
     @staticmethod
     def block_device(device):

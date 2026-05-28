@@ -15,9 +15,19 @@ class Notification(BaseModel, TimeStampedModel):
 
     device = models.ForeignKey(
         'devices.Device',
-        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
         related_name='notifications',
         help_text="The device this notification was sent to."
+    )
+    user = models.ForeignKey(
+        'accounts.User',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='notifications',
+        help_text="The user this notification was sent to."
     )
     title = models.CharField(max_length=255)
     body = models.TextField()
@@ -39,4 +49,5 @@ class Notification(BaseModel, TimeStampedModel):
         verbose_name_plural = "Notifications"
 
     def __str__(self):
-        return f"{self.title} - {self.device.device_id}"
+        recipient = self.device or self.user or "Global"
+        return f"{self.title} - {recipient}"

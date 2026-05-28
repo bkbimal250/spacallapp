@@ -4,9 +4,16 @@ from .models import Notification
 
 class NotificationFilter(BaseDateFilter):
     type = filters.CharFilter(field_name='notification_type')
-    branch = filters.UUIDFilter(field_name='device__branch_id')
+    branch = filters.UUIDFilter(method='filter_branch')
 
     class Meta:
         model = Notification
         fields = ['type', 'branch']
         date_field = 'created_at'
+
+    def filter_branch(self, queryset, name, value):
+        return queryset.filter(
+            device__branch_id=value
+        ) | queryset.filter(
+            user__branch_id=value
+        )

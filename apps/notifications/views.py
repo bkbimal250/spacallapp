@@ -8,6 +8,8 @@ from .models import Notification
 from .serializers import NotificationSerializer
 from .services import NotificationService
 from apps.devices.models import Device
+from apps.accounts.models.user import User
+from apps.common.utils import apply_branch_filter
 
 from core.permissions import IsAdmin
 
@@ -24,6 +26,8 @@ class AdminSendNotificationView(views.APIView):
             name="SendNotificationRequest",
             fields={
                 "device_ids": serializers.ListField(child=serializers.UUIDField(), required=False),
+                "user_ids": serializers.ListField(child=serializers.UUIDField(), required=False),
+                "target_type": serializers.CharField(default="devices"),
                 "title": serializers.CharField(),
                 "body": serializers.CharField(),
                 "type": serializers.CharField(default="system"),
@@ -40,6 +44,8 @@ class AdminSendNotificationView(views.APIView):
     )
     def post(self, request):
         device_ids = request.data.get("device_ids", [])
+        user_ids = request.data.get("user_ids", [])
+        target_type = request.data.get("target_type", "devices")
         title = request.data.get("title")
         body = request.data.get("body")
         notif_type = request.data.get("type", "system")
@@ -52,8 +58,14 @@ class AdminSendNotificationView(views.APIView):
         devices = Device.objects.filter(is_active=True, is_deleted=False)
 
         # Respect user branch scope
-        if user.role == 'spa_manager':
-            devices = devices.filter(branch=request.user.branch)
+        devices = apply_branch_filter(devices, "branch_id", user)
+        users = User.objects.filter(is_active=True).exclude(fcm_token__isnull=True).exclude(fcm_token="")
+        users = apply_branch_filter(users, "branch_id", user)
+
+        if target_type == "users":
+            devices = devices.none()
+        elif target_type == "devices":
+            users = users.none()
 
         # Handle specific targets if provided
         if device_ids:
@@ -77,11 +89,33 @@ class AdminSendNotificationView(views.APIView):
                 # If IDs were provided but none were valid, we return empty to be safe
                 devices = devices.none()
 
+        if user_ids:
+            from uuid import UUID
+            valid_user_uuids = []
+            for u_id in user_ids:
+                if not u_id:
+                    continue
+                try:
+                    UUID(str(u_id))
+                    valid_user_uuids.append(u_id)
+                except (ValueError, TypeError):
+                    continue
+
+            if valid_user_uuids:
+                users = users.filter(id__in=valid_user_uuids)
+            elif any(u_id == "" for u_id in user_ids):
+                pass
+            else:
+                users = users.none()
+
         success_count = 0
-        total_count = devices.count()
+        total_count = devices.count() + users.count()
         
         for device in devices:
             if NotificationService.send_push(device, title, body, notif_type):
+                success_count += 1
+        for target_user in users:
+            if NotificationService.send_push(target_user, title, body, notif_type):
                 success_count += 1
 
         return response.Response({
@@ -108,21 +142,30 @@ class NotificationViewSet(viewsets.ModelViewSet):
             return Notification.objects.none()
 
         user = self.request.user
-        qs = Notification.objects.select_related("device", "device__branch").all().order_by("-created_at")
+        qs = Notification.objects.select_related("device", "device__branch", "user", "user__branch").all().order_by("-created_at")
 
         # Optimization: prune columns for the list view
         if self.action == "list":
             qs = qs.only(
                 "id", "title", "notification_type", "is_sent", "created_at",
-                "device__id", "device__device_id",
-                "device__branch__id", "device__branch__spa_name"
+                "body", "error_message",
+                "device__id", "device__device_id", "device__phone_name",
+                "device__branch__id", "device__branch__spa_name",
+                "user__id", "user__full_name", "user__email", "user__phone_number",
+                "user__branch__id", "user__branch__spa_name",
             )
 
-        if user.role == "spa_manager":
+        if user.role in ["spa_manager", "area_manager"]:
             # Show notifications for their branch's devices OR notifications sent specifically to them
-            qs = qs.filter(
-                Q(device__branch=user.branch) | Q(user=user)
-            )
+            if user.role == "area_manager":
+                branch_qs = apply_branch_filter(qs, "device__branch_id", user)
+                qs = branch_qs | qs.filter(user=user)
+            elif user.branch:
+                qs = qs.filter(
+                    Q(device__branch=user.branch) | Q(user=user)
+                )
+            else:
+                return qs.none()
         
         # Admin and super_admin see all history
 
@@ -189,9 +232,9 @@ class NotificationStatsView(views.APIView):
         notif_qs = Notification.objects.all()
         device_qs = Device.objects.filter(is_active=True, is_deleted=False)
 
-        if user.role == 'spa_manager':
-            notif_qs = notif_qs.filter(device__branch=user.branch)
-            device_qs = device_qs.filter(branch=user.branch)
+        if user.role in ['spa_manager', 'area_manager']:
+            notif_qs = apply_branch_filter(notif_qs, "device__branch_id", user) | notif_qs.filter(user=user)
+            device_qs = apply_branch_filter(device_qs, "branch_id", user)
 
         total_sent = notif_qs.count()
         successful_sent = notif_qs.filter(is_sent=True).count()

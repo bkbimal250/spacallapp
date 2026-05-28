@@ -4,7 +4,7 @@ from apps.common.filters import BaseDateFilter
 from .models import Device
 
 class DeviceFilter(BaseDateFilter):
-    search = filters.CharFilter(method='filter_search', label="Search by device ID or token")
+    search = filters.CharFilter(method='filter_search', label="Search by device ID, Android ID, or token")
     branch = filters.UUIDFilter(field_name='branch_id')
     city = filters.CharFilter(field_name='branch__city', lookup_expr='icontains')
     area = filters.CharFilter(field_name='branch__area', lookup_expr='icontains')
@@ -22,5 +22,6 @@ class DeviceFilter(BaseDateFilter):
             return queryset
         return queryset.filter(
             Q(device_id__icontains=value) |
+            Q(android_id__icontains=value) |
             Q(registration_token__icontains=value)
         )

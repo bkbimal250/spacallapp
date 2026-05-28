@@ -279,7 +279,10 @@ class CallAnalyticsView(APIView):
         # Override with specific branch if provided (and allowed)
         requested_branch = request.query_params.get("branch")
         if requested_branch and requested_branch != "null":
-            branch_ids = [requested_branch]
+            if branch_ids:
+                branch_ids = [requested_branch] if requested_branch in branch_ids else ["NONE"]
+            else:
+                branch_ids = [requested_branch]
 
         call_type = request.query_params.get("call_type")
         data = AnalyticsService.get_call_analytics(branch_ids, start_date, end_date, call_type=call_type)

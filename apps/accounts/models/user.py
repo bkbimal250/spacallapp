@@ -9,10 +9,10 @@ Roles:
 Branch Assignment Rules:
     - A spa_manager is assigned ONE branch at a time (via `branch` FK).
     - Admin can later re-assign the spa_manager to a different branch.
-    - `assigned_branches` M2M is kept for historical tracking / analytics
-      of which branches a manager has managed (optional use).
+    - An area_manager can be assigned MANY branches via `area_branches`.
 """
 
+import re
 import uuid
 from django.db import models
 from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin
@@ -29,12 +29,16 @@ class User(AbstractBaseUser, PermissionsMixin, TimeStampedModel):
         super_admin    → God-mode, manages everything.
         admin          → Creates users, assigns branch, manages branches/devices.
         spa_manager    → Can only access data for their single assigned branch.
+        aerea_manager   → Can access multiple branches assigned via area_branches M2M.
+    Branch Assignment:
+    - Each spa_manager is assigned to exactly one branch via `branch` FK.
     """
 
     ROLE_CHOICES = (
         ("super_admin", "Super Admin"),       # Full system access
         ("admin", "Admin"),                   # Manage users, branches, devices
-        ("spa_manager", "SPA Manager"),       # Access restricted to assigned branch only
+        ("area_manager", "Area Manager"),     # Dashboard access to assigned SPA branches
+        ("spa_manager", "SPA Manager"),       # Access limited to one assigned branch
     )
 
     # Primary key uses UUID for security and scalability
@@ -42,6 +46,16 @@ class User(AbstractBaseUser, PermissionsMixin, TimeStampedModel):
 
     # Authentication field
     email = models.EmailField(unique=True)
+
+    # Optional phone login identifier. Nullable keeps existing email/password
+    # and email OTP users working without any migration backfill.
+    phone_number = models.CharField(
+        max_length=20,
+        unique=True,
+        null=True,
+        blank=True,
+        help_text="Normalized phone number used for phone + OTP login.",
+    )
 
     # Display name stored as full name; split to first/last in serializer
     full_name = models.CharField(max_length=255)
@@ -58,6 +72,15 @@ class User(AbstractBaseUser, PermissionsMixin, TimeStampedModel):
         on_delete=models.SET_NULL,
         related_name="branch_users",
         help_text="The primary/active branch this user is assigned to.",
+    )
+
+    # Separate from BranchGroups: an area manager can be assigned multiple SPA
+    # branches and will only see dashboard/call data for those branches.
+    area_branches = models.ManyToManyField(
+        "branches.Branch",
+        blank=True,
+        related_name="area_managers",
+        help_text="SPA branches this area manager can see.",
     )
 
     # Firebase Cloud Messaging token for push notifications
@@ -93,6 +116,26 @@ class User(AbstractBaseUser, PermissionsMixin, TimeStampedModel):
         verbose_name = "User"
         verbose_name_plural = "Users"
 
+    @staticmethod
+    def normalize_phone_number(phone_number):
+        """
+        Normalize phone input for login lookup.
+
+        For Indian mobile numbers, both +91XXXXXXXXXX and XXXXXXXXXX are stored
+        as the same 10-digit value. Other numeric values are stored digits-only.
+        """
+        digits = re.sub(r"\D", "", phone_number or "")
+        if len(digits) == 12 and digits.startswith("91"):
+            return digits[-10:]
+        return digits or None
+
+    def save(self, *args, **kwargs):
+        if self.phone_number == "":
+            self.phone_number = None
+        if self.phone_number:
+            self.phone_number = self.normalize_phone_number(self.phone_number)
+        super().save(*args, **kwargs)
+
     def __str__(self):
         return f"{self.full_name} ({self.email}) — {self.get_role_display()}"
 
@@ -110,3 +153,8 @@ class User(AbstractBaseUser, PermissionsMixin, TimeStampedModel):
     def is_spa_manager(self):
         """Convenience property to check spa_manager role."""
         return self.role == "spa_manager"
+
+    @property
+    def is_area_manager(self):
+        """Convenience property to check area_manager role."""
+        return self.role == "area_manager"

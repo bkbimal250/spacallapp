@@ -40,6 +40,8 @@ from .serializers import CallLogSerializer, CallLogListSerializer, MissedCallFol
 from core.authentication import DeviceAuthentication
 from core.permissions import IsDevice
 from apps.common.permissions import IsSuperAdmin
+from apps.common.utils import apply_branch_filter
+from apps.devices.services import DeviceService
 
 
 class DeviceSyncView(views.APIView):
@@ -202,8 +204,7 @@ class DeviceSyncView(views.APIView):
             LeadManagement.objects.bulk_create(leads_to_create, ignore_conflicts=True)
 
         # ── Step 5: Update sync timestamp ──
-        device.last_sync = timezone.now()
-        device.save(update_fields=["last_sync"])
+        DeviceService.update_sync_time(device)
 
         # Reset monitoring flags
         from apps.monitoring.models import DeviceHealth
@@ -290,8 +291,10 @@ class CallLogViewSet(viewsets.ModelViewSet):
         queryset = CallLog.objects.select_related(*related).order_by("-call_time")
 
         # SPA manager: strict filter to single assigned branch
-        if user.is_authenticated and hasattr(user, 'role') and user.role == "spa_manager":
-            if user.branch:
+        if user.is_authenticated and hasattr(user, 'role') and user.role in ["spa_manager", "area_manager"]:
+            if user.role == "area_manager":
+                queryset = apply_branch_filter(queryset, "branch_id", user)
+            elif user.branch:
                 queryset = queryset.filter(branch=user.branch)
             else:
                 # No branch assigned → return nothing (prevent data leak)
@@ -559,9 +562,7 @@ class MissedCallFollowUpViewSet(viewsets.ReadOnlyModelViewSet):
         user = self.request.user
         qs = super().get_queryset().select_related('missed_call', 'branch', 'followup_call')
         
-        if user.role == 'spa_manager':
-            return qs.filter(branch=user.branch)
-        return qs
+        return apply_branch_filter(qs, "branch_id", user)
 
     @action(detail=False, methods=['get'])
     def today_missed(self, request):

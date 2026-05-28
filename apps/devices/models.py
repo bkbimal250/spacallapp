@@ -52,6 +52,16 @@ class Device(BaseModel, TimeStampedModel, SoftDeleteModel):
         help_text="Unique device identifier assigned after successful registration."
     )
 
+    # Stable Android OS identifier used only to restore credentials for an
+    # already-registered device. Nullable keeps all deployed devices compatible.
+    android_id = models.CharField(
+        max_length=255,
+        unique=True,
+        null=True,
+        blank=True,
+        help_text="Stable Android identifier used for self-healing credential recovery."
+    )
+
     # HMAC secret key for request signing — only known to the device
     secret_key = models.CharField(
         max_length=64,
@@ -142,6 +152,7 @@ class Device(BaseModel, TimeStampedModel, SoftDeleteModel):
         db_table = "devices"
         indexes = [
             models.Index(fields=["device_id"]),
+            models.Index(fields=["android_id"], name="devices_android_id_idx"),
             models.Index(fields=["branch"]),
             models.Index(fields=["is_active"]),
             models.Index(fields=["is_registered"]),
@@ -154,6 +165,8 @@ class Device(BaseModel, TimeStampedModel, SoftDeleteModel):
         # Treat empty string device_id as NULL for unique constraint compatibility
         if self.device_id == "":
             self.device_id = None
+        if self.android_id == "":
+            self.android_id = None
 
         # Auto-generate a human-readable registration token (12 hex chars, uppercased)
         # This is shown to the admin and entered into the Android app manually or via QR
@@ -166,3 +179,33 @@ class Device(BaseModel, TimeStampedModel, SoftDeleteModel):
         spa_name = self.branch.spa_name if self.branch else "Unassigned Branch"
         identifier = self.device_id or f"Unregistered (Token: {self.registration_token})"
         return f"{identifier} — {spa_name}"
+
+
+class Lastsynchistory(BaseModel):
+    """
+    Model to track the last synchronization time for each device.
+
+    This is used to monitor device activity and identify devices that haven't
+    synced in a while, which may indicate connectivity issues or misconfigurations.
+    """
+
+    device = models.OneToOneField(
+        Device,
+        on_delete=models.CASCADE,
+        related_name="last_sync_history",
+        help_text="The device this sync history belongs to."
+    )
+    last_sync_time = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="The timestamp of the last successful synchronization."
+    )
+
+    class Meta:
+        db_table = "last_sync_history"
+        verbose_name = "Last Sync History"
+        verbose_name_plural = "Last Sync Histories"
+
+    def __str__(self):
+        return f"Last Sync for {self.device}: {self.last_sync_time}"
+    

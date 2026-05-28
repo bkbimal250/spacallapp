@@ -27,7 +27,7 @@ const NotificationList = () => {
     const [filter, setFilter] = useState('');
     const [branchFilter, setBranchFilter] = useState('');
     const [branches, setBranches] = useState([]);
-    const [user, setUser] = useState(getUser());
+    const [user] = useState(getUser());
 
     // Real-time update logic
     const handleWebSocketMessage = (data) => {
@@ -43,10 +43,11 @@ const NotificationList = () => {
     useEffect(() => {
         fetchLogs();
         fetchStats();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [filter, branchFilter]);
 
     useEffect(() => {
-        if (user?.role !== 'branch_manager') {
+        if (!['spa_manager', 'area_manager'].includes(user?.role)) {
             fetchBranches();
         }
     }, [user]);
@@ -65,7 +66,8 @@ const NotificationList = () => {
         try {
             const res = await notificationsAPI.getLogs({
                 type: filter,
-                branch: branchFilter
+                branch: branchFilter,
+                page_size: 400
             });
             setLogs(res.data.results || res.data || []);
         } catch (err) {
@@ -119,11 +121,6 @@ const NotificationList = () => {
         } catch (err) {
             console.error(err);
         }
-    };
-
-    const getStatusIcon = (notif) => {
-        if (notif.is_sent) return <CheckCircle2 className="text-success" size={16} />;
-        return <XCircle className="text-danger" size={16} />;
     };
 
     const getTypeStyles = (type) => {
@@ -213,7 +210,7 @@ const NotificationList = () => {
                             </button>
                         ))}
 
-                        {user?.role !== 'branch_manager' && (
+                        {!['spa_manager', 'area_manager'].includes(user?.role) && (
                             <select
                                 value={branchFilter}
                                 onChange={(e) => setBranchFilter(e.target.value)}
@@ -290,9 +287,10 @@ const NotificationList = () => {
                                             <div className="flex flex-col">
                                                 <p className="font-semibold text-text-primary uppercase flex items-center gap-1.5">
                                                     <Smartphone size={14} className="text-primary" />
-                                                    {log.device_name || 'Unknown Device'}
+                                                    {log.recipient_name || log.device_name || log.user_name || 'Unknown Recipient'}
                                                 </p>
                                                 <p className="text-xs text-text-muted mt-0.5">
+                                                    {log.recipient_type === 'user' && log.user_phone ? `${log.user_phone} - ` : ''}
                                                     {log.branch_name || 'System / Global'}
                                                 </p>
                                             </div>

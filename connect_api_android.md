@@ -1,8 +1,8 @@
 # Android API Integration Specification
 ## SPA Call Log System — Branch Manager App
 
-> **Version**: 2.4  
-> **Last Updated**: 2026-04-21  
+> **Version**: 2.5  
+> **Last Updated**: 2026-05-27  
 > **Base URL**: `https://apibackend.mastercall.in/api/v1/`
 
 ---
@@ -80,7 +80,7 @@ Admin creates device in dashboard
 Registration Token printed/shared (e.g. "ABC123PX")
         |
         v
-Android app calls  POST /devices/claim-registration/
+Android app calls  POST /devices/claim-registration/ with token + android_id
         |
         v
 Receives device_id + secret_key  ← Store permanently
@@ -88,6 +88,8 @@ Receives device_id + secret_key  ← Store permanently
         v
 Use X-Device-ID + X-Device-Secret headers for all device operations
 ```
+
+If the app loses stored credentials after reinstall, data clear, or storage migration, it must recover them with `POST /devices/restore-registration/` using the same stable `android_id`.
 
 ---
 
@@ -102,7 +104,60 @@ Used **only once** during first setup. The technician enters the registration to
 **Request Body**:
 ```json
 {
-  "token": "ABC123PX"
+  "token": "ABC123PX",
+  "android_id": "a1b2c3d4e5f67890"
+}
+```
+
+| Field | Required | Description |
+|---|---|---|
+| `token` | Yes | One-time registration token from the dashboard |
+| `android_id` | Strongly recommended | Stable Android identifier used for automatic credential recovery |
+
+**Response (200 OK)**:
+```json
+{
+  "status": "success",
+  "device_id": "SPA-C2C081-93D1F5",
+  "secret_key": "7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a",
+  "branch_name": "Elegance Spa Mumbai",
+  "branch_id": "f1f603d8-b96f-4b19-ab8e-1b1065a93842",
+  "branch": {
+    "id": "f1f603d8-b96f-4b19-ab8e-1b1065a93842",
+    "spa_name": "Elegance Spa Mumbai",
+    "code": "MUM001",
+    "city": "Mumbai",
+    "state": "Maharashtra",
+    "is_active": true
+  }
+}
+```
+
+> **IMPORTANT**: Store `android_id`, `device_id`, and `secret_key` immediately using `EncryptedSharedPreferences` or Android Keystore. This token is single-use — once claimed, the registration token is invalidated.
+
+**Error Responses**:
+| Code | Meaning | Android Action |
+|---|---|---|
+| `400` | Missing or malformed `token` / `android_id` field | Show validation message |
+| `409` | This Android device is already registered | Call `restore-registration/` with the same `android_id` |
+| `404` | Token is invalid or already used | Ask admin for a new registration token |
+
+---
+
+### 2B. Auto-Recover Device Registration
+
+Use this endpoint when the Android app loses stored `device_id` / `secret_key`, for example after app data clear, reinstall, storage corruption, or migration to a new secure storage format.
+
+The endpoint does **not** create a new device. It only returns existing credentials for the same physical Android phone, identified by `android_id`.
+
+- **URL**: `devices/restore-registration/`
+- **Method**: `POST`
+- **Auth**: None (public endpoint)
+
+**Request Body**:
+```json
+{
+  "android_id": "a1b2c3d4e5f67890"
 }
 ```
 
@@ -113,21 +168,70 @@ Used **only once** during first setup. The technician enters the registration to
   "device_id": "SPA-C2C081-93D1F5",
   "secret_key": "7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a",
   "branch_name": "Elegance Spa Mumbai",
-  "branch_id": "f1f603d8-b96f-4b19-ab8e-1b1065a93842"
+  "branch_id": "f1f603d8-b96f-4b19-ab8e-1b1065a93842",
+  "branch": {
+    "id": "f1f603d8-b96f-4b19-ab8e-1b1065a93842",
+    "spa_name": "Elegance Spa Mumbai",
+    "code": "MUM001",
+    "city": "Mumbai",
+    "state": "Maharashtra",
+    "is_active": true
+  }
 }
 ```
 
-> **IMPORTANT**: Store `device_id` and `secret_key` immediately using `EncryptedSharedPreferences` or Android Keystore. This token is single-use — once claimed, the registration token is invalidated.
+> Also store the same `android_id` used in the claim request. It is required later for automatic device recovery.
 
 **Error Responses**:
-| Code | Meaning |
-|---|---|
-| `400` | Missing or malformed `token` field |
-| `404` | Token is invalid or already used |
+| Code | Meaning | Android Action |
+|---|---|---|
+| `400` | Missing or blank `android_id` | Regenerate/read Android ID and retry |
+| `403` | Device is inactive or blocked | Stop sync and show admin/support message |
+| `404` | No registered device found for this `android_id` | Show registration token screen |
+| `409` | Registered device exists but credentials are incomplete | Ask admin to regenerate the device token |
+
+**Recommended Android Startup Recovery Flow**:
+```kotlin
+suspend fun ensureDeviceCredentials() {
+    val savedDeviceId = secureStore.getDeviceId()
+    val savedSecret = secureStore.getDeviceSecret()
+    if (!savedDeviceId.isNullOrBlank() && !savedSecret.isNullOrBlank()) return
+
+    val androidId = getStableAndroidId(context)
+    val restored = api.restoreRegistration(RestoreRequest(androidId))
+
+    if (restored.isSuccessful) {
+        val body = restored.body()!!
+        secureStore.saveAndroidId(androidId)
+        secureStore.saveDeviceCredentials(body.deviceId, body.secretKey)
+        secureStore.saveBranch(body.branchId, body.branchName)
+        return
+    }
+
+    if (restored.code() == 404) {
+        navigateToRegistrationTokenScreen()
+        return
+    }
+
+    showDeviceRecoveryError(restored.errorBody()?.string())
+}
+```
+
+**Stable Android ID Helper**:
+```kotlin
+fun getStableAndroidId(context: Context): String {
+    return Settings.Secure.getString(
+        context.contentResolver,
+        Settings.Secure.ANDROID_ID
+    )
+}
+```
+
+> Store the same `android_id` used during claim. If stored credentials already exist, do not call restore on every app launch. Call restore only when credentials are missing or device-auth endpoints repeatedly return credential-related `401`.
 
 ---
 
-### 2B. Device Authentication Headers
+### 2C. Device Authentication Headers
 
 All device-authenticated endpoints require **both** of these headers:
 
@@ -874,7 +978,9 @@ Use this checklist before releasing any version of the app:
 
 **Security**
 - [ ] Store `access_token` and `refresh_token` in `EncryptedSharedPreferences`
-- [ ] Store `device_id` and `secret_key` in `EncryptedSharedPreferences` or Android Keystore
+- [ ] Store `android_id`, `device_id`, and `secret_key` in `EncryptedSharedPreferences` or Android Keystore
+- [ ] Send `android_id` when claiming device registration
+- [ ] Implement `restore-registration/` recovery when stored device credentials are missing
 - [ ] **Validate `role == "spa_manager"` after every login attempt**
 - [ ] Clear all tokens on logout
 
@@ -929,6 +1035,11 @@ SPA-XXXXXX-XXXXXX   (e.g. SPA-C2C081-93D1F5)
 12 uppercase hex characters   (e.g. ABC123PX9D2F)
 ```
 
+**Android ID**:
+```
+Settings.Secure.ANDROID_ID   (stable per Android device/user/signing context)
+```
+
 ---
 
 ## 15. Full Device Registration Flow (Step by Step)
@@ -942,14 +1053,37 @@ SPA-XXXXXX-XXXXXX   (e.g. SPA-C2C081-93D1F5)
 5. App shows "Enter Registration Token" screen
 6. Technician types "DF9A3C"
 
-7. App calls: POST /devices/claim-registration/  { "token": "DF9A3C" }
-8. Server validates token, marks device as registered, clears token
-9. Server returns: device_id + secret_key + branch_name
+7. App reads stable android_id using Settings.Secure.ANDROID_ID
+8. App calls: POST /devices/claim-registration/  { "token": "DF9A3C", "android_id": "a1b2c3d4e5f67890" }
+9. Server validates token, marks device as registered, clears token
+10. Server returns: device_id + secret_key + branch_name
 
-10. App stores device_id and secret_key in EncryptedSharedPreferences
-11. App shows success: "Device registered to Spa Empire Turbhe"
+11. App stores android_id, device_id, and secret_key in EncryptedSharedPreferences
+12. App shows success: "Device registered to Spa Empire Turbhe"
 
-12. From this point, all sync/heartbeat calls use X-Device-ID + X-Device-Secret headers
+13. From this point, all sync/heartbeat calls use X-Device-ID + X-Device-Secret headers
+```
+
+### Device Auto-Recovery Flow
+
+```
+1. App starts
+2. App checks secure storage for device_id + secret_key
+3. If both exist, continue normally
+
+4. If credentials are missing:
+   - read stable android_id
+   - call POST /devices/restore-registration/ { "android_id": "a1b2c3d4e5f67890" }
+
+5. If restore returns 200:
+   - store returned device_id + secret_key
+   - continue sync/heartbeat normally
+
+6. If restore returns 404:
+   - show registration token screen
+
+7. If restore returns 403:
+   - stop sync and show "Device blocked or inactive. Contact admin."
 ```
 
 ---

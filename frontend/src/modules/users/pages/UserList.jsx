@@ -4,9 +4,10 @@ import Table from '../../../shared/components/Table';
 import Button from '../../../shared/components/Button';
 import Badge from '../../../shared/components/Badge';
 import UserForm from '../components/UserForm';
+import UserDetails from '../components/UserDetails';
 import UserFilter from '../components/UserFilter';
 import Pagination from '../../../shared/components/Pagination';
-import { Edit, Trash2, Plus, Copy, Check, Eye, EyeOff } from 'lucide-react';
+import { Edit, Trash2, Plus, Copy, Check, Eye, EyeOff, Info } from 'lucide-react';
 import { formatDate } from '../../../shared/utils/formatDate';
 import { useAuth } from '../../../shared/hooks/useAuth';
 import { useNavigate } from 'react-router-dom';
@@ -98,6 +99,8 @@ const UserList = () => {
     const [submitting, setSubmitting] = useState(false);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingUser, setEditingUser] = useState(null);
+    const [isDetailsOpen, setIsDetailsOpen] = useState(false);
+    const [selectedUser, setSelectedUser] = useState(null);
     const [filters, setFilters] = useState({});
     const [page, setPage] = useState(1);
     const [totalCount, setTotalCount] = useState(0);
@@ -140,9 +143,21 @@ const UserList = () => {
         setIsModalOpen(true);
     };
 
-    const handleEdit = (user) => {
+    const fetchUserById = async (userId) => {
+        const response = await usersAPI.getUser(userId);
+        return response.data;
+    };
+
+    const handleEdit = async (user) => {
         setEditingUser(user);
         setIsModalOpen(true);
+
+        try {
+            const freshUser = await fetchUserById(user.id);
+            setEditingUser(freshUser);
+        } catch (error) {
+            console.error("Failed to fetch latest user details", error);
+        }
     };
 
     const handleDelete = async (id) => {
@@ -176,11 +191,23 @@ const UserList = () => {
         }
     };
 
-    const handleViewDetails = (userId) => {
+    const handleViewLogs = (userId) => {
         navigate(`/users/login-history?user=${userId}`);
     };
 
-    const columns = React.useMemo(() => {
+    const handleViewDetails = async (user) => {
+        setSelectedUser(user);
+        setIsDetailsOpen(true);
+
+        try {
+            const freshUser = await fetchUserById(user.id);
+            setSelectedUser(freshUser);
+        } catch (error) {
+            console.error("Failed to fetch user details", error);
+        }
+    };
+
+    const columns = (() => {
         const cols = [
             {
                 header: 'Name',
@@ -193,6 +220,14 @@ const UserList = () => {
             {
                 header: 'Email',
                 render: (row) => <EmailCell row={row} isSuperAdmin={isSuperAdmin} />
+            },
+            {
+                header: 'Phone',
+                render: (row) => (
+                    <span className="text-text-secondary whitespace-nowrap">
+                        {row.phone_number || '-'}
+                    </span>
+                )
             }
         ];
 
@@ -241,9 +276,16 @@ const UserList = () => {
                 render: (row) => (
                     <div className="flex gap-2">
                         <button
-                            onClick={() => handleViewDetails(row.id)}
-                            className="bg-bg-tertiary text-text-secondary hover:bg-bg-quaternary px-2 py-1 rounded-md text-xs font-medium transition flex items-center gap-1 border border-border"
+                            onClick={() => handleViewDetails(row)}
+                            className="text-info hover:bg-info/10 p-1 rounded transition"
                             title="View Details"
+                        >
+                            <Info size={16} />
+                        </button>
+                        <button
+                            onClick={() => handleViewLogs(row.id)}
+                            className="bg-bg-tertiary text-text-secondary hover:bg-bg-quaternary px-2 py-1 rounded-md text-xs font-medium transition flex items-center gap-1 border border-border"
+                            title="View Login Logs"
                         >
                             <Eye size={14} />
                             Logs
@@ -268,7 +310,7 @@ const UserList = () => {
         );
 
         return cols;
-    }, [isSuperAdmin, handleEdit, handleDelete]);
+    })();
 
     return (
         <div className="space-y-6 text-text-primary">
@@ -347,6 +389,12 @@ const UserList = () => {
                 onSubmit={handleSubmit}
                 initialData={editingUser}
                 loading={submitting}
+            />
+
+            <UserDetails
+                isOpen={isDetailsOpen}
+                onClose={() => setIsDetailsOpen(false)}
+                user={selectedUser}
             />
 
         </div>

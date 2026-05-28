@@ -38,6 +38,7 @@ from .serializers import BranchSerializer, BranchListSerializer, BranchGroupSeri
 from .filters import BranchFilter, BranchGroupFilter
 from core.pagination import StandardResultsSetPagination
 from apps.common.permissions import IsAdminOrSuperAdmin
+from apps.common.utils import apply_branch_filter
 
 
 class BranchViewSet(viewsets.ModelViewSet):
@@ -94,6 +95,8 @@ class BranchViewSet(viewsets.ModelViewSet):
         user = request.user
         role = getattr(user, 'role', 'anonymous')
         branch_id = getattr(user.branch, 'id', 'none') if hasattr(user, 'branch') and user.branch else 'none'
+        if role == "area_manager":
+            branch_id = "_".join(str(branch_id) for branch_id in user.area_branches.values_list("id", flat=True)) or "none"
         
         cache_key = f"branches_list_{role}_{branch_id}_{request.get_full_path()}"
         
@@ -149,7 +152,15 @@ class BranchViewSet(viewsets.ModelViewSet):
             )
 
         # Branch managers can only see their own assigned branch
-        if user.is_authenticated and hasattr(user, 'role') and user.role == "spa_manager":
+        if user.is_authenticated and hasattr(user, 'role') and user.role in ["spa_manager", "area_manager"]:
+            if user.role == "area_manager":
+                queryset = apply_branch_filter(queryset, "id", user)
+            elif user.branch:
+                queryset = queryset.filter(id=user.branch.id)
+            else:
+                queryset = queryset.none()
+            return queryset
+        if False and user.is_authenticated and hasattr(user, 'role') and user.role == "spa_manager":
             if user.branch:
                 queryset = queryset.filter(id=user.branch.id)
             else:
