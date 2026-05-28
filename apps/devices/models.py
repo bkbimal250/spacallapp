@@ -24,7 +24,7 @@ class Device(BaseModel, TimeStampedModel, SoftDeleteModel):
 
     Registration Flow:
         - Admin creates Device → registration_token auto-generated.
-        - Android app calls /devices/claim/ with the token.
+        - Android app calls /devices/claim-registration/ with the token.
         - System assigns device_id (e.g. SPA-ABC123-DEF456) and secret_key.
         - App stores these and uses them for authenticating call log syncs.
 
@@ -208,4 +208,3 @@ class Lastsynchistory(BaseModel):
 
     def __str__(self):
         return f"Last Sync for {self.device}: {self.last_sync_time}"
-    

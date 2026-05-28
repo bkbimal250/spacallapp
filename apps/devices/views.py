@@ -6,7 +6,7 @@ Endpoints:
     POST /devices/               -> Create device record (admin/super_admin only).
     PUT/PATCH /devices/<id>/     -> Update device (admin/super_admin only).
     DELETE /devices/<id>/        -> Delete device (super_admin only).
-    POST /devices/claim/         -> Android app claims a device using registration token.
+    POST /devices/claim-registration/ -> Android app claims a device using registration token.
 
 Access Control:
     super_admin -> Full CRUD on all devices.
@@ -15,7 +15,7 @@ Access Control:
 
 Android Flow:
     1. Admin creates Device -> registration_token generated.
-    2. Android app calls POST /devices/claim/ with the token.
+    2. Android app calls POST /devices/claim-registration/ with the token.
     3. System verifies token, assigns device_id + secret_key.
     4. App uses device_id + secret_key for every sync.
 """
@@ -250,7 +250,7 @@ class ClaimRegistrationView(APIView):
 
         try:
             with transaction.atomic():
-                device = Device.objects.select_related("branch").select_for_update().get(
+                device = Device.objects.select_for_update().get(
                     registration_token=token,
                     is_registered=False,
                 )
