@@ -33,7 +33,8 @@ const DeviceList = () => {
 
             const response = await devicesAPI.getDevices({
                 ...currentFilters,
-                page: currentPage
+                page: currentPage,
+                page_size: pageSize
             });
 
             const data = response.data.results || response.data;
@@ -169,6 +170,14 @@ const DeviceList = () => {
             render: (row) => (
                 <span className="font-semibold text-text-primary capitalize">
                     {row.phone_name || "—"}
+                </span>
+            )
+        },
+        {
+            header: 'Android ID',
+            render: (row) => (
+                <span className="font-mono text-xs text-text-secondary">
+                    {row.android_id || "—"}
                 </span>
             )
         },

@@ -148,7 +148,7 @@ const DeviceFilter = ({ onFilter, initialFilters = {} }) => {
                     <div className="w-full lg:w-96 relative">
                         <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
                         <Input
-                            placeholder="Search by Device ID, Name or Token..."
+                            placeholder="Search by Device ID, Android ID, or Token..."
                             value={search}
                             onChange={(e) => setSearch(e.target.value)}
                             onKeyDown={(e) => e.key === 'Enter' && handleApplyFilters()}
