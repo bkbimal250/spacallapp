@@ -1,11 +1,42 @@
 import hmac
 import logging
+import uuid
 
 from drf_spectacular.extensions import OpenApiAuthenticationExtension
 from rest_framework import authentication, exceptions
 
 
 logger = logging.getLogger(__name__)
+
+
+def _remote_ip(request):
+    forwarded_for = request.META.get("HTTP_X_FORWARDED_FOR", "")
+    if forwarded_for:
+        return forwarded_for.split(",")[0].strip()
+    return request.META.get("REMOTE_ADDR")
+
+
+def _request_context(request, device_id=None):
+    request_id = request.headers.get("X-Request-ID") or getattr(request, "_device_request_id", None)
+    if not request_id:
+        request_id = str(uuid.uuid4())
+        request._device_request_id = request_id
+
+    return {
+        "request_id": request_id,
+        "path": getattr(request, "path", ""),
+        "remote_ip": _remote_ip(request),
+        "device_id": device_id,
+    }
+
+
+def _auth_failed(message, code, context):
+    return exceptions.AuthenticationFailed({
+        "detail": message,
+        "error": message,
+        "code": code,
+        "request_id": context.get("request_id"),
+    })
 
 
 class DeviceAuthentication(authentication.BaseAuthentication):
@@ -22,18 +53,29 @@ class DeviceAuthentication(authentication.BaseAuthentication):
 
         device_id = request.headers.get("X-Device-ID")
         secret_key = request.headers.get("X-Device-Secret")
-        path = getattr(request, "path", "")
+        context = _request_context(request, device_id=device_id)
 
         if not device_id and not secret_key:
-            logger.debug("Device auth skipped: missing device headers", extra={"path": path})
-            return None
+            logger.warning(
+                "Device auth failed: missing device headers",
+                extra={
+                    **context,
+                    "missing_headers": ["X-Device-ID", "X-Device-Secret"],
+                },
+            )
+            raise _auth_failed("Invalid Device Credentials", "missing_device_headers", context)
 
         if not device_id or not secret_key:
+            missing_headers = []
+            if not device_id:
+                missing_headers.append("X-Device-ID")
+            if not secret_key:
+                missing_headers.append("X-Device-Secret")
             logger.warning(
                 "Device auth failed: incomplete device headers",
-                extra={"device_id": device_id, "path": path},
+                extra={**context, "missing_headers": missing_headers},
             )
-            raise exceptions.AuthenticationFailed("Invalid Device Credentials")
+            raise _auth_failed("Invalid Device Credentials", "missing_device_headers", context)
 
         try:
             device = Device.objects.only(
@@ -42,37 +84,45 @@ class DeviceAuthentication(authentication.BaseAuthentication):
                 "secret_key",
                 "is_active",
                 "is_blocked",
+                "is_registered",
                 "branch_id",
             ).get(device_id=device_id)
         except Device.DoesNotExist:
             logger.warning(
                 "Device auth failed: unknown device_id",
-                extra={"device_id": device_id, "path": path},
+                extra=context,
             )
-            raise exceptions.AuthenticationFailed("Invalid Device Credentials")
+            raise _auth_failed("Invalid Device Credentials", "invalid_device_id", context)
 
         if not device.secret_key or not hmac.compare_digest(device.secret_key, secret_key):
             logger.warning(
-                "Device auth failed: invalid secret",
-                extra={"device_id": device_id, "path": path},
+                "Device auth failed: invalid secret_key",
+                extra={**context, "has_stored_secret": bool(device.secret_key)},
             )
-            raise exceptions.AuthenticationFailed("Invalid Device Credentials")
+            raise _auth_failed("Invalid Device Credentials", "invalid_secret_key", context)
+
+        if not device.is_registered:
+            logger.warning(
+                "Device auth failed: stale credentials for unregistered device",
+                extra={**context, "is_registered": device.is_registered},
+            )
+            raise _auth_failed("Invalid Device Credentials", "stale_device_credentials", context)
 
         if not device.is_active:
             logger.warning(
                 "Device auth failed: inactive device",
-                extra={"device_id": device_id, "path": path},
+                extra={**context, "is_active": device.is_active},
             )
-            raise exceptions.AuthenticationFailed("Device is inactive")
+            raise _auth_failed("Device is inactive", "device_inactive", context)
 
         if device.is_blocked:
             logger.warning(
                 "Device auth failed: blocked device",
-                extra={"device_id": device_id, "path": path},
+                extra={**context, "is_blocked": device.is_blocked},
             )
-            raise exceptions.AuthenticationFailed("Device is blocked")
+            raise _auth_failed("Device is blocked", "device_blocked", context)
 
-        logger.debug("Device auth succeeded", extra={"device_id": device_id, "path": path})
+        logger.debug("Device auth succeeded", extra=context)
         return (device, device)
 
 

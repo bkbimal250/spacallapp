@@ -22,11 +22,13 @@ Android Flow:
 
 import logging
 import secrets
+import uuid
 
 from django.db import IntegrityError, transaction
 from django_filters.rest_framework import DjangoFilterBackend
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import permissions, serializers, status, viewsets
+from rest_framework.exceptions import ParseError
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -48,8 +50,16 @@ logger = logging.getLogger(__name__)
 
 
 def _request_context(request):
+    forwarded_for = request.META.get("HTTP_X_FORWARDED_FOR", "")
+    request_id = request.headers.get("X-Request-ID") or getattr(request, "_device_request_id", None)
+    if not request_id:
+        request_id = str(uuid.uuid4())
+        request._device_request_id = request_id
+
     return {
-        "remote_addr": request.META.get("REMOTE_ADDR"),
+        "request_id": request_id,
+        "path": getattr(request, "path", ""),
+        "remote_ip": forwarded_for.split(",")[0].strip() if forwarded_for else request.META.get("REMOTE_ADDR"),
         "user_agent": request.META.get("HTTP_USER_AGENT", "")[:255],
     }
 
@@ -71,6 +81,14 @@ def _registration_payload(device):
             "is_active": branch.is_active,
         } if branch else None,
     }
+
+
+def _safe_errors(errors):
+    if isinstance(errors, list):
+        return [_safe_errors(item) for item in errors]
+    if isinstance(errors, dict):
+        return {str(key): _safe_errors(value) for key, value in errors.items()}
+    return str(errors)
 
 
 class DeviceViewSet(viewsets.ModelViewSet):
@@ -414,6 +432,10 @@ class RestoreRegistrationView(APIView):
         return Response(_registration_payload(device), status=status.HTTP_200_OK)
 
 
+class UpdateFCMTokenSerializer(serializers.Serializer):
+    fcm_token = serializers.CharField(allow_blank=False, trim_whitespace=True)
+
+
 class UpdateFCMTokenView(APIView):
     """
     Android app uses this to update its FCM registration token.
@@ -421,6 +443,24 @@ class UpdateFCMTokenView(APIView):
     """
     authentication_classes = [DeviceAuthentication]
     permission_classes = [IsDevice]
+
+    def handle_exception(self, exc):
+        if isinstance(exc, ParseError):
+            context = _request_context(self.request)
+            logger.warning(
+                "FCM token update rejected: malformed request payload",
+                extra=context,
+            )
+            return Response(
+                {
+                    "error": "Malformed JSON payload.",
+                    "code": "malformed_json",
+                    "details": str(exc.detail),
+                    "request_id": context["request_id"],
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return super().handle_exception(exc)
 
     @extend_schema(
         summary="Update Device FCM Token",
@@ -440,12 +480,47 @@ class UpdateFCMTokenView(APIView):
         }
     )
     def post(self, request):
-        token = request.data.get("fcm_token")
-        if not token:
-            return Response({"error": "fcm_token is required"}, status=status.HTTP_400_BAD_REQUEST)
+        context = {
+            **_request_context(request),
+            "device_id": getattr(request.auth, "device_id", None),
+        }
+        serializer = UpdateFCMTokenSerializer(data=request.data)
 
-        device = request.user
+        if not serializer.is_valid():
+            logger.warning(
+                "FCM token update rejected: invalid payload",
+                extra={
+                    **context,
+                    "invalid_fields": sorted(serializer.errors.keys()),
+                    "serializer_errors": _safe_errors(serializer.errors),
+                    "payload_type": type(request.data).__name__,
+                },
+            )
+            return Response(
+                {
+                    "error": "fcm_token is required",
+                    "code": "validation_error",
+                    "details": serializer.errors,
+                    "request_id": context["request_id"],
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        token = serializer.validated_data["fcm_token"]
+        device = request.auth
+        if not device or not getattr(device, "device_id", None):
+            logger.warning("FCM token update rejected: device auth not ready", extra=context)
+            return Response(
+                {
+                    "error": "Invalid Device Credentials",
+                    "code": "device_auth_required",
+                    "request_id": context["request_id"],
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
         device.fcm_token = token
         device.save(update_fields=["fcm_token"])
 
+        logger.info("FCM token updated", extra={**context, "token_present": bool(token)})
         return Response({"status": "success", "message": "FCM token updated successfully"})

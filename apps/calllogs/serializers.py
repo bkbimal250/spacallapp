@@ -60,6 +60,19 @@ class CallLogListSerializer(serializers.ModelSerializer):
         ]
 
 
+class CallLogSyncItemSerializer(serializers.Serializer):
+    """
+    Validates the Android sync payload without changing the public endpoint.
+    The view still owns branch/device assignment and duplicate handling.
+    """
+    phone_number = serializers.CharField(max_length=20)
+    call_type = serializers.ChoiceField(choices=["incoming", "outgoing", "missed", "rejected"])
+    duration = serializers.IntegerField(min_value=0, default=0)
+    sim_slot = serializers.IntegerField(required=False, default=1)
+    call_time = serializers.DateTimeField()
+    call_hash = serializers.CharField(max_length=64)
+
+
 class MissedCallFollowUpSerializer(serializers.ModelSerializer):
     """Serializer for tracking and reporting missed call follow-ups."""
     phone_number = serializers.ReadOnlyField(source='missed_call.phone_number')

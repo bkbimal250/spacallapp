@@ -27,21 +27,107 @@ from django.http import HttpResponse
 from django.utils import timezone
 from django.db.models import Count, Q, Sum, Avg
 from rest_framework import viewsets, permissions, views, response, status, filters
+from rest_framework.exceptions import ParseError
 from rest_framework.decorators import action
 from drf_spectacular.utils import extend_schema, OpenApiParameter, inline_serializer
 from rest_framework import serializers
 import openpyxl
+import logging
+import uuid
 from openpyxl.styles import Font
 from django.db.models import Count, Q, Sum, Avg
 from django_filters.rest_framework import DjangoFilterBackend
 from .filters import CallLogFilter
 from .models import CallLog, MissedCallFollowUp
-from .serializers import CallLogSerializer, CallLogListSerializer, MissedCallFollowUpSerializer
+from .serializers import (
+    CallLogSerializer,
+    CallLogListSerializer,
+    CallLogSyncItemSerializer,
+    MissedCallFollowUpSerializer,
+)
 from core.authentication import DeviceAuthentication
 from core.permissions import IsDevice
 from apps.common.permissions import IsSuperAdmin
 from apps.common.utils import apply_branch_filter
 from apps.devices.services import DeviceService
+
+
+logger = logging.getLogger(__name__)
+
+
+def _remote_ip(request):
+    forwarded_for = request.META.get("HTTP_X_FORWARDED_FOR", "")
+    if forwarded_for:
+        return forwarded_for.split(",")[0].strip()
+    return request.META.get("REMOTE_ADDR")
+
+
+def _request_id(request):
+    value = request.headers.get("X-Request-ID") or getattr(request, "_device_request_id", None)
+    if not value:
+        value = str(uuid.uuid4())
+        request._device_request_id = value
+    return value
+
+
+def _sync_log_context(request, device=None):
+    return {
+        "request_id": _request_id(request),
+        "path": getattr(request, "path", ""),
+        "remote_ip": _remote_ip(request),
+        "device_id": getattr(device, "device_id", None),
+    }
+
+
+def _safe_payload_diagnostics(payloads):
+    if not isinstance(payloads, list):
+        return {"payload_type": type(payloads).__name__}
+
+    keys = set()
+    malformed_indices = []
+    for index, item in enumerate(payloads[:25]):
+        if isinstance(item, dict):
+            keys.update(item.keys())
+        else:
+            malformed_indices.append(index)
+
+    return {
+        "payload_type": "list",
+        "payload_count": len(payloads),
+        "sample_keys": sorted(keys),
+        "malformed_indices": malformed_indices,
+    }
+
+
+def _serializer_error_diagnostics(errors):
+    invalid_fields = set()
+    invalid_datetime_indices = []
+    invalid_item_indices = []
+
+    if isinstance(errors, list):
+        for index, item_errors in enumerate(errors):
+            if not item_errors:
+                continue
+            invalid_item_indices.append(index)
+            if isinstance(item_errors, dict):
+                invalid_fields.update(item_errors.keys())
+                if "call_time" in item_errors:
+                    invalid_datetime_indices.append(index)
+
+    return {
+        "invalid_fields": sorted(invalid_fields),
+        "invalid_item_indices": invalid_item_indices[:50],
+        "invalid_item_count": len(invalid_item_indices),
+        "invalid_datetime_indices": invalid_datetime_indices[:50],
+    }
+
+
+def _safe_errors(errors):
+    if isinstance(errors, list):
+        return [_safe_errors(item) for item in errors]
+    if isinstance(errors, dict):
+        return {str(key): _safe_errors(value) for key, value in errors.items()}
+    return str(errors)
 
 
 class DeviceSyncView(views.APIView):
@@ -68,6 +154,24 @@ class DeviceSyncView(views.APIView):
     """
     authentication_classes = [DeviceAuthentication]
     permission_classes = [IsDevice]
+
+    def handle_exception(self, exc):
+        if isinstance(exc, ParseError):
+            context = _sync_log_context(self.request, getattr(self.request, "auth", None))
+            logger.warning(
+                "Call log sync rejected: malformed request payload",
+                extra=context,
+            )
+            return response.Response(
+                {
+                    "error": "Malformed JSON payload.",
+                    "code": "malformed_json",
+                    "details": str(exc.detail),
+                    "request_id": context["request_id"],
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return super().handle_exception(exc)
 
     @extend_schema(
         summary="Sync call logs (Android)",
@@ -97,16 +201,75 @@ class DeviceSyncView(views.APIView):
     )
     def post(self, request):
         device = request.auth  # The authenticated Device object
+        log_context = _sync_log_context(request, device)
 
         payloads = request.data
         if not isinstance(payloads, list):
+            logger.warning(
+                "Call log sync rejected: payload is not a JSON array",
+                extra={**log_context, **_safe_payload_diagnostics(payloads)},
+            )
             return response.Response(
-                {"error": "Payload must be a JSON array of call log objects."},
+                {
+                    "error": "Payload must be a JSON array of call log objects.",
+                    "code": "invalid_payload",
+                    "details": {"expected": "array", "received": type(payloads).__name__},
+                    "request_id": log_context["request_id"],
+                },
                 status=status.HTTP_400_BAD_REQUEST
             )
 
         # ── Step 1: Pre-fetch contacts for all phone numbers in this batch ──
         # We match by last 10 digits to handle variations like +91, 0, etc.
+        if not payloads:
+            logger.info(
+                "Call log sync received empty payload",
+                extra={**log_context, "payload_count": 0},
+            )
+
+        malformed_indices = [
+            index for index, item in enumerate(payloads[:50]) if not isinstance(item, dict)
+        ]
+        if malformed_indices:
+            logger.warning(
+                "Call log sync rejected: malformed items in payload",
+                extra={**log_context, **_safe_payload_diagnostics(payloads)},
+            )
+            return response.Response(
+                {
+                    "error": "Each payload item must be a JSON object.",
+                    "code": "malformed_payload_items",
+                    "details": {"invalid_item_indices": malformed_indices},
+                    "request_id": log_context["request_id"],
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        serializer = CallLogSyncItemSerializer(data=payloads, many=True)
+        if not serializer.is_valid():
+            diagnostics = _serializer_error_diagnostics(serializer.errors)
+            safe_errors = _safe_errors(serializer.errors)
+            logger.warning(
+                "Call log sync rejected: serializer validation failed",
+                extra={
+                    **log_context,
+                    **_safe_payload_diagnostics(payloads),
+                    **diagnostics,
+                    "serializer_errors": safe_errors,
+                },
+            )
+            return response.Response(
+                {
+                    "error": "Invalid call log payload.",
+                    "code": "validation_error",
+                    "details": serializer.errors,
+                    "invalid_fields": diagnostics["invalid_fields"],
+                    "request_id": log_context["request_id"],
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        payloads = serializer.validated_data
         phone_numbers = {item.get("phone_number") for item in payloads if item.get("phone_number")}
 
         from apps.contacts.models import Contact
@@ -218,6 +381,15 @@ class DeviceSyncView(views.APIView):
             }
         )
 
+        logger.info(
+            "Call log sync succeeded",
+            extra={
+                **log_context,
+                "payload_count": len(payloads),
+                "synced_count": len(logs_to_create),
+                "leads_created": len(leads_to_create),
+            },
+        )
         return response.Response({
             "status": "success",
             "synced_count": len(logs_to_create),
