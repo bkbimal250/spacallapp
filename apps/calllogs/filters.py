@@ -1,5 +1,6 @@
 from django_filters import rest_framework as filters
 from django.db.models import Q
+from django.core.exceptions import ValidationError
 from apps.common.filters import BaseDateFilter
 from .models import CallLog
 
@@ -9,7 +10,7 @@ class CallLogFilter(BaseDateFilter):
     status = filters.CharFilter(method='filter_status')
     search = filters.CharFilter(method='filter_search')
     is_unique = filters.BooleanFilter(method='filter_is_unique')
-    branch = filters.UUIDFilter(field_name='branch_id')
+    branch = filters.CharFilter(method='filter_branch')
     device = filters.CharFilter(field_name='device__device_id')
     call_type = filters.ChoiceFilter(choices=[
         ('incoming', 'Incoming'),
@@ -34,6 +35,19 @@ class CallLogFilter(BaseDateFilter):
                 Q(contact__name__icontains=value)
             )
         return queryset
+
+    def filter_branch(self, queryset, name, value):
+        if not value:
+            return queryset
+
+        branch_ids = [item.strip() for item in str(value).split(',') if item.strip()]
+        if not branch_ids:
+            return queryset
+
+        try:
+            return queryset.filter(branch_id__in=branch_ids)
+        except ValidationError:
+            return queryset.none()
 
     def filter_branch_search(self, queryset, name, value):
         if value:

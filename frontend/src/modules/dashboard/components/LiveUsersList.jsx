@@ -3,7 +3,8 @@ import { useSelector } from 'react-redux';
 import { Users, Info } from 'lucide-react';
 
 const LiveUsersList = () => {
-    const onlineUsers = useSelector((state) => state.notifications.onlineUsers);
+    const onlineUsersPayload = useSelector((state) => state.notifications.onlineUsers);
+    const onlineUsers = Array.isArray(onlineUsersPayload) ? onlineUsersPayload : [];
 
     return (
         <div className="bg-bg-secondary rounded-xl shadow-md border border-bg-tertiary p-6 overflow-hidden">

@@ -5,7 +5,7 @@ import { dashboardAPI } from '../api';
 import { branchesAPI } from '../../branches/api';
 import SearchableSelect from '../../../shared/components/SearchableSelect';
 import { useAuth } from '../../../shared/hooks/useAuth';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import { useWebSocket } from '../../../shared/hooks/useWebSocket';
 import LiveUsersList from '../components/LiveUsersList';
 import { useDispatch } from 'react-redux';
@@ -25,10 +25,17 @@ import {
     Clock
 } from 'lucide-react';
 
+const getListPayload = (payload) => {
+    if (Array.isArray(payload)) return payload;
+    if (Array.isArray(payload?.results)) return payload.results;
+    if (Array.isArray(payload?.data)) return payload.data;
+    if (Array.isArray(payload?.items)) return payload.items;
+    return [];
+};
+
 const DashboardHome = () => {
 
     const { user } = useAuth();
-    const navigate = useNavigate();
     const dispatch = useDispatch();
 
     // Initialize WebSocket for real-time tracking
@@ -51,7 +58,7 @@ const DashboardHome = () => {
         today_missed_calls: 0,
     });
 
-    const [chartData, setChartData] = useState([]);
+    const [, setChartData] = useState([]);
     const [branchData, setBranchData] = useState([]);
     const [loading, setLoading] = useState(true);
 
@@ -84,7 +91,7 @@ const DashboardHome = () => {
                     params.branch_group = selectedGroup;
                 }
                 const response = await branchesAPI.getBranches(params);
-                const data = response.data.results || response.data;
+                const data = getListPayload(response.data);
                 setBranches(data.map(b => ({ value: b.id, label: b.spa_name })));
             } catch (err) {
                 console.error("Failed to fetch branches", err);
@@ -97,7 +104,7 @@ const DashboardHome = () => {
         const fetchOnlineUsers = async () => {
             try {
                 const response = await axiosInstance.get('/auth/users/online/');
-                dispatch(setOnlineUsers(response.data));
+                dispatch(setOnlineUsers(getListPayload(response.data)));
             } catch (err) {
                 console.error("Failed to fetch online users", err);
             }
@@ -107,7 +114,7 @@ const DashboardHome = () => {
             if (!isAdmin) return;
             try {
                 const response = await branchesAPI.getGroups({ all: true });
-                const data = response.data.results || response.data;
+                const data = getListPayload(response.data);
                 setGroups(data.map(g => ({ value: g.id, label: g.name })));
             } catch (err) {
                 console.error("Failed to fetch groups", err);

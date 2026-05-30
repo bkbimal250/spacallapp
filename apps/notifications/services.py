@@ -2,6 +2,7 @@ import logging
 import firebase_admin
 from firebase_admin import credentials, messaging
 from django.conf import settings
+from django.utils import timezone
 from .models import Notification
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
@@ -9,6 +10,15 @@ from channels.layers import get_channel_layer
 logger = logging.getLogger(__name__)
 
 class NotificationService:
+    @staticmethod
+    def _recipient_context(recipient):
+        return {
+            "recipient_model": recipient.__class__.__name__,
+            "recipient_id": str(getattr(recipient, "id", "")),
+            "device_id": getattr(recipient, "device_id", None),
+            "has_fcm_token": bool(getattr(recipient, "fcm_token", None)),
+        }
+
     @staticmethod
     def _initialize_firebase():
         """Initialize Firebase Admin SDK if not already done."""
@@ -19,14 +29,28 @@ class NotificationService:
                 try:
                     cred = credentials.Certificate(cred_path)
                     firebase_admin.initialize_app(cred)
+                    logger.info(
+                        "Firebase Admin SDK initialized from service account",
+                        extra={
+                            "firebase_project_id": getattr(cred, "project_id", None),
+                            "credential_path": cred_path,
+                        },
+                    )
                 except Exception as e:
-                    logger.error(f"Failed to initialize Firebase with {cred_path}: {e}")
+                    logger.exception(
+                        "Failed to initialize Firebase Admin SDK from service account",
+                        extra={"credential_path": cred_path},
+                    )
             else:
                 # Fallback to default initialization (expects GOOGLE_APPLICATION_CREDENTIALS)
                 try:
                     firebase_admin.initialize_app()
+                    logger.info("Firebase Admin SDK initialized from application default credentials")
                 except Exception:
-                    logger.warning("Firebase not initialized. Push notifications will be logged but not sent.")
+                    logger.warning(
+                        "Firebase not initialized. Push notifications will be logged but not sent.",
+                        exc_info=True,
+                    )
 
     @staticmethod
     def _broadcast_refresh(branch_id=None):
@@ -143,11 +167,22 @@ class NotificationService:
         NotificationService._initialize_firebase()
 
         token = recipient.fcm_token
+        logger.info(
+            "FCM send started",
+            extra={
+                **NotificationService._recipient_context(recipient),
+                "notification_type": notification_type,
+            },
+        )
         if not token:
             if notif_log:
                 notif_log.error_message = "Recipient has no FCM token saved."
                 notif_log.save()
                 NotificationService._broadcast_notification(notif_log)
+            logger.warning(
+                "FCM send skipped: recipient has no saved token",
+                extra=NotificationService._recipient_context(recipient),
+            )
             return False
 
         if not firebase_admin._apps:
@@ -155,18 +190,26 @@ class NotificationService:
                 notif_log.error_message = "Firebase Admin SDK not initialized."
                 notif_log.save()
                 NotificationService._broadcast_notification(notif_log)
+            logger.error(
+                "FCM send skipped: Firebase Admin SDK not initialized",
+                extra=NotificationService._recipient_context(recipient),
+            )
             return False
 
         try:
+            message_data = {
+                "title": str(title),
+                "body": str(body),
+                "type": str(notification_type),
+                "sent_at": timezone.now().isoformat(),
+                **{str(key): str(value) for key, value in (data or {}).items()},
+            }
             message = messaging.Message(
                 notification=messaging.Notification(
                     title=title,
                     body=body,
                 ),
-                data={
-                    "type": notification_type,
-                    **(data or {})
-                },
+                data=message_data,
                 token=token,
             )
             response = messaging.send(message)
@@ -176,10 +219,24 @@ class NotificationService:
                 notif_log.firebase_message_id = response
                 notif_log.save()
                 NotificationService._broadcast_notification(notif_log)
+            logger.info(
+                "FCM send succeeded",
+                extra={
+                    **NotificationService._recipient_context(recipient),
+                    "firebase_message_id": response,
+                },
+            )
             return True
             
         except messaging.ApiCallError as e:
-            logger.error(f"FCM ApiCallError for {recipient}: {e}")
+            logger.error(
+                "FCM send failed with Firebase API error",
+                extra={
+                    **NotificationService._recipient_context(recipient),
+                    "firebase_error_code": getattr(e, "code", None),
+                    "firebase_error": str(e),
+                },
+            )
             if notif_log:
                 notif_log.error_message = str(e)
                 notif_log.save()
@@ -188,14 +245,20 @@ class NotificationService:
             # Common FCM error codes for stale/invalid tokens
             invalid_token_codes = ['registration-token-not-registered', 'invalid-registration-token']
             if e.code in invalid_token_codes:
-                logger.warning(f"Clearing invalid FCM token for {recipient}")
+                logger.warning(
+                    "Clearing invalid FCM token for recipient",
+                    extra=NotificationService._recipient_context(recipient),
+                )
                 recipient.fcm_token = None
                 recipient.save(update_fields=['fcm_token'])
             
             return False
 
         except Exception as e:
-            logger.error(f"Unexpected FCM Error for {recipient}: {e}")
+            logger.exception(
+                "Unexpected FCM send failure",
+                extra=NotificationService._recipient_context(recipient),
+            )
             if notif_log:
                 notif_log.error_message = str(e)
                 notif_log.save()

@@ -1,0 +1,164 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+
+  /* =========================
+     MAIN BRAND COLORS
+  ========================== */
+
+  --primary: 37 99 235;        /* #2563EB */
+  --primary-light: 96 165 250;
+  --primary-soft: 219 234 254;
+
+  /* =========================
+     BACKGROUNDS
+  ========================== */
+
+  --background: 248 250 252;  /* slate-50 */
+  --surface: 255 255 255;
+  --surface-hover: 248 250 252;
+
+  /* =========================
+     SIDEBAR
+  ========================== */
+
+  --sidebar-bg: 15 23 42;     /* slate-900 */
+  --sidebar-hover: 30 41 59;
+  --sidebar-active: 37 99 235;
+
+  /* =========================
+     TEXT
+  ========================== */
+
+  --text-primary: 15 23 42;
+  --text-secondary: 100 116 139;
+  --text-muted: 148 163 184;
+  --text-white: 255 255 255;
+
+  /* =========================
+     BORDER
+  ========================== */
+
+  --border: 226 232 240;
+  --border-light: 241 245 249;
+
+  /* =========================
+     STATUS COLORS
+  ========================== */
+
+  --success: 22 163 74;
+  --success-bg: 220 252 231;
+
+  --warning: 245 158 11;
+  --warning-bg: 254 243 199;
+
+  --danger: 220 38 38;
+  --danger-bg: 254 226 226;
+
+  --info: 14 165 233;
+  --info-bg: 224 242 254;
+
+  /* =========================
+     CARD COLORS
+  ========================== */
+
+  --card-bg: 255 255 255;
+  --card-border: 226 232 240;
+
+  /* =========================
+     CHART COLORS
+  ========================== */
+
+  --chart-1: 37 99 235;
+  --chart-2: 14 165 233;
+  --chart-3: 99 102 241;
+  --chart-4: 168 85 247;
+  --chart-5: 34 197 94;
+
+  /* =========================
+     SHADOWS
+  ========================== */
+
+  --shadow-sm:
+    0 1px 2px rgba(0,0,0,.04);
+
+  --shadow-md:
+    0 4px 12px rgba(0,0,0,.08);
+
+  --shadow-lg:
+    0 10px 25px rgba(0,0,0,.10);
+
+  /* =========================
+     RADIUS
+  ========================== */
+
+  --radius-sm: 10px;
+  --radius-md: 16px;
+  --radius-lg: 24px;
+}
+
+@layer base {
+  /* Disable tap highlight on mobile for buttons and links */
+  button,
+  a,
+  select,
+  input,
+  [role="button"] {
+    -webkit-tap-highlight-color: transparent;
+  }
+  
+  /* Smooth scrolling behaviour */
+  html {
+    scroll-behavior: smooth;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+}
+
+@layer utilities {
+  /* Kinetic scroll for touch devices */
+  .scroll-touch {
+    -webkit-overflow-scrolling: touch;
+  }
+  
+  /* Minimal slim scrollbars for mobile dashboard tables */
+  .scrollbar-thin::-webkit-scrollbar {
+    height: 5px;
+    width: 5px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background: rgb(var(--border));
+    border-radius: 9999px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+    background: rgb(var(--text-muted));
+  }
+  
+  /* Verification Shake Animation */
+  @keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    15%, 45%, 75% { transform: translateX(-6px); }
+    30%, 60%, 90% { transform: translateX(6px); }
+  }
+  .animate-shake {
+    animation: shake 0.4s ease-in-out;
+  }
+
+  /* Verification Success Animation */
+  @keyframes success-pulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.04); }
+  }
+  .animate-success-pulse {
+    animation: success-pulse 0.6s ease-in-out;
+  }
+}

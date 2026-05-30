@@ -54,6 +54,11 @@ class DeviceAuthentication(authentication.BaseAuthentication):
         device_id = request.headers.get("X-Device-ID")
         secret_key = request.headers.get("X-Device-Secret")
         context = _request_context(request, device_id=device_id)
+        context = {
+            **context,
+            "has_x_device_id": bool(device_id),
+            "has_x_device_secret": bool(secret_key),
+        }
 
         if not device_id and not secret_key:
             logger.warning(

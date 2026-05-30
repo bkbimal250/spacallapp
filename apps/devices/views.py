@@ -23,6 +23,7 @@ Android Flow:
 import logging
 import secrets
 import uuid
+import hashlib
 
 from django.db import IntegrityError, transaction
 from django_filters.rest_framework import DjangoFilterBackend
@@ -89,6 +90,16 @@ def _safe_errors(errors):
     if isinstance(errors, dict):
         return {str(key): _safe_errors(value) for key, value in errors.items()}
     return str(errors)
+
+
+def _token_diagnostics(token):
+    if not token:
+        return {"token_present": False, "token_length": 0}
+    return {
+        "token_present": True,
+        "token_length": len(token),
+        "token_sha256_prefix": hashlib.sha256(token.encode("utf-8")).hexdigest()[:12],
+    }
 
 
 class DeviceViewSet(viewsets.ModelViewSet):
@@ -483,7 +494,12 @@ class UpdateFCMTokenView(APIView):
         context = {
             **_request_context(request),
             "device_id": getattr(request.auth, "device_id", None),
+            "has_x_device_id": bool(request.headers.get("X-Device-ID")),
+            "has_x_device_secret": bool(request.headers.get("X-Device-Secret")),
+            "content_type": request.META.get("CONTENT_TYPE", ""),
         }
+        logger.info("FCM token update received", extra=context)
+
         serializer = UpdateFCMTokenSerializer(data=request.data)
 
         if not serializer.is_valid():
@@ -509,7 +525,10 @@ class UpdateFCMTokenView(APIView):
         token = serializer.validated_data["fcm_token"]
         device = request.auth
         if not device or not getattr(device, "device_id", None):
-            logger.warning("FCM token update rejected: device auth not ready", extra=context)
+            logger.warning(
+                "FCM token update rejected: device auth not ready",
+                extra={**context, **_token_diagnostics(token)},
+            )
             return Response(
                 {
                     "error": "Invalid Device Credentials",
@@ -519,8 +538,24 @@ class UpdateFCMTokenView(APIView):
                 status=status.HTTP_403_FORBIDDEN,
             )
 
-        device.fcm_token = token
-        device.save(update_fields=["fcm_token"])
+        try:
+            with transaction.atomic():
+                locked_device = Device.objects.select_for_update().get(pk=device.pk)
+                locked_device.fcm_token = token
+                locked_device.save(update_fields=["fcm_token", "updated_at"])
+        except Device.DoesNotExist:
+            logger.warning(
+                "FCM token update rejected: authenticated device disappeared before save",
+                extra={**context, **_token_diagnostics(token)},
+            )
+            return Response(
+                {
+                    "error": "Invalid Device Credentials",
+                    "code": "device_not_found",
+                    "request_id": context["request_id"],
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
 
-        logger.info("FCM token updated", extra={**context, "token_present": bool(token)})
+        logger.info("FCM token updated", extra={**context, **_token_diagnostics(token)})
         return Response({"status": "success", "message": "FCM token updated successfully"})

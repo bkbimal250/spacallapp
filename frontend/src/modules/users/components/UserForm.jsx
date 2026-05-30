@@ -1,21 +1,53 @@
-import React, { useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { useSelector } from 'react-redux';
 import Input from '../../../shared/components/Input';
 import Button from '../../../shared/components/Button';
 import Modal from '../../../shared/components/Modal';
 import SearchableSelect from '../../../shared/components/SearchableSelect';
 import { branchesAPI } from '../../branches/api';
-import { Search, X } from 'lucide-react';
+import { CheckSquare, MapPin, Search, X } from 'lucide-react';
 
 const BranchMultiSelect = ({ branches, value, onChange }) => {
     const [search, setSearch] = useState('');
+    const [cityFilter, setCityFilter] = useState('');
+    const [statusFilter, setStatusFilter] = useState('active');
+    const [showSelectedOnly, setShowSelectedOnly] = useState(false);
 
-    const selectedIds = value || [];
-    const selectedBranches = branches.filter(branch => selectedIds.includes(branch.id));
-    const filteredBranches = branches.filter(branch => {
-        const label = `${branch.spa_name || ''} ${branch.code || ''} ${branch.city || ''}`.toLowerCase();
-        return label.includes(search.toLowerCase());
-    });
+    const selectedIds = useMemo(() => value || [], [value]);
+    const selectedBranches = useMemo(
+        () => branches.filter(branch => selectedIds.includes(branch.id)),
+        [branches, selectedIds]
+    );
+
+    const cityOptions = useMemo(() => {
+        const cities = branches
+            .map(branch => branch.city)
+            .filter(Boolean)
+            .map(city => city.trim())
+            .filter(Boolean);
+
+        return [...new Set(cities)].sort((a, b) => a.localeCompare(b));
+    }, [branches]);
+
+    const filteredBranches = useMemo(() => {
+        const searchValue = search.toLowerCase().trim();
+
+        return branches.filter(branch => {
+            const label = `${branch.spa_name || ''} ${branch.code || ''} ${branch.city || ''} ${branch.state || ''} ${branch.branch_group_name || ''}`.toLowerCase();
+            const matchesSearch = !searchValue || label.includes(searchValue);
+            const matchesCity = !cityFilter || branch.city === cityFilter;
+            const matchesStatus =
+                statusFilter === 'all' ||
+                (statusFilter === 'active' && branch.is_active !== false) ||
+                (statusFilter === 'inactive' && branch.is_active === false);
+            const matchesSelected = !showSelectedOnly || selectedIds.includes(branch.id);
+
+            return matchesSearch && matchesCity && matchesStatus && matchesSelected;
+        });
+    }, [branches, cityFilter, search, selectedIds, showSelectedOnly, statusFilter]);
+
+    const filteredIds = filteredBranches.map(branch => branch.id);
+    const allFilteredSelected = filteredIds.length > 0 && filteredIds.every(id => selectedIds.includes(id));
 
     const toggleBranch = (branchId) => {
         onChange(
@@ -25,11 +57,31 @@ const BranchMultiSelect = ({ branches, value, onChange }) => {
         );
     };
 
+    const selectFilteredBranches = () => {
+        onChange([...new Set([...selectedIds, ...filteredIds])]);
+    };
+
+    const clearFilteredBranches = () => {
+        onChange(selectedIds.filter(id => !filteredIds.includes(id)));
+    };
+
+    const clearFilters = () => {
+        setSearch('');
+        setCityFilter('');
+        setStatusFilter('active');
+        setShowSelectedOnly(false);
+    };
+
     return (
-        <div className="space-y-2">
-            <label className="block text-xs font-semibold text-text-secondary mb-1 ml-1 uppercase tracking-wider">
-                Assign SPA Branches
-            </label>
+        <div className="space-y-3 rounded-2xl border border-border bg-background/40 p-3">
+            <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                <label className="block text-xs font-semibold text-text-secondary uppercase tracking-wider">
+                    Assign SPA Branches
+                </label>
+                <span className="text-xs text-text-muted">
+                    {selectedBranches.length} selected
+                </span>
+            </div>
 
             <div className="relative">
                 <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
@@ -42,8 +94,77 @@ const BranchMultiSelect = ({ branches, value, onChange }) => {
                 />
             </div>
 
-            {selectedBranches.length > 0 && (
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <label className="relative">
+                    <MapPin size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
+                    <select
+                        value={cityFilter}
+                        onChange={(event) => setCityFilter(event.target.value)}
+                        className="w-full bg-background border border-border rounded-lg py-2.5 pl-9 pr-8 text-sm text-text-primary outline-none focus:border-primary"
+                    >
+                        <option value="">All cities</option>
+                        {cityOptions.map(city => (
+                            <option key={city} value={city}>{city}</option>
+                        ))}
+                    </select>
+                </label>
+
+                <select
+                    value={statusFilter}
+                    onChange={(event) => setStatusFilter(event.target.value)}
+                    className="w-full bg-background border border-border rounded-lg px-3 py-2.5 text-sm text-text-primary outline-none focus:border-primary"
+                >
+                    <option value="active">Active only</option>
+                    <option value="all">All branches</option>
+                    <option value="inactive">Inactive only</option>
+                </select>
+
+                <button
+                    type="button"
+                    onClick={() => setShowSelectedOnly(prev => !prev)}
+                    className={`inline-flex items-center justify-center gap-2 rounded-lg border px-3 py-2.5 text-sm font-medium transition ${showSelectedOnly
+                            ? 'border-primary bg-primary/10 text-primary'
+                            : 'border-border text-text-secondary hover:border-primary hover:text-primary'
+                        }`}
+                >
+                    <CheckSquare size={15} />
+                    Selected
+                </button>
+            </div>
+
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-card/50 px-3 py-2">
+                <span className="text-xs text-text-secondary">
+                    Showing {filteredBranches.length} of {branches.length} branches
+                </span>
                 <div className="flex flex-wrap gap-2">
+                    <button
+                        type="button"
+                        onClick={selectFilteredBranches}
+                        disabled={filteredBranches.length === 0 || allFilteredSelected}
+                        className="text-xs font-semibold text-primary disabled:cursor-not-allowed disabled:text-text-muted"
+                    >
+                        Select shown
+                    </button>
+                    <button
+                        type="button"
+                        onClick={clearFilteredBranches}
+                        disabled={!filteredIds.some(id => selectedIds.includes(id))}
+                        className="text-xs font-semibold text-danger disabled:cursor-not-allowed disabled:text-text-muted"
+                    >
+                        Clear shown
+                    </button>
+                    <button
+                        type="button"
+                        onClick={clearFilters}
+                        className="text-xs font-semibold text-text-secondary hover:text-text-primary"
+                    >
+                        Reset filters
+                    </button>
+                </div>
+            </div>
+
+            {selectedBranches.length > 0 && (
+                <div className="max-h-20 overflow-y-auto flex flex-wrap gap-2 pr-1 custom-scrollbar">
                     {selectedBranches.map(branch => (
                         <button
                             key={branch.id}
@@ -78,7 +199,7 @@ const BranchMultiSelect = ({ branches, value, onChange }) => {
                             <span className="text-sm text-text-primary">
                                 {branch.spa_name}
                                 <span className="text-text-muted">
-                                    {branch.code ? ` (${branch.code})` : ''}{branch.city ? ` - ${branch.city}` : ''}
+                                    {branch.code ? ` (${branch.code})` : ''}{branch.city ? ` - ${branch.city}` : ''}{branch.branch_group_name ? ` - ${branch.branch_group_name}` : ''}
                                 </span>
                             </span>
                         </label>
@@ -87,7 +208,7 @@ const BranchMultiSelect = ({ branches, value, onChange }) => {
             </div>
 
             <p className="text-xs text-text-secondary">
-                {selectedBranches.length} branch(es) selected for this Area Manager.
+                Use search and city filters to quickly assign branches to this Area Manager.
             </p>
         </div>
     );
@@ -112,7 +233,8 @@ const UserForm = ({ isOpen, onClose, onSubmit, initialData, loading = false }) =
         const fetchBranches = async () => {
             try {
                 const response = await branchesAPI.getBranches({ all: true });
-                setBranches(response.data.results || response.data);
+                const data = response.data?.results || response.data?.data || response.data;
+                setBranches(Array.isArray(data) ? data : []);
             } catch (error) {
                 console.error("Failed to fetch branches", error);
             }

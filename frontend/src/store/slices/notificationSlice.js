@@ -42,7 +42,7 @@ const notificationSlice = createSlice({
             state.unreadCount = 0;
         },
         setOnlineUsers: (state, action) => {
-            state.onlineUsers = action.payload;
+            state.onlineUsers = Array.isArray(action.payload) ? action.payload : [];
         },
         updateUserStatus: (state, action) => {
             const { user_id, is_online } = action.payload;
