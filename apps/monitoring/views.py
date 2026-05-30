@@ -229,9 +229,56 @@ class DeviceEventViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['post'])
     def resolve_all(self, request):
         """Mark all unresolved events in the user's scope as resolved."""
-        queryset = self.get_queryset().filter(resolved=False)
+        queryset = self.filter_queryset(self.get_queryset()).filter(resolved=False)
         count = queryset.update(resolved=True, resolved_at=timezone.now())
         return response.Response({'status': 'all events resolved', 'count': count})
+
+    @extend_schema(
+        summary="Delete Selected Events",
+        description="Delete selected device events within the user's current scope.",
+        request=inline_serializer(
+            name="DeleteSelectedEventsRequest",
+            fields={"ids": serializers.ListField(child=serializers.UUIDField())}
+        ),
+        responses={200: inline_serializer(
+            name="DeleteSelectedEventsResponse",
+            fields={
+                "status": serializers.CharField(),
+                "count": serializers.IntegerField()
+            }
+        )}
+    )
+    @action(detail=False, methods=['post'])
+    def delete_selected(self, request):
+        """Delete selected events without bypassing branch/user scope."""
+        event_ids = request.data.get("ids") or []
+        if not event_ids:
+            return response.Response(
+                {"error": "Select at least one alert to delete."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        queryset = self.get_queryset().filter(id__in=event_ids)
+        count, _ = queryset.delete()
+        return response.Response({'status': 'selected events deleted', 'count': count})
+
+    @extend_schema(
+        summary="Delete Filtered Events",
+        description="Delete all device events matching the current filters within the user's current scope.",
+        responses={200: inline_serializer(
+            name="DeleteFilteredEventsResponse",
+            fields={
+                "status": serializers.CharField(),
+                "count": serializers.IntegerField()
+            }
+        )}
+    )
+    @action(detail=False, methods=['delete'])
+    def delete_all(self, request):
+        """Delete all filtered events in the user's scope."""
+        queryset = self.filter_queryset(self.get_queryset())
+        count, _ = queryset.delete()
+        return response.Response({'status': 'filtered events deleted', 'count': count})
 
 
 class DeviceStatusResultView(views.APIView):
