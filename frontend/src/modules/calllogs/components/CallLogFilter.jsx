@@ -474,6 +474,7 @@ const CallLogFilter = ({
                                 <option value="OK">OK (&lt; 30m)</option>
                                 <option value="LATE">Late (&gt; 30m)</option>
                                 <option value="MISSED">Missed SLA</option>
+                                <option value="CUSTOMER_RECALL">Customer Recall</option>
                             </select>
                             <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-text-muted group-hover:text-primary transition-colors">
                                 <ChevronDown size={16} />

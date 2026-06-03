@@ -89,6 +89,7 @@ class AnalyticsOverviewView(APIView):
         parameters=[
             OpenApiParameter("time_filter", str, description="Range filter: today, yesterday, last_7_days, last_30_days, this_month, custom"),
             OpenApiParameter("branch", str, description="Filter by branch ID"),
+            OpenApiParameter("device", str, description="Filter by device identifier (device_id) for mobile dashboard analytics"),
             OpenApiParameter("call_type", str, description="Filter by call type: incoming, outgoing, missed, rejected"),
             OpenApiParameter("start_date", str, description="Format: YYYY-MM-DD"),
             OpenApiParameter("end_date", str, description="Format: YYYY-MM-DD"),
@@ -120,6 +121,11 @@ class AnalyticsOverviewView(APIView):
         # Apply role-based branch restriction
         branch_id = request.query_params.get("branch")
         base_qs = apply_branch_filter(base_qs, "branch_id", user, extra_branch_id=branch_id)
+
+        # Optional device-level filter for mobile dashboard analytics only
+        device_id = request.query_params.get("device")
+        if device_id and device_id.strip() and device_id not in ("undefined", "null"):
+            base_qs = base_qs.filter(device__device_id=device_id.strip())
 
         # Optional call type filter
         call_type = request.query_params.get("call_type")

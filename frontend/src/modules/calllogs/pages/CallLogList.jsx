@@ -356,16 +356,24 @@ const CallLogList = () => {
                     const status = row.followup_status;
 
                     if (isFollowed) {
-                        const variant = status === 'GOOD' ? 'success' : (status === 'OK' ? 'warning' : 'danger');
+                        const isRecall = status === 'CUSTOMER_RECALL';
+                        const variant = isRecall ? 'purple' : (status === 'GOOD' ? 'success' : (status === 'OK' ? 'warning' : 'danger'));
+                        const displayStatus = isRecall ? 'RECALL' : (status || 'DONE');
 
                         return (
-                            <div className="flex flex-col gap-1 items-center" title="Follow-up complete">
+                            <div className="flex flex-col gap-1 items-center" title={isRecall ? "Customer recalled" : "Follow-up complete"}>
                                 <Badge variant={variant} className="text-[10px] px-2 py-0.5 whitespace-nowrap shadow-sm border-none font-bold">
-                                    {status || 'DONE'}
+                                    {displayStatus}
                                 </Badge>
-                                <div className="flex items-center gap-1 text-[10px] text-success font-black drop-shadow-sm uppercase">
-                                    <UserCheck size={12} strokeWidth={3} /> Followed Up
-                                </div>
+                                {isRecall ? (
+                                    <div className="flex items-center gap-1 text-[10px] text-purple-400 font-black drop-shadow-sm uppercase">
+                                        <PhoneIncoming size={12} strokeWidth={3} /> Recalled
+                                    </div>
+                                ) : (
+                                    <div className="flex items-center gap-1 text-[10px] text-success font-black drop-shadow-sm uppercase">
+                                        <UserCheck size={12} strokeWidth={3} /> Followed Up
+                                    </div>
+                                )}
                             </div>
                         );
                     }

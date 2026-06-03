@@ -158,6 +158,7 @@ class MissedCallFollowUp(BaseModel, TimeStampedModel):
         ("OK", "Within 30 mins"),
         ("LATE", "Within 1 hour"),
         ("MISSED", "No follow-up / > 1 hour"),
+        ("CUSTOMER_RECALL", "Customer recalled"),
     )
 
     # The missed call log being tracked
@@ -175,14 +176,14 @@ class MissedCallFollowUp(BaseModel, TimeStampedModel):
         related_name="missed_call_followups",
     )
 
-    # The outgoing call that served as the follow-up
+    # The call that served as the follow-up
     followup_call = models.ForeignKey(
         "CallLog",
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
         related_name="serves_as_followup",
-        limit_choices_to={"call_type": "outgoing"},
+        limit_choices_to={"call_type__in": ["outgoing", "incoming"]},
     )
 
     is_followed_up = models.BooleanField(default=False, db_index=True)
@@ -191,7 +192,7 @@ class MissedCallFollowUp(BaseModel, TimeStampedModel):
 
     # SLA categorization
     sla_status = models.CharField(
-        max_length=10, 
+        max_length=20, 
         choices=SLA_STATUS, 
         default="MISSED", 
         db_index=True

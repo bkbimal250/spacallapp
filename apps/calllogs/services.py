@@ -96,7 +96,7 @@ class FollowUpService:
         from django.utils import timezone
         from datetime import timedelta
 
-        # 1. Handle Missed Calls (Create tracking entries AND resolve if outgoing exists)
+        # 1. Handle Missed Calls (Create tracking entries AND resolve if resolving call exists)
         missed_logs = [log for log in call_logs if log.call_type == "missed"]
         if missed_logs:
             for m_log in missed_logs:
@@ -106,21 +106,23 @@ class FollowUpService:
                 )
                 
                 if created:
-                    # Check if an outgoing call already exists in the DB for this number AFTER this missed call
-                    # (This handles the case where the outgoing call was synced before the missed call)
+                    # Check if an outgoing or incoming call already exists in the DB for this number AFTER this missed call
+                    # (This handles the case where the resolving call was synced before the missed call)
                     existing_followup_call = CallLog.objects.filter(
                         branch=m_log.branch,
                         phone_normalized=m_log.phone_normalized,
-                        call_type="outgoing",
+                        call_type__in=["outgoing", "incoming"],
                         call_time__gt=m_log.call_time
                     ).order_by('call_time').first()
 
                     if existing_followup_call:
                         # Resolve immediately
-                        time_diff = existing_followup_call.call_time - m_log.call_time
-                        diff_minutes = time_diff.total_seconds() / 60
-                        
-                        status = "GOOD" if diff_minutes <= 10 else "OK" if diff_minutes <= 30 else "LATE" if diff_minutes <= 60 else "MISSED"
+                        if existing_followup_call.call_type == "incoming":
+                            status = "CUSTOMER_RECALL"
+                        else:
+                            time_diff = existing_followup_call.call_time - m_log.call_time
+                            diff_minutes = time_diff.total_seconds() / 60
+                            status = "GOOD" if diff_minutes <= 10 else "OK" if diff_minutes <= 30 else "LATE" if diff_minutes <= 60 else "MISSED"
                         
                         followup.followup_call = existing_followup_call
                         followup.is_followed_up = True
@@ -133,34 +135,37 @@ class FollowUpService:
                         from .tasks import schedule_missed_call_notifications
                         schedule_missed_call_notifications.delay(m_log.id)
 
-        # 2. Handle Outgoing Calls (Resolve pending follow-ups)
-        outgoing_logs = [log for log in call_logs if log.call_type == "outgoing"]
-        for o_log in outgoing_logs:
-            # Find all pending missed calls for this number (normalized) and branch that happened BEFORE this outgoing call.
+        # 2. Handle Outgoing and Incoming Calls (Resolve pending follow-ups)
+        resolving_logs = [log for log in call_logs if log.call_type in ["outgoing", "incoming"]]
+        for r_log in resolving_logs:
+            # Find all pending missed calls for this number (normalized) and branch that happened BEFORE this resolving call.
             pendings = MissedCallFollowUp.objects.filter(
-                branch=o_log.branch,
-                missed_call__phone_normalized=o_log.phone_normalized,
-                missed_call__call_time__lt=o_log.call_time,
+                branch=r_log.branch,
+                missed_call__phone_normalized=r_log.phone_normalized,
+                missed_call__call_time__lt=r_log.call_time,
                 is_followed_up=False
             ).select_related('missed_call')
 
             for pending in pendings:
                 # Calculate SLA Status
-                time_diff = o_log.call_time - pending.missed_call.call_time
-                diff_minutes = time_diff.total_seconds() / 60
+                if r_log.call_type == "incoming":
+                    status = "CUSTOMER_RECALL"
+                else:
+                    time_diff = r_log.call_time - pending.missed_call.call_time
+                    diff_minutes = time_diff.total_seconds() / 60
+                    status = "GOOD" if diff_minutes <= 10 else "OK" if diff_minutes <= 30 else "LATE" if diff_minutes <= 60 else "MISSED"
 
-                status = "GOOD" if diff_minutes <= 10 else "OK" if diff_minutes <= 30 else "LATE" if diff_minutes <= 60 else "MISSED"
-
-                pending.followup_call = o_log
+                pending.followup_call = r_log
                 pending.is_followed_up = True
-                pending.first_followup_time = o_log.call_time
+                pending.first_followup_time = r_log.call_time
                 pending.followup_attempt_count += 1
                 pending.sla_status = status
                 pending.save()
 
-            # Increment attempt count for all historical missed calls for this number
-            MissedCallFollowUp.objects.filter(
-                branch=o_log.branch,
-                missed_call__phone_normalized=o_log.phone_normalized,
-                missed_call__call_time__lt=o_log.call_time
-            ).update(followup_attempt_count=models.F('followup_attempt_count') + 1)
+            if r_log.call_type == "outgoing":
+                # Increment attempt count for all historical missed calls for this number
+                MissedCallFollowUp.objects.filter(
+                    branch=r_log.branch,
+                    missed_call__phone_normalized=r_log.phone_normalized,
+                    missed_call__call_time__lt=r_log.call_time
+                ).update(followup_attempt_count=models.F('followup_attempt_count') + 1)

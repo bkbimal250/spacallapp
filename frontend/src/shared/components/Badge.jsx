@@ -11,6 +11,10 @@ const Badge = ({ children, variant = 'gray', className }) => {
         indigo: 'bg-indigo-100 text-indigo-800',
         purple: 'bg-purple-100 text-purple-800',
         pink: 'bg-pink-100 text-pink-800',
+        success: 'bg-success/10 text-success border border-success/20',
+        danger: 'bg-danger/10 text-danger border border-danger/20',
+        warning: 'bg-warning/10 text-warning border border-warning/20',
+        info: 'bg-info/10 text-info border border-info/20',
     };
 
     return (
