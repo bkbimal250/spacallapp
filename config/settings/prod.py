@@ -45,6 +45,7 @@ CORS_ALLOW_HEADERS = [
     "x-csrftoken",
     "x-device-id",
     "x-device-secret",
+    "x-doubletick-secret",
     "x-request-id",
     "x-requested-with",
     "device-id",

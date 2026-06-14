@@ -84,6 +84,7 @@ INSTALLED_APPS = [
     "apps.contacts",
     "apps.leadmanagement",
     "apps.notifications",
+    "apps.doubletick",
 ]
 
 
@@ -305,6 +306,13 @@ if not os.path.isabs(_firebase_path):
     FIREBASE_SERVICE_ACCOUNT_KEY = str(BASE_DIR / _firebase_path)
 else:
     FIREBASE_SERVICE_ACCOUNT_KEY = _firebase_path
+
+# DoubleTick WhatsApp lead integration. The webhook secret is required for
+# accepting incoming provider callbacks; the API key/base URL are reserved for
+# future outbound DoubleTick API calls.
+DOUBLETICK_WEBHOOK_SECRET = env("DOUBLETICK_WEBHOOK_SECRET", default="")
+DOUBLETICK_API_KEY = env("DOUBLETICK_API_KEY", default="")
+DOUBLETICK_BASE_URL = env("DOUBLETICK_BASE_URL", default="https://public.doubletick.io")
 
 # Spectacular Settings for API Documentation
 SPECTACULAR_SETTINGS = {
