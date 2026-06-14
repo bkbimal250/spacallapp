@@ -12,18 +12,46 @@ from apps.common.utils import apply_branch_filter
 from apps.devices.models import Device
 from core.authentication import DeviceAuthentication
 
-from .filters import DoubleTickLeadFilter
-from .models import DoubleTickLead, DoubleTickLeadActivity
+from .filters import DoubleTickConversationFilter, DoubleTickLeadFilter
+from .models import (
+    DoubleTickActivity,
+    DoubleTickAreaAlias,
+    DoubleTickConversation,
+    DoubleTickLead,
+    DoubleTickLeadActivity,
+    DoubleTickLeadArea,
+    DoubleTickLeadAssignment,
+    DoubleTickLeadVisibility,
+)
 from .serializers import (
+    DoubleTickActivitySerializer,
+    DoubleTickConversationAssignSupportSerializer,
+    DoubleTickConversationDetailSerializer,
+    DoubleTickConversationListSerializer,
+    DoubleTickConversationMatchAreaSerializer,
+    DoubleTickConversationReplySerializer,
     DoubleTickLeadActivitySerializer,
     DoubleTickLeadAssignSerializer,
+    DoubleTickLeadAssignmentSerializer,
     DoubleTickLeadDetailSerializer,
     DoubleTickLeadListSerializer,
     DoubleTickLeadSerializer,
     DoubleTickLeadStatusUpdateSerializer,
+    DoubleTickMessageSerializer,
     DoubleTickWebhookSerializer,
 )
-from .services import create_or_update_lead_from_webhook, send_lead_notification
+from .services import (
+    AreaMatchingService,
+    DoubleTickChatService,
+    DoubleTickReplyService,
+    LeadClaimService,
+    LeadDistributionService,
+    LeadQualificationService,
+    PendingConversationService,
+    create_or_update_lead_from_webhook,
+    normalize_area_text,
+    send_lead_notification,
+)
 from .webhook import is_valid_doubletick_webhook
 
 
@@ -36,63 +64,190 @@ class IsAuthenticatedUserOrDevice(permissions.BasePermission):
         return user_ok or device_ok
 
 
-def _role_filtered_leads(queryset, user):
-    """
-    Apply the CRM role model to DoubleTick leads.
+class IsInternalCRMTeam(permissions.BasePermission):
+    """Initially only admin/super_admin can operate the central team inbox."""
 
-    Admin roles see all WhatsApp leads. Area and spa managers are restricted to
-    the branch relationships that already exist on the User model.
-    """
+    def has_permission(self, request, view):
+        return bool(
+            request.user
+            and request.user.is_authenticated
+            and getattr(request.user, "role", None) in ["super_admin", "admin"]
+        )
+
+
+def _role_filtered_leads(queryset, user):
     if not user or not user.is_authenticated:
         return queryset.none()
     if getattr(user, "role", None) in ["super_admin", "admin"]:
         return queryset
     if getattr(user, "role", None) == "area_manager":
-        return apply_branch_filter(queryset, "assigned_branch_id", user)
+        branch_ids = user.area_branches.values_list("id", flat=True)
+        return queryset.filter(Q(visibilities__branch_id__in=branch_ids) | Q(current_branch_id__in=branch_ids)).distinct()
     if getattr(user, "role", None) == "spa_manager":
         if not user.branch_id:
-            return queryset.filter(assigned_user=user)
-        return queryset.filter(Q(assigned_branch=user.branch) | Q(assigned_user=user)).distinct()
+            return queryset.filter(current_user=user)
+        return queryset.filter(Q(visibilities__branch=user.branch) | Q(current_user=user)).distinct()
     return queryset.none()
 
 
-def _set_status_timestamp(lead, new_status):
-    now = timezone.now()
-    if new_status == DoubleTickLead.Status.OPENED and not lead.opened_at:
-        lead.opened_at = now
-    elif new_status == DoubleTickLead.Status.CONTACTED and not lead.contacted_at:
-        lead.contacted_at = now
-    elif new_status == DoubleTickLead.Status.FOLLOW_UP:
-        lead.follow_up_at = now
-    elif new_status == DoubleTickLead.Status.BOOKED and not lead.booked_at:
-        lead.booked_at = now
+def _device_from_request(request):
+    auth = getattr(request, "auth", None)
+    return auth if auth and hasattr(auth, "device_id") else None
+
+
+class DoubleTickConversationViewSet(viewsets.ModelViewSet):
+    """Internal CRM team inbox for pending and qualified WhatsApp conversations."""
+
+    permission_classes = [permissions.IsAuthenticated]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_class = DoubleTickConversationFilter
+    search_fields = [
+        "customer__customer_name",
+        "customer__phone_number",
+        "customer__dt_customer_id",
+        "messages__text",
+        "raw_city",
+        "raw_area",
+        "raw_service",
+        "matched_area__name",
+    ]
+    ordering_fields = ["last_message_at", "first_message_at", "unread_count", "priority", "created_at"]
+    ordering = ["-last_message_at", "-created_at"]
+
+    def get_queryset(self):
+        queryset = DoubleTickConversation.objects.select_related(
+            "customer",
+            "channel",
+            "matched_area",
+            "assigned_support_user",
+            "current_lead",
+        ).prefetch_related("messages")
+        if getattr(self.request.user, "role", None) in ["super_admin", "admin"]:
+            return queryset
+        if getattr(self.request.user, "role", None) == "area_manager":
+            branch_ids = self.request.user.area_branches.values_list("id", flat=True)
+            return queryset.filter(current_lead__visibilities__branch_id__in=branch_ids).distinct()
+        return queryset.none()
+
+    def get_serializer_class(self):
+        if self.action == "list":
+            return DoubleTickConversationListSerializer
+        return DoubleTickConversationDetailSerializer
+
+    @action(detail=True, methods=["get"])
+    def messages(self, request, pk=None):
+        conversation = self.get_object()
+        return Response(DoubleTickMessageSerializer(DoubleTickChatService.get_chat(conversation), many=True).data)
+
+    @action(detail=True, methods=["get"])
+    def activities(self, request, pk=None):
+        conversation = self.get_object()
+        qs = conversation.timeline.select_related("user", "branch", "device")
+        return Response(DoubleTickActivitySerializer(qs, many=True).data)
+
+    @action(detail=True, methods=["post"], permission_classes=[IsInternalCRMTeam], url_path="sync-chat")
+    def sync_chat(self, request, pk=None):
+        return Response(DoubleTickChatService.sync_chat(self.get_object()))
+
+    @action(detail=True, methods=["post"], permission_classes=[IsInternalCRMTeam])
+    def reply(self, request, pk=None):
+        serializer = DoubleTickConversationReplySerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        message = DoubleTickReplyService.reply(
+            self.get_object(),
+            request.user,
+            serializer.validated_data["text"],
+            serializer.validated_data.get("message_type", "text"),
+        )
+        return Response(DoubleTickMessageSerializer(message).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=["post"], permission_classes=[IsInternalCRMTeam], url_path="request-location")
+    def request_location(self, request, pk=None):
+        message = DoubleTickReplyService.request_location(self.get_object(), request.user)
+        return Response(DoubleTickMessageSerializer(message).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=["post"], permission_classes=[IsInternalCRMTeam], url_path="match-area")
+    def match_area(self, request, pk=None):
+        conversation = self.get_object()
+        serializer = DoubleTickConversationMatchAreaSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        lead_area = DoubleTickLeadArea.objects.get(pk=serializer.validated_data["lead_area_id"])
+        raw_alias = serializer.validated_data.get("raw_alias") or conversation.raw_area or lead_area.name
+        conversation.matched_area = lead_area
+        conversation.raw_area = raw_alias
+        conversation.area_confirmed = True
+        conversation.save(update_fields=["matched_area", "raw_area", "area_confirmed", "updated_at"])
+        if serializer.validated_data.get("save_alias"):
+            DoubleTickAreaAlias.objects.get_or_create(
+                lead_area=lead_area,
+                normalized_alias=normalize_area_text(raw_alias),
+                defaults={"alias": raw_alias, "channel": conversation.channel, "created_from_manual_mapping": True},
+            )
+        if serializer.validated_data.get("qualify_as_lead"):
+            lead = LeadQualificationService.qualify_conversation(conversation, user=request.user, distribute=True)
+            return Response(DoubleTickLeadDetailSerializer(lead).data)
+        AreaMatchingService.match_conversation(conversation, raw_area=raw_alias, save_alias=False)
+        return Response(DoubleTickConversationDetailSerializer(conversation).data)
+
+    @action(detail=True, methods=["post"], permission_classes=[IsInternalCRMTeam])
+    def qualify(self, request, pk=None):
+        lead = LeadQualificationService.qualify_conversation(self.get_object(), user=request.user, distribute=True)
+        return Response(DoubleTickLeadDetailSerializer(lead).data)
+
+    @action(detail=True, methods=["post"], permission_classes=[IsInternalCRMTeam], url_path="assign-support")
+    def assign_support(self, request, pk=None):
+        conversation = self.get_object()
+        serializer = DoubleTickConversationAssignSupportSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        user_id = serializer.validated_data.get("user_id")
+        conversation.assigned_support_user = get_user_model().objects.filter(id=user_id).first() if user_id else None
+        conversation.save(update_fields=["assigned_support_user", "updated_at"])
+        return Response(DoubleTickConversationDetailSerializer(conversation).data)
+
+    @action(detail=True, methods=["post"], permission_classes=[IsInternalCRMTeam], url_path="mark-spam")
+    def mark_spam(self, request, pk=None):
+        conversation = self.get_object()
+        old_status = conversation.status
+        conversation.status = DoubleTickConversation.Status.SPAM
+        conversation.save(update_fields=["status", "updated_at"])
+        DoubleTickActivity.objects.create(conversation=conversation, user=request.user, action=DoubleTickActivity.Action.CLOSED, old_status=old_status, new_status=conversation.status, note="Marked spam.")
+        return Response(DoubleTickConversationDetailSerializer(conversation).data)
+
+    @action(detail=True, methods=["post"], permission_classes=[IsInternalCRMTeam])
+    def close(self, request, pk=None):
+        conversation = self.get_object()
+        old_status = conversation.status
+        conversation.status = DoubleTickConversation.Status.CLOSED
+        conversation.save(update_fields=["status", "updated_at"])
+        DoubleTickActivity.objects.create(conversation=conversation, user=request.user, action=DoubleTickActivity.Action.CLOSED, old_status=old_status, new_status=conversation.status)
+        return Response(DoubleTickConversationDetailSerializer(conversation).data)
 
 
 class DoubleTickLeadViewSet(viewsets.ModelViewSet):
-    """
-    Web CRM API for DoubleTick leads.
-
-    This viewset is deliberately separate from apps.leadmanagement so dashboard
-    users can manage WhatsApp leads without changing call-log lead behavior.
-    """
+    """Web CRM API for qualified/distributed DoubleTick leads."""
 
     serializer_class = DoubleTickLeadSerializer
     permission_classes = [permissions.IsAuthenticated]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_class = DoubleTickLeadFilter
-    search_fields = ["customer_name", "whatsapp_name", "phone_number", "city", "area", "doubletick_chat_id"]
-    ordering_fields = ["created_at", "assigned_at", "status", "city", "area"]
+    search_fields = ["customer_name", "phone_number", "raw_area", "matched_area__name", "doubletick_chat_id"]
+    ordering_fields = ["created_at", "received_at", "claimed_at", "contacted_at", "status"]
     ordering = ["-created_at"]
 
     def get_queryset(self):
-        if getattr(self, "swagger_fake_view", False):
-            return DoubleTickLead.objects.none()
         queryset = DoubleTickLead.objects.select_related(
+            "conversation",
+            "customer",
+            "channel",
+            "matched_area",
+            "current_branch",
+            "current_user",
+            "current_device",
+            "active_assignment",
             "assigned_branch",
             "assigned_user",
             "assigned_device",
-            "duplicate_of",
-        ).prefetch_related("activities")
+        ).prefetch_related("visibilities", "assignments")
         return _role_filtered_leads(queryset, self.request.user)
 
     def get_serializer_class(self):
@@ -102,52 +257,67 @@ class DoubleTickLeadViewSet(viewsets.ModelViewSet):
             return DoubleTickLeadDetailSerializer
         return DoubleTickLeadSerializer
 
-    @action(detail=True, methods=["post"])
-    def assign(self, request, pk=None):
-        """
-        Manually assign or reassign a lead from the dashboard.
+    @action(detail=True, methods=["get"])
+    def messages(self, request, pk=None):
+        lead = self.get_object()
+        return Response(DoubleTickMessageSerializer(lead.messages.all(), many=True).data)
 
-        Admins can select branch/user/device explicitly. Restricted roles can
-        only assign within the scoped queryset returned by get_object().
-        """
+    @action(detail=True, methods=["get"])
+    def activities(self, request, pk=None):
+        lead = self.get_object()
+        return Response(DoubleTickActivitySerializer(lead.timeline.all(), many=True).data)
+
+    @action(detail=True, methods=["get"])
+    def assignments(self, request, pk=None):
+        return Response(DoubleTickLeadAssignmentSerializer(self.get_object().assignments.all(), many=True).data)
+
+    @action(detail=True, methods=["post"], permission_classes=[IsInternalCRMTeam])
+    def distribute(self, request, pk=None):
+        return Response(DoubleTickLeadDetailSerializer(LeadDistributionService.distribute(self.get_object(), user=request.user)).data)
+
+    @action(detail=True, methods=["post"], permission_classes=[IsInternalCRMTeam])
+    def assign(self, request, pk=None):
         lead = self.get_object()
         serializer = DoubleTickLeadAssignSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
-
         User = get_user_model()
-        branch_id = data.get("assigned_branch")
-        user_id = data.get("assigned_user")
-        device_id = data.get("assigned_device")
-
-        if branch_id is not None:
-            lead.assigned_branch_id = branch_id
-        if user_id is not None:
-            lead.assigned_user = User.objects.filter(id=user_id).first()
-        if device_id is not None:
-            lead.assigned_device = Device.objects.filter(id=device_id).first()
-
-        lead.status = DoubleTickLead.Status.ASSIGNED if (lead.assigned_user or lead.assigned_device) else DoubleTickLead.Status.UNASSIGNED
-        lead.assigned_at = timezone.now() if lead.status == DoubleTickLead.Status.ASSIGNED else None
+        if data.get("assigned_branch") is not None:
+            lead.assigned_branch_id = data.get("assigned_branch")
+            lead.current_branch_id = data.get("assigned_branch")
+        if data.get("assigned_user") is not None:
+            lead.assigned_user = User.objects.filter(id=data.get("assigned_user")).first()
+            lead.current_user = lead.assigned_user
+        if data.get("assigned_device") is not None:
+            lead.assigned_device = Device.objects.filter(id=data.get("assigned_device")).first()
+            lead.current_device = lead.assigned_device
+        lead.status = DoubleTickLead.Status.CLAIMED if lead.current_user else DoubleTickLead.Status.AVAILABLE
+        lead.assigned_at = timezone.now()
         lead.save()
+        DoubleTickLeadActivity.objects.create(lead=lead, user=request.user, action=DoubleTickLeadActivity.Action.REASSIGNED, note=data.get("note", ""))
+        return Response(DoubleTickLeadDetailSerializer(lead).data)
 
-        DoubleTickLeadActivity.objects.create(
-            lead=lead,
-            user=request.user,
-            action=DoubleTickLeadActivity.Action.REASSIGNED,
-            note=data.get("note", ""),
-            metadata={
-                "assigned_branch": str(lead.assigned_branch_id) if lead.assigned_branch_id else None,
-                "assigned_user": str(lead.assigned_user_id) if lead.assigned_user_id else None,
-                "assigned_device": str(lead.assigned_device_id) if lead.assigned_device_id else None,
-            },
-        )
-        send_lead_notification(lead)
+    @action(detail=True, methods=["post"], permission_classes=[IsInternalCRMTeam])
+    def reassign(self, request, pk=None):
+        return self.assign(request, pk=pk)
+
+    @action(detail=True, methods=["post"])
+    def release(self, request, pk=None):
+        lead = LeadClaimService.release(pk, request.user, request.data.get("reason", ""), _device_from_request(request))
+        return Response(DoubleTickLeadDetailSerializer(lead).data)
+
+    @action(detail=True, methods=["post"], permission_classes=[IsInternalCRMTeam])
+    def close(self, request, pk=None):
+        lead = self.get_object()
+        lead.status = DoubleTickLead.Status.CLOSED
+        lead.closed_reason = request.data.get("reason", "")
+        lead.closed_at = timezone.now()
+        lead.save(update_fields=["status", "closed_reason", "closed_at", "updated_at"])
+        DoubleTickActivity.objects.create(lead=lead, user=request.user, action=DoubleTickActivity.Action.CLOSED, note=lead.closed_reason)
         return Response(DoubleTickLeadDetailSerializer(lead).data)
 
     @action(detail=True, methods=["post"])
     def activity(self, request, pk=None):
-        """Add a note activity to a DoubleTick lead."""
         lead = self.get_object()
         serializer = DoubleTickLeadActivitySerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -162,95 +332,99 @@ class DoubleTickLeadViewSet(viewsets.ModelViewSet):
 
 
 class DoubleTickMobileLeadViewSet(viewsets.ReadOnlyModelViewSet):
-    """
-    Lightweight mobile API.
-
-    It supports either manager JWT auth or existing device header auth. A device
-    sees only leads assigned to that device; a user sees only role-scoped leads
-    assigned to them or their branch.
-    """
+    """Mobile-ready lead API supporting available/mine queues and claim/contact actions."""
 
     authentication_classes = [JWTAuthentication, DeviceAuthentication]
     permission_classes = [IsAuthenticatedUserOrDevice]
     serializer_class = DoubleTickLeadListSerializer
 
     def get_queryset(self):
-        queryset = DoubleTickLead.objects.select_related("assigned_branch", "assigned_user", "assigned_device")
-        device = getattr(self.request, "auth", None)
-        if device and hasattr(device, "device_id"):
-            return queryset.filter(assigned_device=device)
-
-        user = self.request.user
-        queryset = _role_filtered_leads(queryset, user)
-        if getattr(user, "role", None) == "spa_manager":
-            return queryset.filter(Q_assigned_to_user_or_branch(user))
-        return queryset.filter(assigned_user=user) if getattr(user, "role", None) == "area_manager" else queryset
+        queryset = DoubleTickLead.objects.select_related("matched_area", "current_branch", "current_user", "active_assignment").prefetch_related("visibilities")
+        device = _device_from_request(self.request)
+        if device:
+            return queryset.filter(visibilities__device=device, visibilities__is_visible=True).distinct()
+        return _role_filtered_leads(queryset, self.request.user)
 
     def get_serializer_class(self):
-        if self.action == "retrieve":
-            return DoubleTickLeadDetailSerializer
-        return DoubleTickLeadListSerializer
+        return DoubleTickLeadDetailSerializer if self.action == "retrieve" else DoubleTickLeadListSerializer
 
-    @action(detail=True, methods=["patch"])
-    def status(self, request, pk=None):
-        lead = self.get_object()
-        serializer = DoubleTickLeadStatusUpdateSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        new_status = serializer.validated_data["status"]
+    @action(detail=False, methods=["get"])
+    def available(self, request):
+        queryset = self.get_queryset().filter(status=DoubleTickLead.Status.AVAILABLE)
+        return Response(DoubleTickLeadListSerializer(queryset, many=True).data)
 
-        lead.status = new_status
-        if new_status == DoubleTickLead.Status.LOST:
-            lead.lost_reason = serializer.validated_data.get("lost_reason", lead.lost_reason)
-        _set_status_timestamp(lead, new_status)
-        lead.save()
+    @action(detail=False, methods=["get"])
+    def mine(self, request):
+        queryset = self.get_queryset().filter(current_user=request.user)
+        return Response(DoubleTickLeadListSerializer(queryset, many=True).data)
 
-        DoubleTickLeadActivity.objects.create(
-            lead=lead,
-            user=request.user if request.user and request.user.is_authenticated else None,
-            device=self.request.auth if hasattr(self.request.auth, "device_id") else None,
-            action=new_status,
-            note=serializer.validated_data.get("note", ""),
-        )
-        return Response(DoubleTickLeadDetailSerializer(lead).data)
+    @action(detail=True, methods=["post"])
+    def claim(self, request, pk=None):
+        assignment = LeadClaimService.claim(pk, request.user, _device_from_request(request))
+        return Response(DoubleTickLeadAssignmentSerializer(assignment).data, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=["post"])
     def open(self, request, pk=None):
-        lead = self.get_object()
-        if lead.status in [DoubleTickLead.Status.NEW, DoubleTickLead.Status.ASSIGNED]:
-            lead.status = DoubleTickLead.Status.OPENED
-        if not lead.opened_at:
-            lead.opened_at = timezone.now()
-        lead.save()
+        lead = LeadClaimService.update_contact_status(pk, request.user, "open", request.data.get("note", ""), _device_from_request(request))
+        return Response(DoubleTickLeadDetailSerializer(lead).data)
 
-        DoubleTickLeadActivity.objects.create(
-            lead=lead,
-            user=request.user if request.user and request.user.is_authenticated else None,
-            device=self.request.auth if hasattr(self.request.auth, "device_id") else None,
-            action=DoubleTickLeadActivity.Action.OPENED,
-            note="Lead opened from mobile.",
-        )
+    @action(detail=True, methods=["post"], url_path="start-contact")
+    def start_contact(self, request, pk=None):
+        lead = LeadClaimService.update_contact_status(pk, request.user, "start_contact", request.data.get("note", ""), _device_from_request(request))
+        return Response(DoubleTickLeadDetailSerializer(lead).data)
+
+    @action(detail=True, methods=["post"])
+    def status(self, request, pk=None):
+        serializer = DoubleTickLeadStatusUpdateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        action_name = serializer.validated_data.get("action") or serializer.validated_data.get("status")
+        lead = LeadClaimService.update_contact_status(pk, request.user, action_name, serializer.validated_data.get("note", ""), _device_from_request(request))
+        return Response(DoubleTickLeadDetailSerializer(lead).data)
+
+    @action(detail=True, methods=["post"], url_path="follow-up")
+    def follow_up(self, request, pk=None):
+        lead = LeadClaimService.update_contact_status(pk, request.user, "follow_up", request.data.get("note", ""), _device_from_request(request))
+        return Response(DoubleTickLeadDetailSerializer(lead).data)
+
+    @action(detail=True, methods=["post"])
+    def release(self, request, pk=None):
+        lead = LeadClaimService.release(pk, request.user, request.data.get("reason", ""), _device_from_request(request))
         return Response(DoubleTickLeadDetailSerializer(lead).data)
 
 
-def Q_assigned_to_user_or_branch(user):
-    query = Q(assigned_user=user)
-    if user.branch_id:
-        query |= Q(assigned_branch_id=user.branch_id)
-    return query
+class DoubleTickDashboardMetricsView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        today = timezone.localdate()
+        conversations = DoubleTickConversation.objects.all()
+        leads = DoubleTickLead.objects.all()
+        return Response({
+            "new_conversations_today": conversations.filter(created_at__date=today).count(),
+            "greeting_only_conversations": conversations.filter(pending_reason=DoubleTickConversation.PendingReason.GREETING_ONLY).count(),
+            "awaiting_location": conversations.filter(status=DoubleTickConversation.Status.AWAITING_LOCATION).count(),
+            "awaiting_customer": conversations.filter(status=DoubleTickConversation.Status.AWAITING_CUSTOMER).count(),
+            "manual_attention_required": conversations.filter(requires_manual_attention=True).count(),
+            "unmatched_area": conversations.filter(status=DoubleTickConversation.Status.AREA_UNMATCHED).count(),
+            "unread_conversations": conversations.filter(unread_count__gt=0).count(),
+            "qualified_leads": leads.filter(status=DoubleTickLead.Status.QUALIFIED).count(),
+            "distributed_leads": leads.filter(distributed_at__isnull=False).count(),
+            "available_leads": leads.filter(status=DoubleTickLead.Status.AVAILABLE).count(),
+            "claimed_leads": leads.filter(status=DoubleTickLead.Status.CLAIMED).count(),
+            "contacted_leads": leads.filter(status=DoubleTickLead.Status.CONTACTED).count(),
+            "booked_leads": leads.filter(status=DoubleTickLead.Status.BOOKED).count(),
+            "lost_leads": leads.filter(status=DoubleTickLead.Status.LOST).count(),
+            "average_claim_time": None,
+        })
 
 
 class DoubleTickWebhookView(APIView):
-    """
-    Public DoubleTick webhook endpoint protected by a shared secret.
-
-    It intentionally does not use JWT because DoubleTick calls this endpoint
-    server-to-server.
-    """
+    """Public DoubleTick webhook endpoint protected by shared secret, not JWT."""
 
     authentication_classes = []
     permission_classes = [permissions.AllowAny]
 
-    def post(self, request):
+    def post(self, request, *args, **kwargs):
         if not is_valid_doubletick_webhook(request):
             return Response({"detail": "Invalid DoubleTick webhook secret."}, status=status.HTTP_403_FORBIDDEN)
 
@@ -260,9 +434,10 @@ class DoubleTickWebhookView(APIView):
         return Response(
             {
                 "status": "processed",
-                "lead_id": str(lead.id),
+                "lead_id": str(lead.id) if lead else None,
+                "conversation_id": str(webhook_log.conversation_id) if webhook_log.conversation_id else None,
                 "webhook_log_id": str(webhook_log.id),
-                "is_duplicate": lead.is_duplicate,
+                "is_duplicate": bool(lead and lead.is_duplicate),
             },
             status=status.HTTP_201_CREATED,
         )

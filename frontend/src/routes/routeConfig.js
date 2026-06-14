@@ -15,6 +15,10 @@ export const ROUTES = {
     CONTACTS: '/contacts',
     LEAD_MANAGEMENT: '/lead-management',
     LEAD_MANAGEMENT_LIST: '/lead-management/list',
+    DOUBLETICK: '/doubletick',
+    DOUBLETICK_CONVERSATIONS: '/doubletick/conversations',
+    DOUBLETICK_LEADS: '/doubletick/leads',
+    DOUBLETICK_AREAS: '/doubletick/areas',
     NOTIFICATIONS: '/notifications',
 };
 

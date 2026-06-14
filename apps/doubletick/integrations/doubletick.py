@@ -44,7 +44,7 @@ def first_value(payload, paths, default=""):
 
 def get_event_type(payload):
     """Return a stable event type label for webhook audit logs."""
-    return str(first_value(payload, ["event", "event_type", "type"], default="message"))
+    return str(first_value(payload, ["event", "event_type", "eventType", "type"], default="message"))
 
 
 def get_event_id(payload):
@@ -86,6 +86,7 @@ def parse_doubletick_payload(payload):
         "phone_number",
         "mobile",
         "from",
+        "to",
     ])
     message = first_value(payload, [
         "message.text",
@@ -95,6 +96,7 @@ def parse_doubletick_payload(payload):
         "text",
         "body",
         "lastMessage",
+        "message",
     ])
 
     city = first_value(payload, [
@@ -156,9 +158,46 @@ def parse_doubletick_payload(payload):
             "messageId",
             "data.message.id",
             "doubletick_message_id",
+            "dtMessageId",
         ]) or ""),
         "raw_payload": payload,
     }
+
+
+def classify_webhook_event(payload):
+    """
+    Classify provider payloads into the CRM processing buckets.
+
+    Status-only events update local messages and must not create conversations
+    or distributable leads.
+    """
+    event_type = get_event_type(payload).upper()
+    message_status = str(first_value(payload, [
+        "status",
+        "message.status",
+        "data.status",
+        "eventStatus",
+    ]) or "").upper()
+    origin = str(first_value(payload, [
+        "lastMessageOrigin",
+        "message.origin",
+        "origin",
+        "data.lastMessageOrigin",
+    ]) or "").upper()
+
+    if event_type in ["SENT", "DELIVERED", "READ", "FAILED"] or message_status in ["SENT", "DELIVERED", "READ", "FAILED"]:
+        return "outbound_message_status"
+    if origin == "CUSTOMER" or first_value(payload, ["from", "customer.phone", "contact.phone", "phone", "to"]):
+        return "inbound_message"
+    if event_type in ["CUSTOMER_CUSTOM_FIELD_UPDATED", "CUSTOMER_FIELD_UPDATED"]:
+        return "customer_custom_field_updated"
+    if event_type in ["CHAT_ASSIGNED"]:
+        return "chat_assigned"
+    if event_type in ["CHAT_UNASSIGNED"]:
+        return "chat_unassigned"
+    if event_type in ["CONVERSATION_CLOSED", "CHAT_CLOSED"]:
+        return "conversation_closed"
+    return "unknown"
 
 
 class DoubleTickClient:

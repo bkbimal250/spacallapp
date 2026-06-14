@@ -23,6 +23,10 @@ const DeviceHealth = lazy(() => import('../modules/monitoring/pages/DeviceHealth
 const ContactList = lazy(() => import('../modules/contacts/pages/ContactList'));
 const LeadManagementSummary = lazy(() => import('../modules/leadManagement/pages/LeadManagementSummary'));
 const LeadManagementList = lazy(() => import('../modules/leadManagement/pages/LeadManagementList'));
+const DoubleTickOverview = lazy(() => import('../modules/doubletick/pages/DoubleTickOverview'));
+const DoubleTickConversations = lazy(() => import('../modules/doubletick/pages/DoubleTickConversations'));
+const DoubleTickLeads = lazy(() => import('../modules/doubletick/pages/DoubleTickLeads'));
+const DoubleTickAreas = lazy(() => import('../modules/doubletick/pages/DoubleTickAreas'));
 const NotificationList = lazy(() => import('../modules/notifications/pages/NotificationList'));
 
 
@@ -57,6 +61,10 @@ export const AppRoutes = () => {
                         <Route path={ROUTES.CONTACTS} element={<ContactList />} />
                         <Route path={ROUTES.LEAD_MANAGEMENT} element={<LeadManagementSummary />} />
                         <Route path={ROUTES.LEAD_MANAGEMENT_LIST} element={<LeadManagementList />} />
+                        <Route path={ROUTES.DOUBLETICK} element={<DoubleTickOverview />} />
+                        <Route path={ROUTES.DOUBLETICK_CONVERSATIONS} element={<DoubleTickConversations />} />
+                        <Route path={ROUTES.DOUBLETICK_LEADS} element={<DoubleTickLeads />} />
+                        <Route path={ROUTES.DOUBLETICK_AREAS} element={<DoubleTickAreas />} />
                         <Route path={ROUTES.NOTIFICATIONS} element={<NotificationList />} />
 
                         {/* Super Admin Only Routes */}

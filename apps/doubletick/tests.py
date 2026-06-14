@@ -6,32 +6,49 @@ from apps.accounts.models import User
 from apps.branches.models import Branch
 from apps.devices.models import Device
 
-from .models import DoubleTickLead
+from .models import (
+    DoubleTickAreaAlias,
+    DoubleTickConversation,
+    DoubleTickLead,
+    DoubleTickLeadArea,
+    DoubleTickLeadAreaBranch,
+    DoubleTickLeadVisibility,
+    DoubleTickMessage,
+)
 
 
-@override_settings(DOUBLETICK_WEBHOOK_SECRET="test-secret")
-class DoubleTickLeadTests(APITestCase):
+@override_settings(DOUBLETICK_WEBHOOK_SECRET="test-secret", DOUBLETICK_API_KEY="")
+class DoubleTickBackendTests(APITestCase):
     def setUp(self):
         self.branch = Branch.objects.create(
-            spa_name="Koramangala Spa",
-            code="KOR-001",
-            state="Karnataka",
-            city="Bengaluru",
-            area="Koramangala",
-            postal_code=560034,
+            spa_name="Vashi Spa",
+            code="VSH-001",
+            state="Maharashtra",
+            city="Navi Mumbai",
+            area="Vashi",
+            postal_code=400703,
             address="Demo address",
             is_active=True,
         )
         self.other_branch = Branch.objects.create(
-            spa_name="Indiranagar Spa",
-            code="IND-001",
-            state="Karnataka",
-            city="Bengaluru",
-            area="Indiranagar",
-            postal_code=560038,
+            spa_name="Bandra Spa",
+            code="BAN-001",
+            state="Maharashtra",
+            city="Mumbai",
+            area="Bandra",
+            postal_code=400050,
             address="Demo address",
             is_active=True,
         )
+        self.lead_area = DoubleTickLeadArea.objects.create(
+            name="Vashi",
+            state="Maharashtra",
+            city="Navi Mumbai",
+            normalized_name="vashi",
+        )
+        DoubleTickAreaAlias.objects.create(lead_area=self.lead_area, alias="Vashi", normalized_alias="vashi")
+        DoubleTickLeadAreaBranch.objects.create(lead_area=self.lead_area, branch=self.branch)
+
         self.admin = User.objects.create_user(
             email="admin@example.com",
             password="pass",
@@ -39,14 +56,6 @@ class DoubleTickLeadTests(APITestCase):
             role="admin",
             is_active=True,
         )
-        self.area_manager = User.objects.create_user(
-            email="area@example.com",
-            password="pass",
-            full_name="Area Manager",
-            role="area_manager",
-            is_active=True,
-        )
-        self.area_manager.area_branches.add(self.branch)
         self.spa_manager = User.objects.create_user(
             email="spa@example.com",
             password="pass",
@@ -63,6 +72,14 @@ class DoubleTickLeadTests(APITestCase):
             branch=self.other_branch,
             is_active=True,
         )
+        self.area_manager = User.objects.create_user(
+            email="area@example.com",
+            password="pass",
+            full_name="Area Manager",
+            role="area_manager",
+            is_active=True,
+        )
+        self.area_manager.area_branches.add(self.branch)
         self.device = Device.objects.create(
             branch=self.branch,
             device_id="SPA-TEST-001",
@@ -71,24 +88,19 @@ class DoubleTickLeadTests(APITestCase):
             is_active=True,
         )
 
-    def webhook_payload(self, message_id="msg-1", area="Koramangala"):
+    def webhook_payload(self, message_id="msg-1", text="Vashi", area="Vashi", phone="+91 98765 43210"):
         return {
-            "event": "message.created",
-            "customer": {
-                "name": "Ravi Kumar",
-                "phone": "+91 98765 43210",
-            },
-            "message": {
-                "id": message_id,
-                "text": "Need massage appointment",
-            },
+            "eventType": "MESSAGE_RECEIVED",
+            "lastMessageOrigin": "CUSTOMER",
+            "customer": {"name": "Ravi Kumar", "phone": phone},
+            "message": {"id": message_id, "text": text},
             "chat": {"id": "chat-1"},
-            "city": "Bengaluru",
+            "city": "Navi Mumbai",
             "area": area,
             "service": "Massage",
         }
 
-    def test_webhook_with_valid_secret_creates_and_assigns_lead(self):
+    def test_valid_webhook_with_confirmed_area_creates_distributed_lead(self):
         response = self.client.post(
             "/api/v1/doubletick/webhook/",
             self.webhook_payload(),
@@ -98,9 +110,18 @@ class DoubleTickLeadTests(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         lead = DoubleTickLead.objects.get()
-        self.assertEqual(lead.assigned_branch, self.branch)
-        self.assertEqual(lead.assigned_user, self.spa_manager)
-        self.assertEqual(lead.status, DoubleTickLead.Status.ASSIGNED)
+        self.assertEqual(lead.matched_area, self.lead_area)
+        self.assertEqual(lead.status, DoubleTickLead.Status.AVAILABLE)
+        self.assertTrue(DoubleTickLeadVisibility.objects.filter(lead=lead, branch=self.branch).exists())
+
+    def test_webhook_without_trailing_slash_is_accepted(self):
+        response = self.client.post(
+            "/api/v1/doubletick/webhook",
+            self.webhook_payload(message_id="no-slash"),
+            format="json",
+            HTTP_X_DOUBLETICK_SECRET="test-secret",
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 
     def test_webhook_with_invalid_secret_returns_403(self):
         response = self.client.post(
@@ -113,21 +134,60 @@ class DoubleTickLeadTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
         self.assertEqual(DoubleTickLead.objects.count(), 0)
 
-    def test_spa_manager_sees_only_own_branch_leads(self):
-        DoubleTickLead.objects.create(
+    def test_hello_creates_pending_conversation_not_available_lead(self):
+        payload = self.webhook_payload(message_id="hello-1", text="Hello", area="")
+        response = self.client.post(
+            "/api/v1/doubletick/webhook/",
+            payload,
+            format="json",
+            HTTP_X_DOUBLETICK_SECRET="test-secret",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        conversation = DoubleTickConversation.objects.get()
+        self.assertEqual(conversation.status, DoubleTickConversation.Status.AWAITING_LOCATION)
+        self.assertEqual(conversation.pending_reason, DoubleTickConversation.PendingReason.GREETING_ONLY)
+        self.assertEqual(DoubleTickLead.objects.count(), 0)
+
+    def test_okay_updates_same_conversation(self):
+        for message_id, text in [("m1", "Hello"), ("m2", "Okay")]:
+            self.client.post(
+                "/api/v1/doubletick/webhook/",
+                self.webhook_payload(message_id=message_id, text=text, area=""),
+                format="json",
+                HTTP_X_DOUBLETICK_SECRET="test-secret",
+            )
+
+        self.assertEqual(DoubleTickConversation.objects.count(), 1)
+        self.assertEqual(DoubleTickMessage.objects.count(), 2)
+        self.assertEqual(DoubleTickLead.objects.count(), 0)
+
+    def test_status_event_updates_message_without_creating_lead(self):
+        self.client.post(
+            "/api/v1/doubletick/webhook/",
+            self.webhook_payload(message_id="out-1", text="Hello", area=""),
+            format="json",
+            HTTP_X_DOUBLETICK_SECRET="test-secret",
+        )
+        response = self.client.post(
+            "/api/v1/doubletick/webhook/",
+            {"eventType": "DELIVERED", "messageId": "out-1", "status": "DELIVERED"},
+            format="json",
+            HTTP_X_DOUBLETICK_SECRET="test-secret",
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(DoubleTickLead.objects.count(), 0)
+
+    def test_spa_manager_sees_only_visible_branch_leads(self):
+        lead = DoubleTickLead.objects.create(
             customer_name="Own",
             phone_number="111",
-            assigned_branch=self.branch,
-            assigned_user=self.spa_manager,
-            status=DoubleTickLead.Status.ASSIGNED,
+            matched_area=self.lead_area,
+            status=DoubleTickLead.Status.AVAILABLE,
         )
-        DoubleTickLead.objects.create(
-            customer_name="Other",
-            phone_number="222",
-            assigned_branch=self.other_branch,
-            assigned_user=self.other_spa_manager,
-            status=DoubleTickLead.Status.ASSIGNED,
-        )
+        DoubleTickLeadVisibility.objects.create(lead=lead, branch=self.branch, user=self.spa_manager)
+        other = DoubleTickLead.objects.create(customer_name="Other", phone_number="222", status=DoubleTickLead.Status.AVAILABLE)
+        DoubleTickLeadVisibility.objects.create(lead=other, branch=self.other_branch, user=self.other_spa_manager)
 
         self.client.force_authenticate(self.spa_manager)
         response = self.client.get("/api/v1/doubletick/leads/")
@@ -137,74 +197,35 @@ class DoubleTickLeadTests(APITestCase):
         self.assertEqual(len(payload), 1)
         self.assertEqual(payload[0]["customer_name"], "Own")
 
-    def test_area_manager_sees_only_area_branches(self):
-        DoubleTickLead.objects.create(
-            customer_name="Area",
+    def test_first_manager_claims_and_second_gets_conflict(self):
+        lead = DoubleTickLead.objects.create(
+            customer_name="Claim",
             phone_number="111",
-            assigned_branch=self.branch,
-            status=DoubleTickLead.Status.ASSIGNED,
+            matched_area=self.lead_area,
+            status=DoubleTickLead.Status.AVAILABLE,
         )
-        DoubleTickLead.objects.create(
-            customer_name="Other",
-            phone_number="222",
-            assigned_branch=self.other_branch,
-            status=DoubleTickLead.Status.ASSIGNED,
+        DoubleTickLeadVisibility.objects.create(lead=lead, branch=self.branch, user=self.spa_manager)
+
+        self.client.force_authenticate(self.spa_manager)
+        first = self.client.post(f"/api/v1/doubletick/mobile/leads/{lead.id}/claim/")
+        second = self.client.post(f"/api/v1/doubletick/mobile/leads/{lead.id}/claim/")
+
+        self.assertEqual(first.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(second.status_code, status.HTTP_409_CONFLICT)
+
+    def test_admin_reply_records_failed_outbound_message_when_api_key_missing(self):
+        self.client.post(
+            "/api/v1/doubletick/webhook/",
+            self.webhook_payload(message_id="hello-reply", text="Hello", area=""),
+            format="json",
+            HTTP_X_DOUBLETICK_SECRET="test-secret",
         )
-
-        self.client.force_authenticate(self.area_manager)
-        response = self.client.get("/api/v1/doubletick/leads/")
-
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        payload = response.data.get("results", response.data)
-        self.assertEqual(len(payload), 1)
-        self.assertEqual(payload[0]["customer_name"], "Area")
-
-    def test_admin_sees_all_leads(self):
-        DoubleTickLead.objects.create(customer_name="One", phone_number="111")
-        DoubleTickLead.objects.create(customer_name="Two", phone_number="222")
-
+        conversation = DoubleTickConversation.objects.get()
         self.client.force_authenticate(self.admin)
-        response = self.client.get("/api/v1/doubletick/leads/")
-
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        payload = response.data.get("results", response.data)
-        self.assertEqual(len(payload), 2)
-
-    def test_mobile_device_list_returns_only_assigned_device_leads(self):
-        DoubleTickLead.objects.create(
-            customer_name="Device Lead",
-            phone_number="111",
-            assigned_branch=self.branch,
-            assigned_device=self.device,
-            status=DoubleTickLead.Status.ASSIGNED,
+        response = self.client.post(
+            f"/api/v1/doubletick/conversations/{conversation.id}/reply/",
+            {"message_type": "text", "text": "Please share your city and nearest area."},
+            format="json",
         )
-        DoubleTickLead.objects.create(
-            customer_name="User Lead",
-            phone_number="222",
-            assigned_branch=self.branch,
-            assigned_user=self.spa_manager,
-            status=DoubleTickLead.Status.ASSIGNED,
-        )
-
-        self.client.credentials(
-            HTTP_X_DEVICE_ID="SPA-TEST-001",
-            HTTP_X_DEVICE_SECRET="device-secret",
-        )
-        response = self.client.get("/api/v1/doubletick/mobile/leads/")
-
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        payload = response.data.get("results", response.data)
-        self.assertEqual(len(payload), 1)
-        self.assertEqual(payload[0]["customer_name"], "Device Lead")
-
-    def test_duplicate_webhook_does_not_create_duplicate_lead(self):
-        for _ in range(2):
-            response = self.client.post(
-                "/api/v1/doubletick/webhook/",
-                self.webhook_payload(message_id="same-message"),
-                format="json",
-                HTTP_X_DOUBLETICK_SECRET="test-secret",
-            )
-            self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-
-        self.assertEqual(DoubleTickLead.objects.count(), 1)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertTrue(DoubleTickMessage.objects.filter(direction=DoubleTickMessage.Direction.OUTBOUND, status=DoubleTickMessage.Status.FAILED).exists())

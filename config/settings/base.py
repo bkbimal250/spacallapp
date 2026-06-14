@@ -313,6 +313,12 @@ else:
 DOUBLETICK_WEBHOOK_SECRET = env("DOUBLETICK_WEBHOOK_SECRET", default="")
 DOUBLETICK_API_KEY = env("DOUBLETICK_API_KEY", default="")
 DOUBLETICK_BASE_URL = env("DOUBLETICK_BASE_URL", default="https://public.doubletick.io")
+DOUBLETICK_PENDING_ATTENTION_MINUTES = env.int("DOUBLETICK_PENDING_ATTENTION_MINUTES", default=10)
+DOUBLETICK_PENDING_ARCHIVE_DAYS = env.int("DOUBLETICK_PENDING_ARCHIVE_DAYS", default=30)
+DOUBLETICK_LOCATION_REQUEST_MESSAGE = env(
+    "DOUBLETICK_LOCATION_REQUEST_MESSAGE",
+    default="Please share your city and nearest area so we can find the best spa for you.",
+)
 
 # Spectacular Settings for API Documentation
 SPECTACULAR_SETTINGS = {

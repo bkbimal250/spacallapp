@@ -18,7 +18,8 @@ import {
     LogOut,
     Bell,
     Contact,
-    Briefcase
+    Briefcase,
+    MessageCircle
 } from 'lucide-react';
 
 const Sidebar = () => {
@@ -46,6 +47,7 @@ const Sidebar = () => {
         { to: ROUTES.EXPORTS, label: 'Exports', icon: Download },
         { to: ROUTES.CONTACTS, label: 'Contacts', icon: Contact },
         { to: ROUTES.LEAD_MANAGEMENT, label: 'Lead Management', icon: Briefcase },
+        { to: ROUTES.DOUBLETICK, label: 'DoubleTick', icon: MessageCircle },
         { to: ROUTES.NOTIFICATIONS, label: 'Notifications', icon: Bell },
     ];
 
@@ -66,7 +68,7 @@ const Sidebar = () => {
 
                 {navItems.map((item) => {
 
-                    const isActive = location.pathname === item.to;
+                    const isActive = location.pathname === item.to || (item.to !== ROUTES.DASHBOARD && location.pathname.startsWith(item.to));
 
                     return (
                         <Link
