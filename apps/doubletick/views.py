@@ -4,6 +4,7 @@ from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import filters, permissions, status, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.authentication import JWTAuthentication
@@ -231,17 +232,25 @@ class DoubleTickConversationViewSet(viewsets.ModelViewSet):
     def reply(self, request, pk=None):
         serializer = DoubleTickConversationReplySerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        message = DoubleTickReplyService.reply(
-            self.get_object(),
-            request.user,
-            serializer.validated_data["text"],
-            serializer.validated_data.get("message_type", "text"),
-        )
+        try:
+            message = DoubleTickReplyService.reply(
+                self.get_object(),
+                request.user,
+                serializer.validated_data["text"],
+                serializer.validated_data.get("message_type", "text"),
+            )
+        except ValidationError as exc:
+            detail = exc.detail[0] if isinstance(exc.detail, list) and exc.detail else exc.detail
+            return Response({"detail": str(detail)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(DoubleTickMessageSerializer(message).data, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=["post"], permission_classes=[IsInternalCRMTeam], url_path="request-location")
     def request_location(self, request, pk=None):
-        message = DoubleTickReplyService.request_location(self.get_object(), request.user)
+        try:
+            message = DoubleTickReplyService.request_location(self.get_object(), request.user)
+        except ValidationError as exc:
+            detail = exc.detail[0] if isinstance(exc.detail, list) and exc.detail else exc.detail
+            return Response({"detail": str(detail)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(DoubleTickMessageSerializer(message).data, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=["post"], permission_classes=[IsInternalCRMTeam], url_path="match-area")

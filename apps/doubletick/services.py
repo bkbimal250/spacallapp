@@ -1,4 +1,5 @@
 import hashlib
+import json
 import re
 import urllib.error
 import urllib.request
@@ -101,6 +102,11 @@ def _provider_message_type(payload):
 
 def _message_text(payload):
     return str(first_value(payload, ["message.text", "message.body", "data.message.text", "data.message.body", "text", "body"]) or "")
+
+
+def _digits_only(value):
+    """DoubleTick send APIs expect WhatsApp numbers without display symbols."""
+    return re.sub(r"\D", "", str(value or ""))
 
 
 def _resolve_outbound_sender(sent_by, assigned_to, channel=None):
@@ -879,19 +885,32 @@ class DoubleTickReplyService:
         base_url = getattr(settings, "DOUBLETICK_BASE_URL", "https://public.doubletick.io").rstrip("/")
         if not api_key:
             raise ValidationError("DoubleTick API key is not configured. Send an approved template or configure DOUBLETICK_API_KEY.")
-        # Conservative generic endpoint placeholder. If DoubleTick account uses a
-        # different send-message endpoint, update only this integration method.
-        url = f"{base_url}/whatsapp/message/text"
+
+        endpoint = getattr(settings, "DOUBLETICK_SEND_TEXT_ENDPOINT", "/whatsapp/message/text")
+        url = endpoint if str(endpoint).startswith(("http://", "https://")) else f"{base_url}/{str(endpoint).lstrip('/')}"
+        recipient = _digits_only(conversation.customer.normalized_phone or conversation.customer.phone_number)
+        waba_number = _digits_only(
+            getattr(settings, "DOUBLETICK_SEND_FROM_WABA_NUMBER", "")
+            or (conversation.channel.waba_number if conversation.channel else "")
+        )
+        if not recipient:
+            raise ValidationError("Customer WhatsApp number is missing, so DoubleTick request location cannot be sent.")
         payload = {
-            "to": conversation.customer.normalized_phone or conversation.customer.phone_number,
+            "to": recipient,
             "message": text,
+            "messageType": "TEXT",
         }
-        import json
+        if waba_number:
+            payload["wabaNumber"] = waba_number
+
+        auth_header = getattr(settings, "DOUBLETICK_AUTH_HEADER", "Authorization") or "Authorization"
+        auth_scheme = getattr(settings, "DOUBLETICK_AUTH_SCHEME", "Bearer")
+        auth_value = api_key if not auth_scheme else f"{auth_scheme} {api_key}"
 
         request = urllib.request.Request(
             url,
             data=json.dumps(payload).encode("utf-8"),
-            headers={"Content-Type": "application/json", "Authorization": f"Bearer {api_key}"},
+            headers={"Content-Type": "application/json", auth_header: auth_value},
             method="POST",
         )
         try:
@@ -899,7 +918,17 @@ class DoubleTickReplyService:
                 body = response.read().decode("utf-8")
                 return {"status_code": response.status, "body": body}
         except urllib.error.HTTPError as exc:
-            raise ValidationError(f"DoubleTick send failed with HTTP {exc.code}.") from exc
+            body = ""
+            try:
+                body = exc.read().decode("utf-8")[:500]
+            except Exception:
+                body = ""
+            details = f"DoubleTick rejected the send request with HTTP {exc.code}."
+            if exc.code == 403:
+                details += " Check API key permissions, WABA number, endpoint, and whether the message must be sent as an approved template."
+            if body:
+                details += f" Provider response: {body}"
+            raise ValidationError(details) from exc
         except urllib.error.URLError as exc:
             raise ValidationError(f"DoubleTick send failed: {exc.reason}") from exc
 
@@ -930,8 +959,6 @@ class DoubleTickReplyService:
             message.raw_payload = response
             response_body = response.get("body", "")
             if response_body:
-                import json
-
                 try:
                     parsed_body = json.loads(response_body)
                     provider_id = first_value(parsed_body, ["messageId", "id", "data.messageId", "message.id"])
