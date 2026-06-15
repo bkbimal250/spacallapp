@@ -27,6 +27,7 @@ const DoubleTickOverview = lazy(() => import('../modules/doubletick/pages/Double
 const DoubleTickConversations = lazy(() => import('../modules/doubletick/pages/DoubleTickConversations'));
 const DoubleTickLeads = lazy(() => import('../modules/doubletick/pages/DoubleTickLeads'));
 const DoubleTickAreas = lazy(() => import('../modules/doubletick/pages/DoubleTickAreas'));
+const DoubleTickAreaMap = lazy(() => import('../modules/doubletick/pages/DoubleTickAreaMap'));
 const NotificationList = lazy(() => import('../modules/notifications/pages/NotificationList'));
 
 
@@ -65,6 +66,7 @@ export const AppRoutes = () => {
                         <Route path={ROUTES.DOUBLETICK_CONVERSATIONS} element={<DoubleTickConversations />} />
                         <Route path={ROUTES.DOUBLETICK_LEADS} element={<DoubleTickLeads />} />
                         <Route path={ROUTES.DOUBLETICK_AREAS} element={<DoubleTickAreas />} />
+                        <Route path={ROUTES.DOUBLETICK_AREA_MAP} element={<DoubleTickAreaMap />} />
                         <Route path={ROUTES.NOTIFICATIONS} element={<NotificationList />} />
 
                         {/* Super Admin Only Routes */}

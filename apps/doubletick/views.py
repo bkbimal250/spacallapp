@@ -1,5 +1,5 @@
 from django.contrib.auth import get_user_model
-from django.db.models import Q
+from django.db.models import Count, Q
 from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import filters, permissions, status, viewsets
@@ -20,17 +20,21 @@ from .models import (
     DoubleTickLead,
     DoubleTickLeadActivity,
     DoubleTickLeadArea,
+    DoubleTickLeadAreaBranch,
     DoubleTickLeadAssignment,
     DoubleTickLeadVisibility,
 )
 from .serializers import (
     DoubleTickActivitySerializer,
+    DoubleTickAreaAliasSerializer,
     DoubleTickConversationAssignSupportSerializer,
     DoubleTickConversationDetailSerializer,
     DoubleTickConversationListSerializer,
     DoubleTickConversationMatchAreaSerializer,
     DoubleTickConversationReplySerializer,
     DoubleTickLeadActivitySerializer,
+    DoubleTickLeadAreaBranchSerializer,
+    DoubleTickLeadAreaSerializer,
     DoubleTickLeadAssignSerializer,
     DoubleTickLeadAssignmentSerializer,
     DoubleTickLeadDetailSerializer,
@@ -73,6 +77,61 @@ class IsInternalCRMTeam(permissions.BasePermission):
             and request.user.is_authenticated
             and getattr(request.user, "role", None) in ["super_admin", "admin"]
         )
+
+
+class DoubleTickAllListMixin:
+    def list(self, request, *args, **kwargs):
+        if request.query_params.get("all", "false").lower() == "true":
+            self.pagination_class = None
+        return super().list(request, *args, **kwargs)
+
+
+class DoubleTickLeadAreaViewSet(DoubleTickAllListMixin, viewsets.ModelViewSet):
+    """Admin CRUD for controlled CRM areas used by DoubleTick lead routing."""
+
+    serializer_class = DoubleTickLeadAreaSerializer
+    permission_classes = [IsInternalCRMTeam]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ["is_active", "city", "state", "distribution_mode"]
+    search_fields = ["name", "city", "state", "normalized_name", "description"]
+    ordering_fields = ["name", "city", "state", "priority", "created_at"]
+    ordering = ["city", "priority", "name"]
+
+    def get_queryset(self):
+        return DoubleTickLeadArea.objects.annotate(
+            alias_count=Count("aliases", distinct=True),
+            branch_mapping_count=Count("branch_mappings", distinct=True),
+        ).prefetch_related("aliases", "branch_mappings")
+
+
+class DoubleTickAreaAliasViewSet(DoubleTickAllListMixin, viewsets.ModelViewSet):
+    """Admin CRUD for customer location aliases mapped to controlled lead areas."""
+
+    serializer_class = DoubleTickAreaAliasSerializer
+    permission_classes = [IsInternalCRMTeam]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ["lead_area", "channel", "is_active", "created_from_manual_mapping"]
+    search_fields = ["alias", "normalized_alias", "lead_area__name", "lead_area__city"]
+    ordering_fields = ["alias", "created_at"]
+    ordering = ["alias"]
+
+    def get_queryset(self):
+        return DoubleTickAreaAlias.objects.select_related("lead_area", "channel")
+
+
+class DoubleTickLeadAreaBranchViewSet(DoubleTickAllListMixin, viewsets.ModelViewSet):
+    """Admin CRUD for mapping DoubleTick lead areas to receiving CRM branches."""
+
+    serializer_class = DoubleTickLeadAreaBranchSerializer
+    permission_classes = [IsInternalCRMTeam]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ["lead_area", "branch", "is_active", "receives_leads"]
+    search_fields = ["lead_area__name", "lead_area__city", "branch__spa_name", "branch__city", "branch__code"]
+    ordering_fields = ["priority", "created_at", "branch__spa_name"]
+    ordering = ["priority", "branch__spa_name"]
+
+    def get_queryset(self):
+        return DoubleTickLeadAreaBranch.objects.select_related("lead_area", "branch")
 
 
 def _role_filtered_leads(queryset, user):

@@ -2,8 +2,11 @@ from django.urls import include, path, re_path
 from rest_framework.routers import DefaultRouter
 
 from .views import (
+    DoubleTickAreaAliasViewSet,
     DoubleTickConversationViewSet,
     DoubleTickDashboardMetricsView,
+    DoubleTickLeadAreaBranchViewSet,
+    DoubleTickLeadAreaViewSet,
     DoubleTickLeadViewSet,
     DoubleTickMobileLeadViewSet,
     DoubleTickWebhookView,
@@ -11,6 +14,9 @@ from .views import (
 
 
 router = DefaultRouter()
+router.register(r"areas", DoubleTickLeadAreaViewSet, basename="doubletick-areas")
+router.register(r"area-aliases", DoubleTickAreaAliasViewSet, basename="doubletick-area-aliases")
+router.register(r"area-branches", DoubleTickLeadAreaBranchViewSet, basename="doubletick-area-branches")
 router.register(r"conversations", DoubleTickConversationViewSet, basename="doubletick-conversations")
 router.register(r"leads", DoubleTickLeadViewSet, basename="doubletick-leads")
 router.register(r"mobile/leads", DoubleTickMobileLeadViewSet, basename="doubletick-mobile-leads")

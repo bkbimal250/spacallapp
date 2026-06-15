@@ -1,3 +1,5 @@
+import re
+
 from rest_framework import serializers
 
 from .models import (
@@ -17,6 +19,10 @@ from .models import (
 )
 
 
+def normalize_area_value(value):
+    return re.sub(r"\s+", " ", (value or "").strip().lower())
+
+
 class DoubleTickChannelSerializer(serializers.ModelSerializer):
     class Meta:
         model = DoubleTickChannel
@@ -30,19 +36,48 @@ class DoubleTickCustomerSerializer(serializers.ModelSerializer):
 
 
 class DoubleTickLeadAreaSerializer(serializers.ModelSerializer):
+    alias_count = serializers.IntegerField(read_only=True)
+    branch_mapping_count = serializers.IntegerField(read_only=True)
+
     class Meta:
         model = DoubleTickLeadArea
         fields = "__all__"
+        read_only_fields = ["normalized_name"]
+
+    def create(self, validated_data):
+        validated_data["normalized_name"] = normalize_area_value(validated_data.get("name"))
+        return super().create(validated_data)
+
+    def update(self, instance, validated_data):
+        if "name" in validated_data:
+            validated_data["normalized_name"] = normalize_area_value(validated_data.get("name"))
+        return super().update(instance, validated_data)
 
 
 class DoubleTickAreaAliasSerializer(serializers.ModelSerializer):
+    lead_area_name = serializers.CharField(source="lead_area.name", read_only=True)
+    channel_name = serializers.CharField(source="channel.name", read_only=True)
+
     class Meta:
         model = DoubleTickAreaAlias
         fields = "__all__"
+        read_only_fields = ["normalized_alias"]
+
+    def create(self, validated_data):
+        validated_data["normalized_alias"] = normalize_area_value(validated_data.get("alias"))
+        return super().create(validated_data)
+
+    def update(self, instance, validated_data):
+        if "alias" in validated_data:
+            validated_data["normalized_alias"] = normalize_area_value(validated_data.get("alias"))
+        return super().update(instance, validated_data)
 
 
 class DoubleTickLeadAreaBranchSerializer(serializers.ModelSerializer):
+    lead_area_name = serializers.CharField(source="lead_area.name", read_only=True)
     branch_name = serializers.CharField(source="branch.spa_name", read_only=True)
+    branch_city = serializers.CharField(source="branch.city", read_only=True)
+    branch_state = serializers.CharField(source="branch.state", read_only=True)
 
     class Meta:
         model = DoubleTickLeadAreaBranch

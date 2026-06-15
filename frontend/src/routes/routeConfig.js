@@ -19,6 +19,7 @@ export const ROUTES = {
     DOUBLETICK_CONVERSATIONS: '/doubletick/conversations',
     DOUBLETICK_LEADS: '/doubletick/leads',
     DOUBLETICK_AREAS: '/doubletick/areas',
+    DOUBLETICK_AREA_MAP: '/doubletick/area-map',
     NOTIFICATIONS: '/notifications',
 };
 

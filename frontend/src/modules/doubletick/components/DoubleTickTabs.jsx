@@ -1,12 +1,13 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { BarChart3, Inbox, Map, Send } from 'lucide-react';
+import { BarChart3, GitBranch, Inbox, Map, Send } from 'lucide-react';
 
 const tabs = [
     { to: '/doubletick', label: 'Overview', icon: BarChart3 },
     { to: '/doubletick/conversations', label: 'Conversations', icon: Inbox },
     { to: '/doubletick/leads', label: 'Area Leads', icon: Send },
-    { to: '/doubletick/areas', label: 'Area Mapping', icon: Map },
+    { to: '/doubletick/areas', label: 'Area Setup', icon: Map },
+    { to: '/doubletick/area-map', label: 'Lead Area Map', icon: GitBranch },
 ];
 
 const DoubleTickTabs = () => (
