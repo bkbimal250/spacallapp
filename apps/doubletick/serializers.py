@@ -86,10 +86,46 @@ class DoubleTickLeadAreaBranchSerializer(serializers.ModelSerializer):
 
 class DoubleTickMessageSerializer(serializers.ModelSerializer):
     sent_by_name = serializers.CharField(source="sent_by.full_name", read_only=True)
+    sender = serializers.SerializerMethodField()
+    timestamp = serializers.SerializerMethodField()
+    status_timestamps = serializers.SerializerMethodField()
 
     class Meta:
         model = DoubleTickMessage
         fields = "__all__"
+
+    def get_sender(self, obj):
+        if obj.origin == DoubleTickMessage.Origin.CUSTOMER:
+            customer = obj.customer
+            name = ""
+            if customer:
+                name = customer.customer_name or customer.whatsapp_name or customer.phone_number
+            return {"name": name or obj.customer_number or "Customer", "type": "customer"}
+        if obj.sender_display_name:
+            name = obj.sender_display_name
+        elif obj.sent_by:
+            name = obj.sent_by.full_name
+        elif obj.origin == DoubleTickMessage.Origin.BOT:
+            name = "Bot"
+        elif obj.origin == DoubleTickMessage.Origin.API:
+            name = "API"
+        elif obj.origin == DoubleTickMessage.Origin.AGENT:
+            name = "Associate"
+        else:
+            name = "System"
+        return {"name": name, "type": obj.origin or obj.direction}
+
+    def get_timestamp(self, obj):
+        value = obj.message_timestamp or obj.received_at or obj.sent_at or obj.created_at
+        return value.isoformat() if value else None
+
+    def get_status_timestamps(self, obj):
+        return {
+            "sent_at": obj.sent_at.isoformat() if obj.sent_at else None,
+            "delivered_at": obj.delivered_at.isoformat() if obj.delivered_at else None,
+            "read_at": obj.read_at.isoformat() if obj.read_at else None,
+            "failed_at": obj.failed_at.isoformat() if obj.failed_at else None,
+        }
 
 
 class DoubleTickActivitySerializer(serializers.ModelSerializer):

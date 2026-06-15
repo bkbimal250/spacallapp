@@ -186,6 +186,10 @@ class DoubleTickConversationViewSet(viewsets.ModelViewSet):
         if getattr(self.request.user, "role", None) == "area_manager":
             branch_ids = self.request.user.area_branches.values_list("id", flat=True)
             return queryset.filter(current_lead__visibilities__branch_id__in=branch_ids).distinct()
+        if getattr(self.request.user, "role", None) == "spa_manager":
+            if not self.request.user.branch_id:
+                return queryset.none()
+            return queryset.filter(current_lead__visibilities__branch=self.request.user.branch).distinct()
         return queryset.none()
 
     def get_serializer_class(self):
@@ -196,7 +200,22 @@ class DoubleTickConversationViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["get"])
     def messages(self, request, pk=None):
         conversation = self.get_object()
-        return Response(DoubleTickMessageSerializer(DoubleTickChatService.get_chat(conversation), many=True).data)
+        queryset = DoubleTickChatService.get_chat(conversation)
+        for field in ["direction", "origin", "status", "message_type"]:
+            value = request.query_params.get(field)
+            if value:
+                queryset = queryset.filter(**{field: value})
+        sender = request.query_params.get("sender")
+        if sender:
+            queryset = queryset.filter(Q(sender_display_name__icontains=sender) | Q(sent_by__full_name__icontains=sender))
+        search = request.query_params.get("search")
+        if search:
+            queryset = queryset.filter(Q(text__icontains=search) | Q(caption__icontains=search))
+        if request.query_params.get("date_from"):
+            queryset = queryset.filter(message_timestamp__date__gte=request.query_params["date_from"])
+        if request.query_params.get("date_to"):
+            queryset = queryset.filter(message_timestamp__date__lte=request.query_params["date_to"])
+        return Response(DoubleTickMessageSerializer(queryset, many=True).data)
 
     @action(detail=True, methods=["get"])
     def activities(self, request, pk=None):

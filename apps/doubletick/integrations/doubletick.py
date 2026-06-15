@@ -143,6 +143,7 @@ def parse_doubletick_payload(payload):
             "customer.id",
             "customer.customerId",
             "data.customer.id",
+            "dtCustomerId",
             "doubletick_customer_id",
             "customerId",
         ]) or ""),

@@ -503,6 +503,9 @@ class DoubleTickMessage(BaseModel, TimeStampedModel):
     caption = models.TextField(null=True, blank=True)
     interactive_payload = models.JSONField(default=dict, blank=True)
     callback_data = models.TextField(null=True, blank=True)
+    sender_display_name = models.CharField(max_length=255, blank=True)
+    sent_by_raw = models.CharField(max_length=255, blank=True)
+    assigned_to_raw = models.CharField(max_length=255, blank=True)
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.RECEIVED, db_index=True)
     sent_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -513,6 +516,7 @@ class DoubleTickMessage(BaseModel, TimeStampedModel):
     )
     customer_number = models.CharField(max_length=30, blank=True)
     waba_number = models.CharField(max_length=30, blank=True)
+    message_timestamp = models.DateTimeField(null=True, blank=True, db_index=True)
     received_at = models.DateTimeField(null=True, blank=True)
     sent_at = models.DateTimeField(null=True, blank=True)
     delivered_at = models.DateTimeField(null=True, blank=True)
@@ -523,16 +527,52 @@ class DoubleTickMessage(BaseModel, TimeStampedModel):
 
     class Meta:
         db_table = "doubletick_messages"
-        ordering = ["received_at", "sent_at", "created_at"]
+        ordering = ["message_timestamp", "received_at", "sent_at", "created_at"]
         indexes = [
             models.Index(fields=["conversation", "created_at"], name="dt_msg_conv_created_idx"),
             models.Index(fields=["dt_message_id"], name="dt_msg_dt_id_idx"),
             models.Index(fields=["message_id"], name="dt_msg_provider_id_idx"),
             models.Index(fields=["direction", "origin"], name="dt_msg_direction_origin_idx"),
+            models.Index(fields=["status"], name="dt_msg_status_idx"),
+            models.Index(fields=["message_timestamp"], name="dt_msg_timestamp_idx"),
         ]
 
     def __str__(self):
         return self.text[:80] or self.message_type
+
+
+class DoubleTickTeamMemberMapping(BaseModel, TimeStampedModel):
+    """Map DoubleTick associate identifiers to readable CRM sender names."""
+
+    doubletick_user_id = models.CharField(max_length=255, blank=True, db_index=True)
+    doubletick_phone = models.CharField(max_length=30, blank=True, db_index=True)
+    display_name = models.CharField(max_length=255)
+    crm_user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="doubletick_team_mappings",
+    )
+    channel = models.ForeignKey(
+        DoubleTickChannel,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="team_member_mappings",
+    )
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        db_table = "doubletick_team_member_mappings"
+        ordering = ["display_name"]
+        indexes = [
+            models.Index(fields=["doubletick_user_id", "is_active"], name="dt_team_user_active_idx"),
+            models.Index(fields=["doubletick_phone", "is_active"], name="dt_team_phone_active_idx"),
+        ]
+
+    def __str__(self):
+        return self.display_name
 
 
 class DoubleTickLeadVisibility(BaseModel, TimeStampedModel):

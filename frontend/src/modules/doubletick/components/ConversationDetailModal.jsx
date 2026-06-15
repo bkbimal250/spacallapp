@@ -14,6 +14,7 @@ const ConversationDetailModal = ({ conversationId, isOpen, onClose, onChanged })
     const [loading, setLoading] = useState(false);
     const [matchOpen, setMatchOpen] = useState(false);
     const [actionLoading, setActionLoading] = useState('');
+    const [notice, setNotice] = useState('');
 
     const load = async () => {
         if (!conversationId) return;
@@ -37,15 +38,31 @@ const ConversationDetailModal = ({ conversationId, isOpen, onClose, onChanged })
 
     const runAction = async (name, fn) => {
         setActionLoading(name);
+        setNotice('');
         try {
-            await fn();
+            const response = await fn();
             await load();
             onChanged?.();
+            return response;
         } catch (error) {
             alert(error.response?.data?.detail || error.response?.data?.non_field_errors?.[0] || error.message || 'Action failed.');
+            return null;
         } finally {
             setActionLoading('');
         }
+    };
+
+    const syncChat = async () => {
+        const response = await runAction('sync', () => doubletickAPI.syncConversationChat(conversation.id));
+        if (!response) return;
+        const data = response?.data || {};
+        const message = data.warning
+            || `Chat synchronized: ${data.created_messages || 0} new messages, ${data.updated_messages || 0} updated.`;
+        setNotice(message);
+    };
+
+    const sendReply = async (data) => {
+        await runAction('reply', () => doubletickAPI.sendConversationReply(conversation.id, data));
     };
 
     return (
@@ -63,9 +80,14 @@ const ConversationDetailModal = ({ conversationId, isOpen, onClose, onChanged })
                                 </div>
                                 <DoubleTickStatusBadge status={conversation.status} />
                             </div>
+                            {notice && (
+                                <div className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-text-secondary">
+                                    {notice}
+                                </div>
+                            )}
                             <ChatWindow messages={messages} loading={loading} />
                             <ReplyPanel
-                                onReply={(data) => runAction('reply', () => doubletickAPI.replyToConversation(conversation.id, data))}
+                                onReply={sendReply}
                                 onRequestLocation={() => runAction('location', () => doubletickAPI.requestLocation(conversation.id))}
                                 disabled={Boolean(actionLoading)}
                             />
@@ -77,13 +99,16 @@ const ConversationDetailModal = ({ conversationId, isOpen, onClose, onChanged })
                                 <p><span className="text-text-secondary">Service:</span> {conversation.raw_service || '-'}</p>
                                 <p><span className="text-text-secondary">Reason:</span> {conversation.pending_reason || '-'}</p>
                                 <p><span className="text-text-secondary">Unread:</span> {conversation.unread_count || 0}</p>
+                                <p><span className="text-text-secondary">WABA:</span> {conversation.channel_waba_number || '-'}</p>
+                                <p><span className="text-text-secondary">Support:</span> {conversation.assigned_support_user || '-'}</p>
+                                <p><span className="text-text-secondary">Last message:</span> {conversation.last_message_at || '-'}</p>
                             </div>
                             <div className="grid grid-cols-1 gap-2">
                                 <Button variant="secondary" className="gap-2 justify-start" onClick={() => setMatchOpen(true)}>
                                     <MapPin size={16} />
                                     Match Area
                                 </Button>
-                                <Button variant="secondary" className="gap-2 justify-start" loading={actionLoading === 'sync'} onClick={() => runAction('sync', () => doubletickAPI.syncConversationChat(conversation.id))}>
+                                <Button variant="secondary" className="gap-2 justify-start" loading={actionLoading === 'sync'} onClick={syncChat}>
                                     <RefreshCw size={16} />
                                     Sync Chat
                                 </Button>

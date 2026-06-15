@@ -20,10 +20,11 @@ export const doubletickAPI = {
 
     getConversations: (params) => axiosInstance.get('/doubletick/conversations/', { params }),
     getConversation: (id) => axiosInstance.get(`/doubletick/conversations/${id}/`),
-    getConversationMessages: (id) => axiosInstance.get(`/doubletick/conversations/${id}/messages/`),
+    getConversationMessages: (id, params) => axiosInstance.get(`/doubletick/conversations/${id}/messages/`, { params }),
     getConversationActivities: (id) => axiosInstance.get(`/doubletick/conversations/${id}/activities/`),
     syncConversationChat: (id) => axiosInstance.post(`/doubletick/conversations/${id}/sync-chat/`),
     replyToConversation: (id, data) => axiosInstance.post(`/doubletick/conversations/${id}/reply/`, data),
+    sendConversationReply: (id, data) => axiosInstance.post(`/doubletick/conversations/${id}/reply/`, data),
     requestLocation: (id) => axiosInstance.post(`/doubletick/conversations/${id}/request-location/`),
     matchArea: (id, data) => axiosInstance.post(`/doubletick/conversations/${id}/match-area/`, data),
     qualifyConversation: (id) => axiosInstance.post(`/doubletick/conversations/${id}/qualify/`),

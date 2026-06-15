@@ -14,6 +14,7 @@ from .models import (
     DoubleTickLeadAreaBranch,
     DoubleTickLeadVisibility,
     DoubleTickMessage,
+    DoubleTickTeamMemberMapping,
 )
 
 
@@ -95,6 +96,7 @@ class DoubleTickBackendTests(APITestCase):
             "customer": {"name": "Ravi Kumar", "phone": phone},
             "message": {"id": message_id, "text": text},
             "chat": {"id": "chat-1"},
+            "receivedAt": "2026-06-14T10:18:40.750Z",
             "city": "Navi Mumbai",
             "area": area,
             "service": "Massage",
@@ -177,6 +179,74 @@ class DoubleTickBackendTests(APITestCase):
         )
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(DoubleTickLead.objects.count(), 0)
+
+    def test_associate_status_events_create_and_update_one_outbound_message(self):
+        self.client.post(
+            "/api/v1/doubletick/webhook/",
+            self.webhook_payload(message_id="customer-hello", text="Hello", area=""),
+            format="json",
+            HTTP_X_DOUBLETICK_SECRET="test-secret",
+        )
+        DoubleTickTeamMemberMapping.objects.create(doubletick_phone="919833365697", display_name="Dhanraj Jadhav")
+        payload = {
+            "to": "+91 98765 43210",
+            "sentBy": "919833365697",
+            "status": "SENT",
+            "message": {"text": "Please provide your city and nearest area.", "type": "TEXT"},
+            "messageId": "associate-1",
+            "assignedTo": "919833365697",
+            "wabaNumber": "918976822803",
+            "customerName": "Ravi Kumar",
+            "statusTimestamp": "2026-06-14T10:18:55.000Z",
+        }
+
+        for provider_status in ["SENT", "DELIVERED", "READ"]:
+            payload["status"] = provider_status
+            response = self.client.post(
+                "/api/v1/doubletick/webhook/",
+                payload,
+                format="json",
+                HTTP_X_DOUBLETICK_SECRET="test-secret",
+            )
+            self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+        outbound = DoubleTickMessage.objects.get(message_id="associate-1")
+        self.assertEqual(outbound.direction, DoubleTickMessage.Direction.OUTBOUND)
+        self.assertEqual(outbound.origin, DoubleTickMessage.Origin.AGENT)
+        self.assertEqual(outbound.sender_display_name, "Dhanraj Jadhav")
+        self.assertEqual(outbound.status, DoubleTickMessage.Status.READ)
+        self.assertEqual(DoubleTickMessage.objects.filter(message_id="associate-1").count(), 1)
+        self.assertEqual(DoubleTickLead.objects.count(), 0)
+
+    def test_messages_api_returns_inbound_and_outbound_chronologically(self):
+        self.client.post(
+            "/api/v1/doubletick/webhook/",
+            self.webhook_payload(message_id="customer-hello-2", text="Hello", area=""),
+            format="json",
+            HTTP_X_DOUBLETICK_SECRET="test-secret",
+        )
+        self.client.post(
+            "/api/v1/doubletick/webhook/",
+            {
+                "to": "+91 98765 43210",
+                "sentBy": "API",
+                "status": "DELIVERED",
+                "message": {"text": "Please provide your city and nearest area.", "type": "TEXT"},
+                "messageId": "api-1",
+                "wabaNumber": "918976822803",
+                "statusTimestamp": "2026-06-14T10:19:55.000Z",
+            },
+            format="json",
+            HTTP_X_DOUBLETICK_SECRET="test-secret",
+        )
+        conversation = DoubleTickConversation.objects.get()
+
+        self.client.force_authenticate(self.admin)
+        response = self.client.get(f"/api/v1/doubletick/conversations/{conversation.id}/messages/")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual([item["direction"] for item in response.data], ["inbound", "outbound"])
+        self.assertEqual(response.data[1]["sender"]["type"], "api")
 
     def test_spa_manager_sees_only_visible_branch_leads(self):
         lead = DoubleTickLead.objects.create(

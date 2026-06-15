@@ -8,6 +8,7 @@ from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.db import IntegrityError, transaction
 from django.db.models import Max, Q
+from django.utils.dateparse import parse_datetime
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.exceptions import APIException, PermissionDenied, ValidationError
@@ -34,6 +35,7 @@ from .models import (
     DoubleTickLeadAssignment,
     DoubleTickLeadVisibility,
     DoubleTickMessage,
+    DoubleTickTeamMemberMapping,
     DoubleTickWebhookLog,
 )
 
@@ -59,17 +61,86 @@ def normalize_area_text(value):
 
 
 def _timestamp_from_payload(payload):
-    value = first_value(payload, ["timestamp", "createdAt", "message.timestamp", "data.timestamp"])
+    value = first_value(payload, ["timestamp", "createdAt", "receivedAt", "message.timestamp", "data.timestamp", "statusTimestamp"])
     if not value:
         return timezone.now()
     if isinstance(value, (int, float)):
         return timezone.datetime.fromtimestamp(value / 1000 if value > 9999999999 else value, tz=timezone.utc)
+    if isinstance(value, str):
+        parsed = parse_datetime(value)
+        if parsed:
+            return parsed if timezone.is_aware(parsed) else timezone.make_aware(parsed, timezone=timezone.utc)
     return timezone.now()
 
 
 def _status_to_message_status(provider_status):
     status_value = str(provider_status or "").lower()
     return status_value if status_value in DoubleTickMessage.Status.values else DoubleTickMessage.Status.RECEIVED
+
+
+def _normalized_lookup_values(value):
+    raw = str(value or "").strip()
+    normalized = normalize_phone(raw)
+    values = {raw}
+    if normalized:
+        values.add(normalized)
+        values.add(normalized.replace("+", ""))
+    return [item for item in values if item]
+
+
+def _channel_from_waba_number(waba_number):
+    values = _normalized_lookup_values(waba_number)
+    if not values:
+        return None
+    return DoubleTickChannel.objects.filter(waba_number__in=values).first()
+
+
+def _provider_message_type(payload):
+    return str(first_value(payload, ["message.type", "messageType", "data.message.type"], default="text") or "text").lower()
+
+
+def _message_text(payload):
+    return str(first_value(payload, ["message.text", "message.body", "data.message.text", "data.message.body", "text", "body"]) or "")
+
+
+def _resolve_outbound_sender(sent_by, assigned_to, channel=None):
+    """
+    Resolve DoubleTick sender identifiers into a stable origin and display name.
+
+    DoubleTick sends associate phone/user identifiers in status events. The CRM
+    keeps the raw identifiers and uses optional mappings for readable names.
+    """
+    sent_by_value = str(sent_by or "").strip()
+    assigned_to_value = str(assigned_to or "").strip()
+    upper_sent_by = sent_by_value.upper()
+    if upper_sent_by == "BOT":
+        return DoubleTickMessage.Origin.BOT, "Bot", None
+    if upper_sent_by == "API":
+        return DoubleTickMessage.Origin.API, "API", None
+
+    identifiers = [sent_by_value, assigned_to_value]
+    phone_values = []
+    for value in identifiers:
+        phone_values.extend(_normalized_lookup_values(value))
+
+    mapping_q = Q()
+    for value in identifiers:
+        if value:
+            mapping_q |= Q(doubletick_user_id=value)
+    for value in phone_values:
+        mapping_q |= Q(doubletick_phone=value)
+
+    if mapping_q:
+        mappings = DoubleTickTeamMemberMapping.objects.filter(mapping_q, is_active=True)
+        if channel:
+            mappings = mappings.filter(Q(channel=channel) | Q(channel__isnull=True)).order_by("-channel_id", "display_name")
+        mapping = mappings.select_related("crm_user").first()
+        if mapping:
+            return DoubleTickMessage.Origin.AGENT, mapping.display_name or getattr(mapping.crm_user, "full_name", "") or "Associate", mapping.crm_user
+
+    if sent_by_value or assigned_to_value:
+        return DoubleTickMessage.Origin.AGENT, "Associate", None
+    return DoubleTickMessage.Origin.SYSTEM, "System", None
 
 
 def _activity(**kwargs):
@@ -366,6 +437,7 @@ class DoubleTickConversationService:
                 "status": DoubleTickMessage.Status.RECEIVED,
                 "customer_number": parsed.get("phone_number", ""),
                 "waba_number": str(first_value(payload, ["waba_number", "wabaNumber", "channel.waba_number", "to"]) or ""),
+                "message_timestamp": received_at,
                 "received_at": received_at,
                 "raw_payload": payload,
             },
@@ -401,30 +473,121 @@ class DoubleTickConversationService:
     @staticmethod
     def update_outbound_status(payload):
         provider_status = first_value(payload, ["status", "message.status", "data.status", "eventType", "event"])
-        message_id = first_value(payload, ["messageId", "message.id", "dtMessageId", "data.messageId"])
+        message_id = str(first_value(payload, ["messageId", "message.id", "dtMessageId", "data.messageId"]) or "")
         if not message_id:
             return None
-        message = DoubleTickMessage.objects.filter(Q(message_id=message_id) | Q(dt_message_id=message_id)).first()
+
+        status_timestamp = _timestamp_from_payload(payload)
+        customer_number = str(first_value(payload, ["to", "customer.phone", "customer.phone_number"]) or "")
+        waba_number = str(first_value(payload, ["wabaNumber", "waba_number", "channel.waba_number", "from"]) or "")
+        sent_by_raw = str(first_value(payload, ["sentBy", "sent_by", "data.sentBy"]) or "")
+        assigned_to_raw = str(first_value(payload, ["assignedTo", "assigned_to", "data.assignedTo"]) or "")
+        dt_customer_id = str(first_value(payload, ["dtCustomerId", "dt_customer_id", "customer.id", "customerId"]) or "")
+        channel = _channel_from_waba_number(waba_number)
+        normalized_customer = normalize_phone(customer_number)
+
+        customer = None
+        if dt_customer_id:
+            customer = DoubleTickCustomer.objects.filter(dt_customer_id=dt_customer_id).first()
+        if not customer and normalized_customer:
+            customer = DoubleTickCustomer.objects.filter(normalized_phone=normalized_customer).first()
+        if not customer:
+            parsed = {
+                "doubletick_customer_id": dt_customer_id,
+                "phone_number": customer_number,
+                "normalized_phone": normalized_customer,
+                "customer_name": str(first_value(payload, ["customerName", "customer.name", "contact.name"]) or ""),
+                "whatsapp_name": "",
+            }
+            customer, _ = DoubleTickConversationService._upsert_customer(parsed, payload, channel)
+
+        conversation = None
+        if dt_customer_id:
+            conversation = DoubleTickConversation.objects.filter(customer__dt_customer_id=dt_customer_id).order_by("-last_message_at", "-created_at").first()
+        if not conversation and normalized_customer:
+            conversation_qs = DoubleTickConversation.objects.filter(customer__normalized_phone=normalized_customer)
+            if channel:
+                conversation_qs = conversation_qs.filter(Q(channel=channel) | Q(channel__isnull=True))
+            conversation = conversation_qs.order_by("-last_message_at", "-created_at").first()
+        if not conversation:
+            parsed = {"doubletick_chat_id": "", "doubletick_customer_id": dt_customer_id}
+            conversation, _ = DoubleTickConversationService._get_or_create_conversation(customer, parsed, payload, channel)
+
+        origin, sender_display_name, crm_user = _resolve_outbound_sender(sent_by_raw, assigned_to_raw, channel)
+        message = DoubleTickMessage.objects.filter(
+            Q(message_id=message_id) | Q(dt_message_id=message_id),
+            direction=DoubleTickMessage.Direction.OUTBOUND,
+        ).first()
         if not message:
-            return None
-        now = timezone.now()
-        message.status = _status_to_message_status(provider_status)
-        if message.status == DoubleTickMessage.Status.SENT:
-            message.sent_at = message.sent_at or now
-        elif message.status == DoubleTickMessage.Status.DELIVERED:
-            message.delivered_at = now
-        elif message.status == DoubleTickMessage.Status.READ:
-            message.read_at = now
-        elif message.status == DoubleTickMessage.Status.FAILED:
-            message.failed_at = now
+            message = DoubleTickMessage.objects.create(
+                conversation=conversation,
+                lead=conversation.current_lead,
+                customer=customer,
+                dt_message_id=message_id,
+                message_id=message_id,
+                direction=DoubleTickMessage.Direction.OUTBOUND,
+                origin=origin,
+                sender_display_name=sender_display_name,
+                sent_by=crm_user,
+                sent_by_raw=sent_by_raw,
+                assigned_to_raw=assigned_to_raw,
+                message_type=_provider_message_type(payload),
+                text=_message_text(payload),
+                customer_number=customer_number,
+                waba_number=waba_number,
+                message_timestamp=status_timestamp,
+                raw_payload=payload,
+            )
+
+        old_status = message.status
+        new_status = _status_to_message_status(provider_status)
+        status_rank = {
+            DoubleTickMessage.Status.QUEUED: 0,
+            DoubleTickMessage.Status.SENT: 1,
+            DoubleTickMessage.Status.DELIVERED: 2,
+            DoubleTickMessage.Status.READ: 3,
+            DoubleTickMessage.Status.FAILED: 4,
+        }
+        if status_rank.get(new_status, 0) >= status_rank.get(message.status, 0):
+            message.status = new_status
+        if new_status == DoubleTickMessage.Status.SENT:
+            message.sent_at = message.sent_at or status_timestamp
+        elif new_status == DoubleTickMessage.Status.DELIVERED:
+            message.delivered_at = message.delivered_at or status_timestamp
+        elif new_status == DoubleTickMessage.Status.READ:
+            message.read_at = message.read_at or status_timestamp
+        elif new_status == DoubleTickMessage.Status.FAILED:
+            message.failed_at = message.failed_at or status_timestamp
             message.failure_reason = str(first_value(payload, ["reason", "error", "failure_reason"]) or "")
+        if not message.text:
+            message.text = _message_text(payload)
+        if not message.sender_display_name:
+            message.sender_display_name = sender_display_name
+        if not message.sent_by_id and crm_user:
+            message.sent_by = crm_user
+        message.origin = message.origin or origin
+        message.customer = message.customer or customer
+        message.lead = message.lead or conversation.current_lead
+        message.customer_number = message.customer_number or customer_number
+        message.waba_number = message.waba_number or waba_number
+        message.message_timestamp = message.message_timestamp or status_timestamp
+        message.sent_by_raw = message.sent_by_raw or sent_by_raw
+        message.assigned_to_raw = message.assigned_to_raw or assigned_to_raw
         message.raw_payload = payload
         message.save()
+
+        conversation.last_message_at = max(filter(None, [conversation.last_message_at, message.message_timestamp, status_timestamp]), default=status_timestamp)
+        conversation.last_agent_message_at = max(filter(None, [conversation.last_agent_message_at, status_timestamp]), default=status_timestamp)
+        conversation.team_last_replied_at = max(filter(None, [conversation.team_last_replied_at, status_timestamp]), default=status_timestamp)
+        conversation.raw_payload = payload
+        conversation.save(update_fields=["last_message_at", "last_agent_message_at", "team_last_replied_at", "raw_payload", "updated_at"])
         _activity(
             conversation=message.conversation,
             lead=message.lead,
             action=DoubleTickActivity.Action.MESSAGE_SENT if message.status != DoubleTickMessage.Status.FAILED else DoubleTickActivity.Action.PROCESSING_FAILED,
-            metadata={"message_id": str(message.id), "status": message.status},
+            old_status=old_status,
+            new_status=message.status,
+            metadata={"message_id": str(message.id), "provider_message_id": message_id, "status": message.status},
         )
         return message
 
@@ -691,7 +854,7 @@ class DoubleTickChatService:
 
     @staticmethod
     def get_chat(conversation):
-        return conversation.messages.select_related("sent_by").order_by("received_at", "sent_at", "created_at")
+        return conversation.messages.select_related("sent_by", "customer").order_by("message_timestamp", "received_at", "sent_at", "created_at")
 
     @staticmethod
     def sync_chat(conversation):
@@ -754,8 +917,10 @@ class DoubleTickReplyService:
             text=text,
             status=DoubleTickMessage.Status.QUEUED,
             sent_by=user,
+            sender_display_name=getattr(user, "full_name", "") or "Associate",
             customer_number=conversation.customer.phone_number,
             waba_number=conversation.channel.waba_number if conversation.channel else "",
+            message_timestamp=now,
             sent_at=now,
             raw_payload={},
         )
@@ -763,6 +928,18 @@ class DoubleTickReplyService:
             response = DoubleTickReplyService._send_text(conversation, text)
             message.status = DoubleTickMessage.Status.SENT
             message.raw_payload = response
+            response_body = response.get("body", "")
+            if response_body:
+                import json
+
+                try:
+                    parsed_body = json.loads(response_body)
+                    provider_id = first_value(parsed_body, ["messageId", "id", "data.messageId", "message.id"])
+                    if provider_id:
+                        message.message_id = str(provider_id)
+                        message.dt_message_id = message.dt_message_id or str(provider_id)
+                except ValueError:
+                    pass
         except Exception as exc:
             message.status = DoubleTickMessage.Status.FAILED
             message.failed_at = timezone.now()

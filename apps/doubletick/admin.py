@@ -13,6 +13,7 @@ from .models import (
     DoubleTickLeadAssignment,
     DoubleTickLeadVisibility,
     DoubleTickMessage,
+    DoubleTickTeamMemberMapping,
     DoubleTickWebhookLog,
 )
 
@@ -62,10 +63,17 @@ class DoubleTickConversationAdmin(admin.ModelAdmin):
 
 @admin.register(DoubleTickMessage)
 class DoubleTickMessageAdmin(admin.ModelAdmin):
-    list_display = ("conversation", "direction", "origin", "status", "text", "received_at", "sent_at")
-    search_fields = ("text", "dt_message_id", "message_id", "customer_number", "waba_number")
+    list_display = ("conversation", "direction", "origin", "sender_display_name", "status", "text", "message_timestamp")
+    search_fields = ("text", "dt_message_id", "message_id", "customer_number", "waba_number", "sender_display_name", "sent_by_raw", "assigned_to_raw")
     list_filter = ("direction", "origin", "status", "message_type")
     readonly_fields = ("created_at", "updated_at")
+
+
+@admin.register(DoubleTickTeamMemberMapping)
+class DoubleTickTeamMemberMappingAdmin(admin.ModelAdmin):
+    list_display = ("display_name", "doubletick_phone", "doubletick_user_id", "crm_user", "channel", "is_active")
+    search_fields = ("display_name", "doubletick_phone", "doubletick_user_id", "crm_user__full_name", "crm_user__email")
+    list_filter = ("is_active", "channel")
 
 
 @admin.register(DoubleTickLead)
