@@ -1,5 +1,5 @@
 from django.contrib.auth import get_user_model
-from django.db.models import Count, Q
+from django.db.models import Count, Q, Sum
 from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import filters, permissions, status, viewsets
@@ -18,6 +18,7 @@ from .models import (
     DoubleTickActivity,
     DoubleTickAreaAlias,
     DoubleTickConversation,
+    DoubleTickDistributionAudit,
     DoubleTickLead,
     DoubleTickLeadActivity,
     DoubleTickLeadArea,
@@ -33,6 +34,7 @@ from .serializers import (
     DoubleTickConversationListSerializer,
     DoubleTickConversationMatchAreaSerializer,
     DoubleTickConversationReplySerializer,
+    DoubleTickDistributionAuditSerializer,
     DoubleTickLeadActivitySerializer,
     DoubleTickLeadAreaBranchSerializer,
     DoubleTickLeadAreaSerializer,
@@ -133,6 +135,21 @@ class DoubleTickLeadAreaBranchViewSet(DoubleTickAllListMixin, viewsets.ModelView
 
     def get_queryset(self):
         return DoubleTickLeadAreaBranch.objects.select_related("lead_area", "branch")
+
+
+class DoubleTickDistributionAuditViewSet(DoubleTickAllListMixin, viewsets.ReadOnlyModelViewSet):
+    """Admin-readable audit trail for DoubleTick lead distribution attempts."""
+
+    serializer_class = DoubleTickDistributionAuditSerializer
+    permission_classes = [IsInternalCRMTeam]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ["lead", "conversation", "matched_area", "status"]
+    search_fields = ["lead__phone_number", "lead__customer_name", "matched_area__name", "failure_reason"]
+    ordering_fields = ["created_at", "mapped_branch_count", "visibility_count", "notification_success_count"]
+    ordering = ["-created_at"]
+
+    def get_queryset(self):
+        return DoubleTickDistributionAudit.objects.select_related("lead", "conversation", "matched_area")
 
 
 def _role_filtered_leads(queryset, user):
@@ -442,7 +459,11 @@ class DoubleTickMobileLeadViewSet(viewsets.ReadOnlyModelViewSet):
 
     @action(detail=False, methods=["get"])
     def mine(self, request):
-        queryset = self.get_queryset().filter(current_user=request.user)
+        device = _device_from_request(request)
+        if device:
+            queryset = self.get_queryset().filter(current_device=device)
+        else:
+            queryset = self.get_queryset().filter(current_user=request.user)
         return Response(DoubleTickLeadListSerializer(queryset, many=True).data)
 
     @action(detail=True, methods=["post"])
@@ -501,6 +522,12 @@ class DoubleTickDashboardMetricsView(APIView):
             "contacted_leads": leads.filter(status=DoubleTickLead.Status.CONTACTED).count(),
             "booked_leads": leads.filter(status=DoubleTickLead.Status.BOOKED).count(),
             "lost_leads": leads.filter(status=DoubleTickLead.Status.LOST).count(),
+            "failed_distributions": DoubleTickDistributionAudit.objects.filter(status=DoubleTickDistributionAudit.Status.FAILED).count(),
+            "partial_distributions": DoubleTickDistributionAudit.objects.filter(status=DoubleTickDistributionAudit.Status.PARTIAL).count(),
+            "successful_distributions": DoubleTickDistributionAudit.objects.filter(status=DoubleTickDistributionAudit.Status.SUCCESS).count(),
+            "notification_failures": DoubleTickDistributionAudit.objects.aggregate(
+                total=Sum("notification_failure_count")
+            )["total"] or 0,
             "average_claim_time": None,
         })
 

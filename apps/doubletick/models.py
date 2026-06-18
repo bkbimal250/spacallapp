@@ -595,6 +595,65 @@ class DoubleTickLeadVisibility(BaseModel, TimeStampedModel):
             models.Index(fields=["user", "is_visible"], name="dt_visibility_user_idx"),
             models.Index(fields=["device", "is_visible"], name="dt_visibility_device_idx"),
         ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["lead", "branch"],
+                condition=models.Q(user__isnull=True, device__isnull=True),
+                name="unique_dt_branch_visibility",
+            ),
+            models.UniqueConstraint(
+                fields=["lead", "branch", "user"],
+                condition=models.Q(user__isnull=False, device__isnull=True),
+                name="unique_dt_user_visibility",
+            ),
+            models.UniqueConstraint(
+                fields=["lead", "branch", "device"],
+                condition=models.Q(user__isnull=True, device__isnull=False),
+                name="unique_dt_device_visibility",
+            ),
+        ]
+
+
+class DoubleTickDistributionAudit(BaseModel):
+    """Immutable audit row for each DoubleTick lead distribution attempt."""
+
+    class Status(models.TextChoices):
+        SUCCESS = "success", "Success"
+        PARTIAL = "partial", "Partial"
+        FAILED = "failed", "Failed"
+
+    lead = models.ForeignKey(DoubleTickLead, on_delete=models.CASCADE, related_name="distribution_audits")
+    conversation = models.ForeignKey(
+        DoubleTickConversation,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="distribution_audits",
+    )
+    matched_area = models.ForeignKey(
+        DoubleTickLeadArea,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="distribution_audits",
+    )
+    status = models.CharField(max_length=20, choices=Status.choices, db_index=True)
+    mapped_branch_count = models.PositiveIntegerField(default=0)
+    visibility_count = models.PositiveIntegerField(default=0)
+    notification_success_count = models.PositiveIntegerField(default=0)
+    notification_failure_count = models.PositiveIntegerField(default=0)
+    failure_reason = models.TextField(blank=True)
+    metadata = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "doubletick_distribution_audits"
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["lead", "created_at"], name="dt_dist_audit_lead_idx"),
+            models.Index(fields=["status", "created_at"], name="dt_dist_audit_status_idx"),
+            models.Index(fields=["matched_area", "created_at"], name="dt_dist_audit_area_idx"),
+        ]
 
 
 class DoubleTickLeadAssignment(BaseModel, TimeStampedModel):

@@ -6,6 +6,7 @@ from .models import (
     DoubleTickChannel,
     DoubleTickConversation,
     DoubleTickCustomer,
+    DoubleTickDistributionAudit,
     DoubleTickLead,
     DoubleTickLeadActivity,
     DoubleTickLeadArea,
@@ -89,6 +90,23 @@ class DoubleTickLeadVisibilityAdmin(admin.ModelAdmin):
     list_display = ("lead", "branch", "user", "device", "is_visible", "notification_sent", "notified_at")
     search_fields = ("lead__phone_number", "branch__spa_name", "user__full_name", "device__device_id")
     list_filter = ("is_visible", "notification_sent", "branch")
+
+
+@admin.register(DoubleTickDistributionAudit)
+class DoubleTickDistributionAuditAdmin(admin.ModelAdmin):
+    list_display = (
+        "lead",
+        "matched_area",
+        "status",
+        "mapped_branch_count",
+        "visibility_count",
+        "notification_success_count",
+        "notification_failure_count",
+        "created_at",
+    )
+    search_fields = ("lead__phone_number", "lead__customer_name", "matched_area__name", "failure_reason")
+    list_filter = ("status", "matched_area", "created_at")
+    readonly_fields = ("created_at",)
 
 
 @admin.register(DoubleTickLeadAssignment)

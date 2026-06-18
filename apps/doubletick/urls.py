@@ -5,6 +5,7 @@ from .views import (
     DoubleTickAreaAliasViewSet,
     DoubleTickConversationViewSet,
     DoubleTickDashboardMetricsView,
+    DoubleTickDistributionAuditViewSet,
     DoubleTickLeadAreaBranchViewSet,
     DoubleTickLeadAreaViewSet,
     DoubleTickLeadViewSet,
@@ -17,6 +18,7 @@ router = DefaultRouter()
 router.register(r"areas", DoubleTickLeadAreaViewSet, basename="doubletick-areas")
 router.register(r"area-aliases", DoubleTickAreaAliasViewSet, basename="doubletick-area-aliases")
 router.register(r"area-branches", DoubleTickLeadAreaBranchViewSet, basename="doubletick-area-branches")
+router.register(r"distribution-audits", DoubleTickDistributionAuditViewSet, basename="doubletick-distribution-audits")
 router.register(r"conversations", DoubleTickConversationViewSet, basename="doubletick-conversations")
 router.register(r"leads", DoubleTickLeadViewSet, basename="doubletick-leads")
 router.register(r"mobile/leads", DoubleTickMobileLeadViewSet, basename="doubletick-mobile-leads")

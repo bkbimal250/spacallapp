@@ -30,6 +30,7 @@ from .models import (
     DoubleTickChannel,
     DoubleTickConversation,
     DoubleTickCustomer,
+    DoubleTickDistributionAudit,
     DoubleTickLead,
     DoubleTickLeadArea,
     DoubleTickLeadAreaBranch,
@@ -663,47 +664,106 @@ class LeadDistributionService:
     """Make a qualified area lead visible to mapped branches/managers/devices."""
 
     @staticmethod
+    def _get_or_create_visibility(**kwargs):
+        existing = DoubleTickLeadVisibility.objects.filter(**kwargs).first()
+        if existing:
+            return existing, False
+        try:
+            with transaction.atomic():
+                return DoubleTickLeadVisibility.objects.create(**kwargs), True
+        except IntegrityError:
+            return DoubleTickLeadVisibility.objects.filter(**kwargs).first(), False
+
+    @staticmethod
     @transaction.atomic
     def distribute(lead, user=None):
         lead = DoubleTickLead.objects.select_for_update().select_related("matched_area", "conversation").get(pk=lead.pk)
         if not lead.matched_area_id:
-            raise ValidationError("Lead has no matched area.")
-        mappings = DoubleTickLeadAreaBranch.objects.select_related("branch").filter(
+            lead.status = DoubleTickLead.Status.FAILED
+            lead.save(update_fields=["status", "updated_at"])
+            _activity(lead=lead, action=DoubleTickActivity.Action.PROCESSING_FAILED, note="Lead has no matched area.")
+            DoubleTickDistributionAudit.objects.create(
+                lead=lead,
+                conversation=lead.conversation,
+                status=DoubleTickDistributionAudit.Status.FAILED,
+                failure_reason="Lead has no matched area.",
+            )
+            return lead
+
+        mappings = list(DoubleTickLeadAreaBranch.objects.select_related("branch").filter(
             lead_area=lead.matched_area,
+            lead_area__is_active=True,
+            lead_area__is_deleted=False,
             is_active=True,
             receives_leads=True,
             branch__is_active=True,
-        )
-        if not mappings.exists():
+            branch__is_deleted=False,
+        ))
+        if not mappings:
             lead.status = DoubleTickLead.Status.FAILED
             lead.save(update_fields=["status", "updated_at"])
             _activity(lead=lead, action=DoubleTickActivity.Action.PROCESSING_FAILED, note="No active branch mapping found.")
+            DoubleTickDistributionAudit.objects.create(
+                lead=lead,
+                conversation=lead.conversation,
+                matched_area=lead.matched_area,
+                status=DoubleTickDistributionAudit.Status.FAILED,
+                failure_reason="No active branch mapping found.",
+            )
             return lead
 
         User = get_user_model()
         notified_count = 0
+        notification_failure_count = 0
+        created_visibility_count = 0
+        visibility_count = 0
+        branch_ids = []
         for mapping in mappings:
             branch = mapping.branch
-            branch_visibility, _ = DoubleTickLeadVisibility.objects.get_or_create(lead=lead, branch=branch)
+            branch_ids.append(str(branch.id))
+            _, created = LeadDistributionService._get_or_create_visibility(lead=lead, branch=branch)
+            created_visibility_count += 1 if created else 0
+            visibility_count += 1
             managers = User.objects.filter(role="spa_manager", branch=branch, is_active=True)
             devices = Device.objects.filter(branch=branch, is_active=True, is_blocked=False, is_registered=True)
             for manager in managers:
-                visibility, _ = DoubleTickLeadVisibility.objects.get_or_create(lead=lead, branch=branch, user=manager)
-                ok, error = send_lead_notification(lead, manager)
+                visibility, created = LeadDistributionService._get_or_create_visibility(lead=lead, branch=branch, user=manager)
+                created_visibility_count += 1 if created else 0
+                visibility_count += 1
+                ok, error = (True, "") if visibility.notification_sent else send_lead_notification(lead, manager)
                 visibility.notification_sent = ok
                 visibility.notification_error = error
-                visibility.notified_at = timezone.now()
+                visibility.notified_at = visibility.notified_at or timezone.now()
                 visibility.save(update_fields=["notification_sent", "notification_error", "notified_at", "updated_at"])
                 notified_count += 1 if ok else 0
+                notification_failure_count += 0 if ok else 1
+                _activity(
+                    conversation=lead.conversation,
+                    lead=lead,
+                    user=manager,
+                    branch=branch,
+                    action=DoubleTickActivity.Action.NOTIFICATION_SENT if ok else DoubleTickActivity.Action.PROCESSING_FAILED,
+                    note=error,
+                )
             for device in devices:
-                visibility, _ = DoubleTickLeadVisibility.objects.get_or_create(lead=lead, branch=branch, device=device)
-                ok, error = send_lead_notification(lead, device)
+                visibility, created = LeadDistributionService._get_or_create_visibility(lead=lead, branch=branch, device=device)
+                created_visibility_count += 1 if created else 0
+                visibility_count += 1
+                ok, error = (True, "") if visibility.notification_sent else send_lead_notification(lead, device)
                 visibility.notification_sent = ok
                 visibility.notification_error = error
-                visibility.notified_at = timezone.now()
+                visibility.notified_at = visibility.notified_at or timezone.now()
                 visibility.save(update_fields=["notification_sent", "notification_error", "notified_at", "updated_at"])
                 notified_count += 1 if ok else 0
-            branch_visibility.save()
+                notification_failure_count += 0 if ok else 1
+                _activity(
+                    conversation=lead.conversation,
+                    lead=lead,
+                    device=device,
+                    branch=branch,
+                    action=DoubleTickActivity.Action.NOTIFICATION_SENT if ok else DoubleTickActivity.Action.PROCESSING_FAILED,
+                    note=error,
+                )
 
         lead.status = DoubleTickLead.Status.AVAILABLE
         lead.distributed_at = timezone.now()
@@ -716,7 +776,24 @@ class LeadDistributionService:
             lead=lead,
             user=user,
             action=DoubleTickActivity.Action.LEAD_DISTRIBUTED,
-            metadata={"notified_count": notified_count},
+            metadata={
+                "mapped_branch_count": len(mappings),
+                "visibility_count": visibility_count,
+                "created_visibility_count": created_visibility_count,
+                "notified_count": notified_count,
+                "notification_failure_count": notification_failure_count,
+            },
+        )
+        DoubleTickDistributionAudit.objects.create(
+            lead=lead,
+            conversation=lead.conversation,
+            matched_area=lead.matched_area,
+            status=DoubleTickDistributionAudit.Status.PARTIAL if notification_failure_count else DoubleTickDistributionAudit.Status.SUCCESS,
+            mapped_branch_count=len(mappings),
+            visibility_count=visibility_count,
+            notification_success_count=notified_count,
+            notification_failure_count=notification_failure_count,
+            metadata={"branch_ids": branch_ids},
         )
         return lead
 
@@ -724,10 +801,82 @@ class LeadDistributionService:
 class LeadClaimService:
     """Concurrency-safe claim/release/contact operations."""
 
+    CONTACT_ACTION_TRANSITIONS = {
+        "open": {
+            DoubleTickLead.Status.CLAIMED,
+            DoubleTickLead.Status.OPENED,
+            DoubleTickLead.Status.CONTACTING,
+        },
+        "start_contact": {
+            DoubleTickLead.Status.CLAIMED,
+            DoubleTickLead.Status.OPENED,
+            DoubleTickLead.Status.CONTACTING,
+        },
+        "contacted": {
+            DoubleTickLead.Status.CLAIMED,
+            DoubleTickLead.Status.OPENED,
+            DoubleTickLead.Status.CONTACTING,
+            DoubleTickLead.Status.FOLLOW_UP,
+        },
+        "no_answer": {
+            DoubleTickLead.Status.CLAIMED,
+            DoubleTickLead.Status.OPENED,
+            DoubleTickLead.Status.CONTACTING,
+            DoubleTickLead.Status.FOLLOW_UP,
+        },
+        "customer_busy": {
+            DoubleTickLead.Status.CLAIMED,
+            DoubleTickLead.Status.OPENED,
+            DoubleTickLead.Status.CONTACTING,
+            DoubleTickLead.Status.FOLLOW_UP,
+        },
+        "follow_up": {
+            DoubleTickLead.Status.CLAIMED,
+            DoubleTickLead.Status.OPENED,
+            DoubleTickLead.Status.CONTACTING,
+            DoubleTickLead.Status.CONTACTED,
+            DoubleTickLead.Status.FOLLOW_UP,
+        },
+        "booked": {
+            DoubleTickLead.Status.CONTACTING,
+            DoubleTickLead.Status.CONTACTED,
+            DoubleTickLead.Status.FOLLOW_UP,
+        },
+        "not_interested": {
+            DoubleTickLead.Status.CLAIMED,
+            DoubleTickLead.Status.OPENED,
+            DoubleTickLead.Status.CONTACTING,
+            DoubleTickLead.Status.CONTACTED,
+            DoubleTickLead.Status.FOLLOW_UP,
+        },
+        "lost": {
+            DoubleTickLead.Status.CLAIMED,
+            DoubleTickLead.Status.OPENED,
+            DoubleTickLead.Status.CONTACTING,
+            DoubleTickLead.Status.CONTACTED,
+            DoubleTickLead.Status.FOLLOW_UP,
+        },
+        "close": {
+            DoubleTickLead.Status.CLAIMED,
+            DoubleTickLead.Status.OPENED,
+            DoubleTickLead.Status.CONTACTING,
+            DoubleTickLead.Status.CONTACTED,
+            DoubleTickLead.Status.FOLLOW_UP,
+            DoubleTickLead.Status.BOOKED,
+            DoubleTickLead.Status.NOT_INTERESTED,
+            DoubleTickLead.Status.LOST,
+        },
+    }
+
     @staticmethod
     def _ensure_visible_to_user(lead, user):
         if getattr(user, "role", None) in ["super_admin", "admin"]:
-            return user.branch
+            if lead.current_branch_id:
+                return lead.current_branch
+            visibility = DoubleTickLeadVisibility.objects.filter(lead=lead, is_visible=True).select_related("branch").first()
+            if visibility:
+                return visibility.branch
+            raise PermissionDenied("Lead is not visible to any branch.")
         if getattr(user, "role", None) == "spa_manager" and user.branch_id:
             if DoubleTickLeadVisibility.objects.filter(lead=lead, branch=user.branch, is_visible=True).exists():
                 return user.branch
@@ -741,6 +890,8 @@ class LeadClaimService:
     @staticmethod
     @transaction.atomic
     def claim(lead_id, user, device=None):
+        if not getattr(user, "role", None):
+            raise PermissionDenied("A CRM user is required to claim a DoubleTick lead.")
         lead = DoubleTickLead.objects.select_for_update().get(pk=lead_id)
         if lead.status not in [DoubleTickLead.Status.AVAILABLE, DoubleTickLead.Status.RELEASED]:
             raise Conflict("Lead is not available for claim.")
@@ -790,6 +941,10 @@ class LeadClaimService:
         lead = DoubleTickLead.objects.select_for_update().get(pk=lead_id)
         assignment = LeadClaimService._active_assignment_for_user(lead, user)
         now = timezone.now()
+        if action not in LeadClaimService.CONTACT_ACTION_TRANSITIONS:
+            raise ValidationError("Unsupported lead action.")
+        if lead.status not in LeadClaimService.CONTACT_ACTION_TRANSITIONS[action]:
+            raise Conflict(f"Action '{action}' is not allowed while lead status is '{lead.status}'.")
         if action == "open":
             lead.status = DoubleTickLead.Status.OPENED
             lead.opened_at = lead.opened_at or now
@@ -826,8 +981,6 @@ class LeadClaimService:
             assignment.status = DoubleTickLeadAssignment.Status.LOST if action != "close" else DoubleTickLeadAssignment.Status.CLOSED
             assignment.outcome = action
             activity = DoubleTickActivity.Action.LOST if action != "close" else DoubleTickActivity.Action.CLOSED
-        else:
-            raise ValidationError("Unsupported lead action.")
         assignment.remarks = note or assignment.remarks
         assignment.save()
         lead.save()

@@ -8,6 +8,7 @@ from .models import (
     DoubleTickChannel,
     DoubleTickConversation,
     DoubleTickCustomer,
+    DoubleTickDistributionAudit,
     DoubleTickLead,
     DoubleTickLeadActivity,
     DoubleTickLeadArea,
@@ -82,6 +83,27 @@ class DoubleTickLeadAreaBranchSerializer(serializers.ModelSerializer):
     class Meta:
         model = DoubleTickLeadAreaBranch
         fields = "__all__"
+
+    def validate(self, attrs):
+        lead_area = attrs.get("lead_area") or getattr(self.instance, "lead_area", None)
+        branch = attrs.get("branch") or getattr(self.instance, "branch", None)
+        if lead_area:
+            if getattr(lead_area, "is_deleted", False):
+                raise serializers.ValidationError({"lead_area": "Deleted lead areas cannot receive mappings."})
+            if not lead_area.is_active:
+                raise serializers.ValidationError({"lead_area": "Inactive lead areas cannot receive mappings."})
+        if branch:
+            if getattr(branch, "is_deleted", False):
+                raise serializers.ValidationError({"branch": "Deleted branches cannot receive DoubleTick leads."})
+            if not branch.is_active:
+                raise serializers.ValidationError({"branch": "Inactive branches cannot receive DoubleTick leads."})
+        if lead_area and branch:
+            duplicate = DoubleTickLeadAreaBranch.objects.filter(lead_area=lead_area, branch=branch)
+            if self.instance:
+                duplicate = duplicate.exclude(pk=self.instance.pk)
+            if duplicate.exists():
+                raise serializers.ValidationError({"branch": "This branch is already mapped to the selected lead area."})
+        return attrs
 
 
 class DoubleTickMessageSerializer(serializers.ModelSerializer):
@@ -300,6 +322,15 @@ class DoubleTickLeadAssignmentSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = DoubleTickLeadAssignment
+        fields = "__all__"
+
+
+class DoubleTickDistributionAuditSerializer(serializers.ModelSerializer):
+    lead_phone_number = serializers.CharField(source="lead.phone_number", read_only=True)
+    matched_area_name = serializers.CharField(source="matched_area.name", read_only=True)
+
+    class Meta:
+        model = DoubleTickDistributionAudit
         fields = "__all__"
 
 
