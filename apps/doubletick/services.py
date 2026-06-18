@@ -14,6 +14,7 @@ from django.utils import timezone
 from rest_framework import status
 from rest_framework.exceptions import APIException, PermissionDenied, ValidationError
 
+from apps.branches.models import Branch
 from apps.devices.models import Device
 
 from .integrations.doubletick import (
@@ -60,6 +61,12 @@ def normalize_area_text(value):
     """Normalize free-form area text for alias matching."""
     text = re.sub(r"\s+", " ", str(value or "").strip().lower())
     return re.sub(r"[^0-9a-z\u0900-\u097f ]+", "", text)
+
+
+def _contains_normalized(haystack, needle):
+    haystack_norm = normalize_area_text(haystack)
+    needle_norm = normalize_area_text(needle)
+    return bool(haystack_norm and needle_norm and (needle_norm in haystack_norm or haystack_norm in needle_norm))
 
 
 def _timestamp_from_payload(payload):
@@ -175,8 +182,14 @@ def send_lead_notification(lead, recipient):
         recipient=recipient,
         title="New WhatsApp Lead",
         body=body,
-        notification_type="system",
-        data={"lead_id": str(lead.id), "source": "doubletick"},
+        notification_type="doubletick_lead",
+        data={
+            "lead_id": str(lead.id),
+            "source": "doubletick",
+            "area": area or "",
+            "service": service or "",
+            "branch_id": str(lead.current_branch_id or lead.assigned_branch_id or ""),
+        },
     )
     return ok, "" if ok else "Notification service returned failure."
 
@@ -283,10 +296,106 @@ class AreaMatchingService:
         return area_qs.order_by("priority", "name").first()
 
     @staticmethod
+    def find_branch_candidates(raw_area, raw_city=""):
+        """
+        Find active spa branches using existing branch city/area/spa metadata.
+
+        This is a fallback for real-world WhatsApp replies where the customer
+        gives a location that has not yet been configured as a DoubleTick area.
+        """
+        normalized_area = normalize_area_text(raw_area)
+        normalized_city = normalize_area_text(raw_city)
+        if not normalized_area and not normalized_city:
+            return []
+
+        branches = Branch.objects.filter(is_active=True, is_deleted=False)
+        if normalized_city:
+            branches = branches.filter(city__iexact=raw_city)
+
+        matches = []
+        for branch in branches:
+            score = 0
+            if normalized_area:
+                if normalize_area_text(branch.area) == normalized_area:
+                    score += 100
+                elif _contains_normalized(branch.area, raw_area):
+                    score += 80
+                elif _contains_normalized(branch.spa_name, raw_area):
+                    score += 60
+                elif _contains_normalized(branch.address, raw_area):
+                    score += 45
+            if normalized_city and normalize_area_text(branch.city) == normalized_city:
+                score += 20
+            if score > 0:
+                matches.append((score, branch))
+
+        matches.sort(key=lambda item: (-item[0], item[1].spa_name or ""))
+        return [branch for _, branch in matches]
+
+    @staticmethod
+    def ensure_area_from_branch(raw_area, raw_city="", branch=None, channel=None):
+        """
+        Create or reuse a DoubleTickLeadArea from branch metadata and map it to
+        the branch. This lets leads route even before an admin has manually
+        created the DoubleTick area screen entry.
+        """
+        raw_area = str(raw_area or "").strip()
+        raw_city = str(raw_city or "").strip()
+        if not raw_area and branch:
+            raw_area = branch.area or branch.spa_name
+        if not raw_city and branch:
+            raw_city = branch.city
+        normalized = normalize_area_text(raw_area)
+        if not normalized:
+            return None
+
+        lead_area = AreaMatchingService.find_area(raw_area, raw_city, channel)
+        if not lead_area:
+            lead_area, _ = DoubleTickLeadArea.objects.get_or_create(
+                normalized_name=normalized,
+                city=raw_city or "",
+                defaults={
+                    "name": raw_area,
+                    "state": getattr(branch, "state", "") if branch else "",
+                    "is_active": True,
+                    "description": "Auto-created from existing spa branch location during DoubleTick matching.",
+                },
+            )
+
+        if raw_area:
+            DoubleTickAreaAlias.objects.get_or_create(
+                lead_area=lead_area,
+                normalized_alias=normalized,
+                defaults={
+                    "alias": raw_area,
+                    "channel": channel,
+                    "created_from_manual_mapping": True,
+                },
+            )
+
+        if branch:
+            DoubleTickLeadAreaBranch.objects.get_or_create(
+                lead_area=lead_area,
+                branch=branch,
+                defaults={
+                    "is_active": True,
+                    "receives_leads": True,
+                    "notes": "Auto-created from branch city/area/spa metadata.",
+                },
+            )
+        return lead_area
+
+    @staticmethod
     def match_conversation(conversation, raw_area=None, raw_city=None, save_alias=False):
         raw_area = raw_area if raw_area is not None else conversation.raw_area
         raw_city = raw_city if raw_city is not None else conversation.raw_city
         lead_area = AreaMatchingService.find_area(raw_area, raw_city, conversation.channel)
+        auto_matched_branch = None
+        if not lead_area and getattr(settings, "DOUBLETICK_AUTO_CREATE_AREA_FROM_BRANCH", True):
+            branch_candidates = AreaMatchingService.find_branch_candidates(raw_area, raw_city)
+            if branch_candidates:
+                auto_matched_branch = branch_candidates[0]
+                lead_area = AreaMatchingService.ensure_area_from_branch(raw_area, raw_city, auto_matched_branch, conversation.channel)
         if not lead_area:
             old_status = conversation.status
             conversation.status = DoubleTickConversation.Status.AREA_UNMATCHED
@@ -299,6 +408,7 @@ class AreaMatchingService:
                 old_status=old_status,
                 new_status=conversation.status,
                 note=raw_area or "",
+                metadata={"raw_city": raw_city or "", "raw_area": raw_area or ""},
             )
             return None
 
@@ -329,7 +439,12 @@ class AreaMatchingService:
             conversation=conversation,
             action=DoubleTickActivity.Action.AREA_MATCHED,
             new_status=conversation.status,
-            metadata={"lead_area_id": str(lead_area.id)},
+            metadata={
+                "lead_area_id": str(lead_area.id),
+                "auto_matched_branch_id": str(auto_matched_branch.id) if auto_matched_branch else "",
+                "raw_city": raw_city or "",
+                "raw_area": raw_area or "",
+            },
         )
         return lead_area
 
@@ -675,6 +790,41 @@ class LeadDistributionService:
             return DoubleTickLeadVisibility.objects.filter(**kwargs).first(), False
 
     @staticmethod
+    def _active_mappings_for_area(lead_area):
+        return list(DoubleTickLeadAreaBranch.objects.select_related("branch").filter(
+            lead_area=lead_area,
+            lead_area__is_active=True,
+            lead_area__is_deleted=False,
+            is_active=True,
+            receives_leads=True,
+            branch__is_active=True,
+            branch__is_deleted=False,
+        ).order_by("priority", "branch__spa_name"))
+
+    @staticmethod
+    def _ensure_fallback_mappings(lead):
+        if not getattr(settings, "DOUBLETICK_AUTO_MAP_BRANCH_FROM_LOCATION", True):
+            return []
+        branch_candidates = AreaMatchingService.find_branch_candidates(
+            lead.raw_area or lead.area or (lead.matched_area.name if lead.matched_area else ""),
+            lead.raw_city or lead.city or (lead.matched_area.city if lead.matched_area else ""),
+        )
+        created_mappings = []
+        for branch in branch_candidates:
+            mapping, created = DoubleTickLeadAreaBranch.objects.get_or_create(
+                lead_area=lead.matched_area,
+                branch=branch,
+                defaults={
+                    "is_active": True,
+                    "receives_leads": True,
+                    "notes": "Auto-created during DoubleTick distribution from branch city/area/spa metadata.",
+                },
+            )
+            if created:
+                created_mappings.append(mapping)
+        return created_mappings
+
+    @staticmethod
     @transaction.atomic
     def distribute(lead, user=None):
         lead = DoubleTickLead.objects.select_for_update().select_related("matched_area", "conversation").get(pk=lead.pk)
@@ -690,25 +840,35 @@ class LeadDistributionService:
             )
             return lead
 
-        mappings = list(DoubleTickLeadAreaBranch.objects.select_related("branch").filter(
-            lead_area=lead.matched_area,
-            lead_area__is_active=True,
-            lead_area__is_deleted=False,
-            is_active=True,
-            receives_leads=True,
-            branch__is_active=True,
-            branch__is_deleted=False,
-        ))
+        mappings = LeadDistributionService._active_mappings_for_area(lead.matched_area)
+        auto_created_mappings = []
+        if not mappings:
+            auto_created_mappings = LeadDistributionService._ensure_fallback_mappings(lead)
+            mappings = LeadDistributionService._active_mappings_for_area(lead.matched_area)
         if not mappings:
             lead.status = DoubleTickLead.Status.FAILED
             lead.save(update_fields=["status", "updated_at"])
-            _activity(lead=lead, action=DoubleTickActivity.Action.PROCESSING_FAILED, note="No active branch mapping found.")
+            _activity(
+                lead=lead,
+                action=DoubleTickActivity.Action.PROCESSING_FAILED,
+                note="No active branch mapping found.",
+                metadata={
+                    "raw_city": lead.raw_city or lead.city,
+                    "raw_area": lead.raw_area or lead.area,
+                    "matched_area": str(lead.matched_area_id),
+                },
+            )
             DoubleTickDistributionAudit.objects.create(
                 lead=lead,
                 conversation=lead.conversation,
                 matched_area=lead.matched_area,
                 status=DoubleTickDistributionAudit.Status.FAILED,
                 failure_reason="No active branch mapping found.",
+                metadata={
+                    "raw_city": lead.raw_city or lead.city,
+                    "raw_area": lead.raw_area or lead.area,
+                    "matched_area": str(lead.matched_area_id),
+                },
             )
             return lead
 
@@ -782,6 +942,7 @@ class LeadDistributionService:
                 "created_visibility_count": created_visibility_count,
                 "notified_count": notified_count,
                 "notification_failure_count": notification_failure_count,
+                "auto_created_mapping_count": len(auto_created_mappings),
             },
         )
         DoubleTickDistributionAudit.objects.create(
@@ -793,7 +954,12 @@ class LeadDistributionService:
             visibility_count=visibility_count,
             notification_success_count=notified_count,
             notification_failure_count=notification_failure_count,
-            metadata={"branch_ids": branch_ids},
+            metadata={
+                "branch_ids": branch_ids,
+                "auto_created_mapping_ids": [str(mapping.id) for mapping in auto_created_mappings],
+                "raw_city": lead.raw_city or lead.city,
+                "raw_area": lead.raw_area or lead.area,
+            },
         )
         return lead
 

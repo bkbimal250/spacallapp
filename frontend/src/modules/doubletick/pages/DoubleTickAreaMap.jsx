@@ -50,7 +50,7 @@ const BranchMultiSelect = ({ branches, value, onChange, disabled }) => {
         const term = search.trim().toLowerCase();
         if (!term) return branches;
         return branches.filter((branch) => (
-            `${branch.spa_name || ''} ${branch.city || ''} ${branch.state || ''} ${branch.code || ''}`.toLowerCase().includes(term)
+            `${branch.spa_name || ''} ${branch.area || ''} ${branch.city || ''} ${branch.state || ''} ${branch.code || ''}`.toLowerCase().includes(term)
         ));
     }, [branches, search]);
 
@@ -125,7 +125,7 @@ const BranchMultiSelect = ({ branches, value, onChange, disabled }) => {
                             />
                             <span>
                                 <span className="block text-sm font-medium text-text-primary">{branch.spa_name}</span>
-                                <span className="block text-xs text-text-secondary">{branch.city || '-'} {branch.state || ''} {branch.code ? `- ${branch.code}` : ''}</span>
+                                <span className="block text-xs text-text-secondary">{branch.area || '-'} - {branch.city || '-'} {branch.state || ''} {branch.code ? `- ${branch.code}` : ''}</span>
                             </span>
                         </label>
                     ))
@@ -308,7 +308,7 @@ const DoubleTickAreaMap = () => {
     ];
 
     const mappingColumns = [
-        { header: 'Spa Branch', render: (row) => <div><p className="font-medium">{row.branch_name}</p><p className="text-xs text-text-secondary">{row.branch_city || '-'} {row.branch_state || ''}</p></div> },
+        { header: 'Spa Branch', render: (row) => <div><p className="font-medium">{row.branch_name}</p><p className="text-xs text-text-secondary">{row.branch_area || '-'} - {row.branch_city || '-'} {row.branch_state || ''}</p></div> },
         { header: 'Priority', accessor: 'priority' },
         { header: 'Receives Leads', render: (row) => <Badge variant={row.is_active && row.receives_leads ? 'success' : 'gray'}>{row.is_active && row.receives_leads ? 'Enabled' : 'Disabled'}</Badge> },
         { header: 'Notes', render: (row) => row.notes || '-' },
@@ -317,7 +317,7 @@ const DoubleTickAreaMap = () => {
 
     const mappedBranchColumns = [
         { header: 'Lead Area', render: (row) => <div><p className="font-medium">{row.lead_area_name}</p><p className="text-xs text-text-secondary">Priority {row.priority}</p></div> },
-        { header: 'Spa Branch', render: (row) => <div><p className="font-medium">{row.branch_name}</p><p className="text-xs text-text-secondary">{row.branch_city || '-'} {row.branch_state || ''}</p></div> },
+        { header: 'Spa Branch', render: (row) => <div><p className="font-medium">{row.branch_name}</p><p className="text-xs text-text-secondary">{row.branch_area || '-'} - {row.branch_city || '-'} {row.branch_state || ''}</p></div> },
         { header: 'Receives Leads', render: (row) => <Badge variant={row.is_active && row.receives_leads ? 'success' : 'gray'}>{row.is_active && row.receives_leads ? 'Enabled' : 'Disabled'}</Badge> },
         { header: 'Notes', render: (row) => row.notes || '-' },
     ];
@@ -460,7 +460,7 @@ const DoubleTickAreaMap = () => {
                                     <div className="bg-background border border-border rounded-lg p-3">
                                         <p className="text-xs uppercase text-text-secondary font-semibold">Spa Branch</p>
                                         <p className="font-semibold text-text-primary mt-1">{selectedMapping.branch_name}</p>
-                                        <p className="text-xs text-text-secondary">{selectedMapping.branch_city || '-'} {selectedMapping.branch_state || ''}</p>
+                                        <p className="text-xs text-text-secondary">{selectedMapping.branch_area || '-'} - {selectedMapping.branch_city || '-'} {selectedMapping.branch_state || ''}</p>
                                     </div>
                                     <div className="bg-background border border-border rounded-lg p-3">
                                         <p className="text-xs uppercase text-text-secondary font-semibold">Priority</p>

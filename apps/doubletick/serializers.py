@@ -77,6 +77,7 @@ class DoubleTickAreaAliasSerializer(serializers.ModelSerializer):
 class DoubleTickLeadAreaBranchSerializer(serializers.ModelSerializer):
     lead_area_name = serializers.CharField(source="lead_area.name", read_only=True)
     branch_name = serializers.CharField(source="branch.spa_name", read_only=True)
+    branch_area = serializers.CharField(source="branch.area", read_only=True)
     branch_city = serializers.CharField(source="branch.city", read_only=True)
     branch_state = serializers.CharField(source="branch.state", read_only=True)
 
