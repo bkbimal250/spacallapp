@@ -146,7 +146,7 @@ class DeviceHeartbeatView(views.APIView):
                 MonitoringAlertService.raise_event(
                     device=device,
                     event_type="storage_full",
-                    description=f"Storage usage reported: {storage_used:.1f} MB",
+                    description=f"App storage usage reported: {storage_used:.1f} MB",
                 )
             else:
                 MonitoringAlertService.resolve_events(device, ["storage_full"])

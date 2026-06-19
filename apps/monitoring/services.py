@@ -31,7 +31,7 @@ EVENT_NOTIFICATION_COPY = {
     },
     "storage_full": {
         "title": "Storage Alert",
-        "body": "{device} at {branch} is reporting high storage use. {detail}",
+        "body": "{device} at {branch} is reporting high app storage use. {detail}",
         "notification_type": "alert",
     },
     "sim_change": {

@@ -4,7 +4,14 @@ import Button from '../../../shared/components/Button';
 import { branchesAPI } from '../api';
 import { MapPin, Layers, Info, CheckCircle2, XCircle } from 'lucide-react';
 
-const ViewGroupModal = ({ isOpen, onClose, group }) => {
+const normalizeId = (value) => (value == null ? '' : String(value));
+
+const onlyAssignedToGroup = (branches, groupId) => {
+    const targetGroupId = normalizeId(groupId);
+    return (branches || []).filter((branch) => normalizeId(branch.branch_group) === targetGroupId);
+};
+
+const ViewGroupModal = ({ isOpen, onClose, group, branches = [] }) => {
     const [assignedBranches, setAssignedBranches] = useState([]);
     const [loading, setLoading] = useState(false);
 
@@ -13,20 +20,24 @@ const ViewGroupModal = ({ isOpen, onClose, group }) => {
             if (!group) return;
             setLoading(true);
             try {
-                const response = await branchesAPI.getBranches({ group: group.id, all: true });
-                const assigned = response.data.results || response.data || [];
-                setAssignedBranches(assigned);
+                const response = await branchesAPI.getBranches({ branch_group: group.id, all: true });
+                const fetchedBranches = response.data.results || response.data || [];
+                setAssignedBranches(onlyAssignedToGroup(fetchedBranches, group.id));
             } catch (error) {
                 console.error("Failed to fetch branches for group", error);
+                setAssignedBranches(onlyAssignedToGroup(branches, group.id));
             } finally {
                 setLoading(false);
             }
         };
 
         if (isOpen && group) {
+            setAssignedBranches(onlyAssignedToGroup(branches, group.id));
             fetchGroupBranches();
+        } else {
+            setAssignedBranches([]);
         }
-    }, [isOpen, group]);
+    }, [isOpen, group, branches]);
 
     if (!group) return null;
 

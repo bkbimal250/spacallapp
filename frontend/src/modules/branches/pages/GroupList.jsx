@@ -237,6 +237,7 @@ const GroupList = () => {
                 isOpen={isViewModalOpen}
                 onClose={() => setIsViewModalOpen(false)}
                 group={viewingGroup}
+                branches={branches}
             />
         </div>
     );
