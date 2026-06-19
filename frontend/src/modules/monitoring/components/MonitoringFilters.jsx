@@ -17,9 +17,13 @@ const statusOptions = [
 const eventOptions = [
     { value: '', label: 'All events' },
     { value: 'offline', label: 'Offline' },
+    { value: 'sync_failure', label: 'Sync failure' },
     { value: 'battery_low', label: 'Battery low' },
+    { value: 'storage_full', label: 'Storage full' },
+    { value: 'network_weak', label: 'Weak network' },
     { value: 'sim_change', label: 'SIM change' },
-    { value: 'error', label: 'Error' },
+    { value: 'permission_denied', label: 'Permission denied' },
+    { value: 'app_crash', label: 'App crash' },
 ];
 
 const resolvedOptions = [
@@ -84,7 +88,7 @@ const MonitoringFilters = ({ filters, onChange, onApply, onClear }) => {
                         value={filters.search || ''}
                         onChange={(event) => updateFilter('search', event.target.value)}
                         onKeyDown={(event) => event.key === 'Enter' && onApply()}
-                        placeholder="Device ID, phone name, Android ID"
+                        placeholder="Search device, branch, city, area, issue..."
                         className="h-[42px] bg-background"
                     />
                 </div>

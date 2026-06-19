@@ -1,7 +1,7 @@
 import React from 'react';
 import { AlertTriangle, Clock, MapPin } from 'lucide-react';
 
-const OfflineDeviceCard = ({ deviceName, location, lastSeen }) => {
+const OfflineDeviceCard = ({ title = 'Device Issue', deviceName, location, lastSeen, description }) => {
     return (
 
         <div className="bg-card border border-border rounded-xl p-4 shadow hover:bg-cardHover transition">
@@ -17,7 +17,7 @@ const OfflineDeviceCard = ({ deviceName, location, lastSeen }) => {
                 <div className="flex-1">
 
                     <h3 className="text-sm font-semibold text-danger">
-                        Device Offline
+                        {title}
                     </h3>
 
                     <div className="mt-2 space-y-1 text-sm">
@@ -38,6 +38,12 @@ const OfflineDeviceCard = ({ deviceName, location, lastSeen }) => {
                             <Clock size={12} />
                             Last seen: {lastSeen}
                         </div>
+
+                        {description && (
+                            <div className="text-xs text-text-secondary pt-1">
+                                {description}
+                            </div>
+                        )}
 
                     </div>
 

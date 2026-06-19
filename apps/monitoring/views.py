@@ -9,6 +9,7 @@ Access Control:
 """
 
 from datetime import timedelta
+from django.conf import settings
 from django.utils import timezone
 from rest_framework import viewsets, permissions, views, response, status
 from rest_framework.decorators import action
@@ -19,6 +20,7 @@ from .filters import DeviceEventFilter
 
 from .models import DeviceEvent, DeviceHealth
 from .serializers import DeviceEventSerializer, DeviceHealthSerializer
+from .services import MonitoringAlertService, offline_threshold
 from apps.devices.models import Device
 from apps.common.utils import get_branch_filter_ids
 from core.authentication import DeviceAuthentication
@@ -55,6 +57,12 @@ class DeviceHeartbeatView(views.APIView):
                 "signal_strength": serializers.IntegerField(required=False),
                 "app_version": serializers.CharField(required=False),
                 "storage_used_mb": serializers.FloatField(required=False),
+                "sim_1_number": serializers.CharField(required=False),
+                "sim_2_number": serializers.CharField(required=False),
+                "permission_denied": serializers.BooleanField(required=False),
+                "permission_name": serializers.CharField(required=False),
+                "app_crash": serializers.BooleanField(required=False),
+                "crash_message": serializers.CharField(required=False),
             }
         ),
         responses={200: inline_serializer(
@@ -68,6 +76,7 @@ class DeviceHeartbeatView(views.APIView):
         health_data = request.data
 
         # Update device's last heartbeat timestamp
+        was_offline = not device.is_online
         device.last_heartbeat = now
         device.save(update_fields=["last_heartbeat"])
 
@@ -78,23 +87,17 @@ class DeviceHeartbeatView(views.APIView):
 
         # Update health metrics if provided in payload
         if "battery_level" in health_data:
-            battery = health_data["battery_level"]
+            battery = int(health_data["battery_level"])
             health.battery_level = battery
             # Trigger alert for low battery (< 15%)
-            if battery < 15:
-                if not DeviceEvent.objects.filter(device=device, event_type='battery_low', resolved=False).exists():
-                    DeviceEvent.objects.create(
-                        device=device,
-                        event_type='battery_low',
-                        description=f"Battery critically low: {battery}%"
-                    )
-                    from apps.notifications.services import NotificationService
-                    NotificationService.send_push(
-                        device=device,
-                        title="Battery Low",
-                        body=f"Device {device.device_id} is at {battery}%. Please connect to power.",
-                        notification_type="alert"
-                    )
+            if battery < settings.MONITORING_LOW_BATTERY_PERCENT:
+                MonitoringAlertService.raise_event(
+                    device=device,
+                    event_type="battery_low",
+                    description=f"Battery critically low: {battery}%",
+                )
+            elif battery >= settings.MONITORING_BATTERY_RECOVERY_PERCENT:
+                MonitoringAlertService.resolve_events(device, ["battery_low"])
 
         # SIM Change Detection
         sim_changed = False
@@ -116,34 +119,63 @@ class DeviceHeartbeatView(views.APIView):
             health.sim_2_number = new_sim2
 
         if sim_changed:
-            DeviceEvent.objects.create(
+            MonitoringAlertService.raise_event(
                 device=device,
                 event_type='sim_change',
-                description=description
-            )
-            from apps.notifications.services import NotificationService
-            NotificationService.send_push(
-                device=device,
-                title="SIM Card Changed",
-                body=f"Device {device.device_id} reported a SIM change. Please verify security.",
-                notification_type="alert"
+                description=description,
+                dedupe_active=False,
             )
 
         if "signal_strength" in health_data:
-            health.signal_strength = health_data["signal_strength"]
+            signal = int(health_data["signal_strength"])
+            health.signal_strength = signal
+            if signal <= settings.MONITORING_WEAK_SIGNAL_DBM:
+                MonitoringAlertService.raise_event(
+                    device=device,
+                    event_type="network_weak",
+                    description=f"Weak signal reported: {signal} dBm",
+                )
+            elif signal >= settings.MONITORING_SIGNAL_RECOVERY_DBM:
+                MonitoringAlertService.resolve_events(device, ["network_weak"])
         if "app_version" in health_data:
             health.app_version = health_data["app_version"]
         if "storage_used_mb" in health_data:
-            health.storage_used_mb = health_data["storage_used_mb"]
+            storage_used = float(health_data["storage_used_mb"])
+            health.storage_used_mb = storage_used
+            if storage_used >= settings.MONITORING_STORAGE_ALERT_MB:
+                MonitoringAlertService.raise_event(
+                    device=device,
+                    event_type="storage_full",
+                    description=f"Storage usage reported: {storage_used:.1f} MB",
+                )
+            else:
+                MonitoringAlertService.resolve_events(device, ["storage_full"])
+
+        if health_data.get("permission_denied"):
+            permission_name = health_data.get("permission_name") or "Required permission"
+            MonitoringAlertService.raise_event(
+                device=device,
+                event_type="permission_denied",
+                description=f"{permission_name} permission denied on device.",
+            )
+
+        if health_data.get("app_crash"):
+            crash_message = health_data.get("crash_message") or "App crash reported by device."
+            MonitoringAlertService.raise_event(
+                device=device,
+                event_type="app_crash",
+                description=crash_message,
+                dedupe_active=False,
+            )
 
         health.save()
 
         # If this device had an active 'offline' alert, resolve it automatically
-        DeviceEvent.objects.filter(
-            device=device,
-            event_type="offline",
-            resolved=False,
-        ).update(resolved=True, resolved_at=now)
+        resolved_count = MonitoringAlertService.resolve_events(device, ["offline"])
+        if was_offline or resolved_count:
+            MonitoringAlertService.broadcast_device_status(device, "online")
+        else:
+            MonitoringAlertService.broadcast_device_status(device, "heartbeat")
 
         return response.Response(
             {"status": "heartbeat acknowledged"},
@@ -213,6 +245,7 @@ class DeviceEventViewSet(viewsets.ModelViewSet):
         event.resolved = True
         event.resolved_at = timezone.now()
         event.save()
+        MonitoringAlertService._broadcast(event, "resolved")
         return response.Response({'status': 'event resolved'})
 
     @extend_schema(
@@ -230,7 +263,12 @@ class DeviceEventViewSet(viewsets.ModelViewSet):
     def resolve_all(self, request):
         """Mark all unresolved events in the user's scope as resolved."""
         queryset = self.filter_queryset(self.get_queryset()).filter(resolved=False)
+        events = list(queryset)
         count = queryset.update(resolved=True, resolved_at=timezone.now())
+        for event in events:
+            event.resolved = True
+            event.resolved_at = timezone.now()
+            MonitoringAlertService._broadcast(event, "resolved")
         return response.Response({'status': 'all events resolved', 'count': count})
 
     @extend_schema(
@@ -259,7 +297,10 @@ class DeviceEventViewSet(viewsets.ModelViewSet):
             )
 
         queryset = self.get_queryset().filter(id__in=event_ids)
+        events = list(queryset)
         count, _ = queryset.delete()
+        for event in events:
+            MonitoringAlertService._broadcast(event, "deleted")
         return response.Response({'status': 'selected events deleted', 'count': count})
 
     @extend_schema(
@@ -277,7 +318,10 @@ class DeviceEventViewSet(viewsets.ModelViewSet):
     def delete_all(self, request):
         """Delete all filtered events in the user's scope."""
         queryset = self.filter_queryset(self.get_queryset())
+        events = list(queryset)
         count, _ = queryset.delete()
+        for event in events:
+            MonitoringAlertService._broadcast(event, "deleted")
         return response.Response({'status': 'filtered events deleted', 'count': count})
 
 
@@ -312,6 +356,11 @@ class DeviceStatusResultView(views.APIView):
                 "online_devices": serializers.IntegerField(),
                 "offline_alerts": serializers.IntegerField(),
                 "sim_change_alerts": serializers.IntegerField(),
+                "sync_failure_alerts": serializers.IntegerField(),
+                "battery_low_alerts": serializers.IntegerField(),
+                "storage_alerts": serializers.IntegerField(),
+                "network_alerts": serializers.IntegerField(),
+                "active_alerts": serializers.IntegerField(),
             }
         )}
     )
@@ -339,6 +388,11 @@ class DeviceStatusResultView(views.APIView):
                 "online_devices": 0,
                 "offline_alerts": 0,
                 "sim_change_alerts": 0,
+                "sync_failure_alerts": 0,
+                "battery_low_alerts": 0,
+                "storage_alerts": 0,
+                "network_alerts": 0,
+                "active_alerts": 0,
             })
         elif branch_id_param and branch_id_param.strip() and branch_id_param not in ("undefined", "null"):
             # Admin manually filtering by branch
@@ -348,13 +402,13 @@ class DeviceStatusResultView(views.APIView):
 
         # ── Aggregate Counts ───────────────────────────────────────────────────
         # Ensure we only count for non-deleted devices (all_objects used for broad check, then filtered)
-        threshold = timezone.now() - timedelta(minutes=5)
+        threshold = offline_threshold()
         
         # devices_qs and health_qs already exclude soft-deleted items by default due to managers
         total_devices = devices_qs.count()
         active_devices = devices_qs.filter(last_heartbeat__gte=threshold).count()
         
-        # Online devices are strictly those that have pinged in last 5 mins
+        # Online devices are strictly those that have pinged within the monitoring threshold.
         online_devices = health_qs.filter(
             device__is_deleted=False, 
             last_heartbeat__gte=threshold
@@ -371,6 +425,30 @@ class DeviceStatusResultView(views.APIView):
             event_type="sim_change", 
             resolved=False
         ).count()
+        sync_failure_alerts = events_qs.filter(
+            device__is_deleted=False,
+            event_type="sync_failure",
+            resolved=False,
+        ).count()
+        battery_low_alerts = events_qs.filter(
+            device__is_deleted=False,
+            event_type="battery_low",
+            resolved=False,
+        ).count()
+        storage_alerts = events_qs.filter(
+            device__is_deleted=False,
+            event_type="storage_full",
+            resolved=False,
+        ).count()
+        network_alerts = events_qs.filter(
+            device__is_deleted=False,
+            event_type="network_weak",
+            resolved=False,
+        ).count()
+        active_alerts = events_qs.filter(
+            device__is_deleted=False,
+            resolved=False,
+        ).count()
 
         return response.Response({
             "total_devices": total_devices,
@@ -378,4 +456,9 @@ class DeviceStatusResultView(views.APIView):
             "online_devices": online_devices,
             "offline_alerts": offline_alerts,
             "sim_change_alerts": sim_change_alerts,
+            "sync_failure_alerts": sync_failure_alerts,
+            "battery_low_alerts": battery_low_alerts,
+            "storage_alerts": storage_alerts,
+            "network_alerts": network_alerts,
+            "active_alerts": active_alerts,
         })

@@ -132,12 +132,14 @@ class Device(BaseModel, TimeStampedModel, SoftDeleteModel):
     @property
     def is_online(self):
 
-        """Returns True if the device has sent a heartbeat in the last 5 minutes."""
+        """Returns True if the device has sent a heartbeat within the monitoring threshold."""
         if not self.last_heartbeat:
             return False
         from django.utils import timezone
         from datetime import timedelta
-        return self.last_heartbeat >= (timezone.now() - timedelta(minutes=5))
+        from django.conf import settings
+        threshold_minutes = getattr(settings, "MONITORING_OFFLINE_AFTER_MINUTES", 20)
+        return self.last_heartbeat >= (timezone.now() - timedelta(minutes=threshold_minutes))
 
     @property
     def status(self):

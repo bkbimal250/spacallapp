@@ -1,116 +1,110 @@
-from celery import shared_task
-from django.utils import timezone
+import logging
 from datetime import timedelta
+
+from celery import shared_task
+from django.db.models import Q
+from django.utils import timezone
+
 from apps.devices.models import Device
+from .models import DeviceHealth
+from .services import MonitoringAlertService, offline_threshold
+
+logger = logging.getLogger(__name__)
 
 
 @shared_task
 def check_offline_devices():
     """
-    Periodic task to check for devices that have stopped communicating.
-    
-    If a device has not sent a heartbeat in the last 5 minutes, it is marked
-    as offline, and a notification is sent to its branch.
+    Mark registered devices offline when heartbeat is stale and notify the
+    device, branch manager, area manager, and realtime dashboard.
     """
-    from apps.monitoring.models import DeviceHealth, DeviceEvent
-    from apps.notifications.services import NotificationService
-    
-    threshold = timezone.now() - timedelta(minutes=5)
+    threshold = offline_threshold()
 
-    # Find devices that are active but haven't responded within the threshold
     late_devices = Device.objects.filter(
-        last_heartbeat__lt=threshold, 
         is_active=True,
-        is_deleted=False
-    ).select_related('branch')
+        is_registered=True,
+        is_deleted=False,
+    ).filter(
+        Q(last_heartbeat__lt=threshold) | Q(last_heartbeat__isnull=True)
+    ).select_related("branch")
 
+    affected = 0
     for device in late_devices:
-        # Update Health status to offline
         health, _ = DeviceHealth.objects.get_or_create(device=device)
         if health.is_online:
             health.is_online = False
-            health.save()
-            
-            # Check if an unresolved offline event already exists to prevent duplicate alerts
-            if not DeviceEvent.objects.filter(device=device, event_type='offline', resolved=False).exists():
-                last_seen = device.last_heartbeat.strftime('%Y-%m-%d %H:%M') if device.last_heartbeat else "Never"
-                description = f"Device went offline. Last seen: {last_seen}"
-                
-                DeviceEvent.objects.create(
-                    device=device,
-                    event_type='offline',
-                    description=description
-                )
-                
-                # Notify the branch manager/admin via Push Notification
-                NotificationService.send_push(
-                    device=device,
-                    title="Device Stopped Syncing",
-                    body=f"Device {device.device_id} at {device.branch.spa_name if device.branch else 'Unknown'} is currently offline.",
-                    notification_type="sync_issue"
-                )
+            health.save(update_fields=["is_online", "updated_at"])
+
+        last_seen = device.last_heartbeat.strftime("%Y-%m-%d %H:%M") if device.last_heartbeat else "Never"
+        MonitoringAlertService.raise_event(
+            device=device,
+            event_type="offline",
+            description=f"Device went offline. Last seen: {last_seen}",
+        )
+        MonitoringAlertService.broadcast_device_status(device, "offline")
+        affected += 1
+
+    return f"Checked offline devices. Affected: {affected}"
 
 
 @shared_task
 def check_device_sync_health():
     """
-    Task to monitor device sync intervals and send alerts via FCM.
+    Monitor device sync freshness and send realtime alerts.
     Rules:
-      - > 2 hours since last sync: Send mild reminder.
-      - > 24 hours since last sync: Send urgent alert.
+      - > 2 hours since last sync: reminder alert.
+      - > 24 hours since last sync: critical alert.
     """
-    from apps.monitoring.models import DeviceHealth
-    from apps.notifications.services import NotificationService
-    import logging
-
-    logger = logging.getLogger(__name__)
     now = timezone.now()
-    
     threshold_24h = now - timedelta(hours=24)
     threshold_2h = now - timedelta(hours=2)
 
-    # 1. Check for 24-hour sync failures (highest priority)
     late_24h = DeviceHealth.objects.filter(
         device__is_active=True,
+        device__is_registered=True,
         device__is_deleted=False,
-        last_sync__lt=threshold_24h,
-        notified_24h=False
-    ).select_related('device', 'device__branch')
+        notified_24h=False,
+    ).filter(
+        Q(last_sync__lt=threshold_24h) |
+        Q(last_sync__isnull=True, device__created_at__lt=threshold_24h)
+    ).select_related("device", "device__branch")
 
+    critical_count = 0
     for health in late_24h:
-        success = NotificationService.send_push(
+        MonitoringAlertService.raise_event(
             device=health.device,
-            title="⚠️ Sync Required Immediately",
-            body="Data has not been synced for 24 hours. Immediate action required.",
-            notification_type="sync_issue"
+            event_type="sync_failure",
+            description="Data has not been synced for 24 hours. Immediate action required.",
         )
-        if success:
-            health.notified_24h = True
-            health.notified_2h = True  # If 24h is sent, we don't need to send 2h anymore
-            health.save(update_fields=["notified_24h", "notified_2h"])
-            logger.info(f"Sent 24h critical sync alert to device {health.device.device_id}")
+        health.notified_24h = True
+        health.notified_2h = True
+        health.save(update_fields=["notified_24h", "notified_2h", "updated_at"])
+        critical_count += 1
+        logger.info("Sent 24h critical sync alert to device %s", health.device.device_id)
 
-    # 2. Check for 2-hour sync failures
     late_2h = DeviceHealth.objects.filter(
         device__is_active=True,
+        device__is_registered=True,
         device__is_deleted=False,
-        last_sync__lt=threshold_2h,
-        notified_2h=False
-    ).select_related('device', 'device__branch')
+        notified_2h=False,
+    ).filter(
+        Q(last_sync__lt=threshold_2h) |
+        Q(last_sync__isnull=True, device__created_at__lt=threshold_2h)
+    ).select_related("device", "device__branch")
 
+    reminder_count = 0
     for health in late_2h:
-        # Avoid sending 2h if they already crossed 24h (though flags should prevent it)
-        if health.last_sync < threshold_24h:
+        if health.last_sync and health.last_sync < threshold_24h:
             continue
 
-        success = NotificationService.send_push(
+        MonitoringAlertService.raise_event(
             device=health.device,
-            title="Sync Reminder",
-            body="Your data is not synced. Please refresh or sync the app.",
-            notification_type="reminder"
+            event_type="sync_failure",
+            description="Your data is not synced. Please refresh or sync the app.",
         )
-        if success:
-            health.notified_2h = True
-            health.save(update_fields=["notified_2h"])
-            logger.info(f"Sent 2h sync reminder to device {health.device.device_id}")
+        health.notified_2h = True
+        health.save(update_fields=["notified_2h", "updated_at"])
+        reminder_count += 1
+        logger.info("Sent 2h sync reminder to device %s", health.device.device_id)
 
+    return f"Checked sync health. Reminders: {reminder_count}, critical: {critical_count}"

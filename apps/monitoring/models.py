@@ -38,6 +38,7 @@ class DeviceEvent(TimeStampedModel):
         ("sync_failure", "Sync Failure"),
         ("battery_low", "Battery Low"),
         ("storage_full", "Storage Full"),
+        ("network_weak", "Weak Network Signal"),
         ("permission_denied", "Permission Denied"),
         ("app_crash", "App Crash"),
     )

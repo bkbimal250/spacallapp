@@ -11,6 +11,7 @@ import DeviceStatusBadge from '../../devices/components/DeviceStatusBadge';
 import OfflineDeviceCard from '../components/OfflineDeviceCard';
 import MonitoringFilters from '../components/MonitoringFilters';
 import { formatDate } from '../../../shared/utils/formatDate';
+import { useWebSocket } from '../../../shared/hooks/useWebSocket';
 
 const pageSize = 50;
 
@@ -50,6 +51,7 @@ const getDeviceParams = (filters, page) => {
 };
 
 const getAlertParams = (filters, page) => cleanParams({
+    search: filters.search?.trim(),
     branch: filters.branch,
     event_type: filters.event_type,
     resolved: filters.resolved,
@@ -67,6 +69,11 @@ const DeviceHealth = () => {
         online_devices: 0,
         offline_alerts: 0,
         sim_change_alerts: 0,
+        sync_failure_alerts: 0,
+        battery_low_alerts: 0,
+        storage_alerts: 0,
+        network_alerts: 0,
+        active_alerts: 0,
     });
     const [alerts, setAlerts] = useState([]);
     const [devices, setDevices] = useState([]);
@@ -131,6 +138,14 @@ const DeviceHealth = () => {
             if (!isBackground) setLoading(false);
         }
     }, [alertPage, appliedFilters, devicePage]);
+
+    const handleRealtimeMonitoring = useCallback((message) => {
+        if (message.type === 'monitoring_event' || message.type === 'monitoring_status' || message.type === 'refresh_monitoring') {
+            fetchData(true);
+        }
+    }, [fetchData]);
+
+    useWebSocket('/ws/crm/dashboard/', handleRealtimeMonitoring);
 
     useEffect(() => {
         fetchData();
@@ -220,9 +235,15 @@ const DeviceHealth = () => {
         }
     };
 
-    const offlineAlerts = useMemo(() => (
-        (alerts || []).filter(alert => !alert.resolved && alert.event_type === 'offline')
+    const criticalAlerts = useMemo(() => (
+        (alerts || []).filter(alert => !alert.resolved)
     ), [alerts]);
+
+    const eventVariant = (eventType) => {
+        if (eventType === 'offline' || eventType === 'sync_failure' || eventType === 'app_crash') return 'danger';
+        if (eventType === 'battery_low' || eventType === 'storage_full' || eventType === 'network_weak' || eventType === 'sim_change') return 'warning';
+        return 'secondary';
+    };
 
     const deviceColumns = [
         {
@@ -269,8 +290,8 @@ const DeviceHealth = () => {
         {
             header: 'Event',
             render: (row) => (
-                <Badge variant={row.event_type === 'offline' ? 'danger' : 'warning'}>
-                    {row.event_type}
+                <Badge variant={eventVariant(row.event_type)}>
+                    {row.event_label || row.event_type}
                 </Badge>
             ),
         },
@@ -345,11 +366,18 @@ const DeviceHealth = () => {
                 </div>
             )}
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
                 <DashboardStatsCard title="Total Devices" value={stats.total_devices} />
                 <DashboardStatsCard title="Online Devices" value={stats.online_devices} className="border-success/20" />
+                <DashboardStatsCard title="Active Alerts" value={stats.active_alerts} isNegative={stats.active_alerts > 0} className="border-danger/20" />
+                <DashboardStatsCard title="Sync Issues" value={stats.sync_failure_alerts} isNegative={stats.sync_failure_alerts > 0} className="border-warning/20" />
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
                 <DashboardStatsCard title="Offline Alerts" value={stats.offline_alerts} isNegative={stats.offline_alerts > 0} className="border-danger/20" />
-                <DashboardStatsCard title="SIM Change Alerts" value={stats.sim_change_alerts} className="border-warning/20" />
+                <DashboardStatsCard title="Battery Alerts" value={stats.battery_low_alerts} isNegative={stats.battery_low_alerts > 0} className="border-warning/20" />
+                <DashboardStatsCard title="Network Alerts" value={stats.network_alerts} isNegative={stats.network_alerts > 0} className="border-warning/20" />
+                <DashboardStatsCard title="SIM Change Alerts" value={stats.sim_change_alerts} isNegative={stats.sim_change_alerts > 0} className="border-warning/20" />
             </div>
 
             <MonitoringFilters
@@ -457,13 +485,15 @@ const DeviceHealth = () => {
                     </div>
 
                     <div className="space-y-4">
-                        {offlineAlerts.length > 0 ? (
-                            offlineAlerts.slice(0, 5).map(alert => (
+                        {criticalAlerts.length > 0 ? (
+                            criticalAlerts.slice(0, 5).map(alert => (
                                 <OfflineDeviceCard
                                     key={alert.id}
+                                    title={alert.event_label || alert.event_type}
                                     deviceName={alert.device_uid}
                                     location={alert.branch_name}
                                     lastSeen={formatDate(alert.created_at, 'MMM dd, yyyy HH:mm:ss')}
+                                    description={alert.description}
                                 />
                             ))
                         ) : (

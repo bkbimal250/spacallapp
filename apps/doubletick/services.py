@@ -600,6 +600,43 @@ class DoubleTickConversationService:
             return None
 
         status_timestamp = _timestamp_from_payload(payload)
+        existing_message = DoubleTickMessage.objects.filter(
+            Q(message_id=message_id) | Q(dt_message_id=message_id)
+        ).select_related("conversation", "lead", "customer").first()
+        if existing_message:
+            old_status = existing_message.status
+            new_status = _status_to_message_status(provider_status)
+            existing_message.status = new_status
+            if new_status == DoubleTickMessage.Status.SENT:
+                existing_message.sent_at = existing_message.sent_at or status_timestamp
+            elif new_status == DoubleTickMessage.Status.DELIVERED:
+                existing_message.delivered_at = existing_message.delivered_at or status_timestamp
+            elif new_status == DoubleTickMessage.Status.READ:
+                existing_message.read_at = existing_message.read_at or status_timestamp
+            elif new_status == DoubleTickMessage.Status.FAILED:
+                existing_message.failed_at = existing_message.failed_at or status_timestamp
+                existing_message.failure_reason = str(first_value(payload, ["reason", "error", "failure_reason"]) or "")
+            existing_message.raw_payload = payload
+            existing_message.save(update_fields=[
+                "status",
+                "sent_at",
+                "delivered_at",
+                "read_at",
+                "failed_at",
+                "failure_reason",
+                "raw_payload",
+                "updated_at",
+            ])
+            _activity(
+                conversation=existing_message.conversation,
+                lead=existing_message.lead,
+                action=DoubleTickActivity.Action.PROCESSING_FAILED if existing_message.status == DoubleTickMessage.Status.FAILED else DoubleTickActivity.Action.MESSAGE_SENT,
+                old_status=old_status,
+                new_status=existing_message.status,
+                metadata={"message_id": str(existing_message.id), "provider_message_id": message_id, "status": existing_message.status},
+            )
+            return existing_message
+
         customer_number = str(first_value(payload, ["to", "customer.phone", "customer.phone_number"]) or "")
         waba_number = str(first_value(payload, ["wabaNumber", "waba_number", "channel.waba_number", "from"]) or "")
         sent_by_raw = str(first_value(payload, ["sentBy", "sent_by", "data.sentBy"]) or "")
@@ -827,7 +864,7 @@ class LeadDistributionService:
     @staticmethod
     @transaction.atomic
     def distribute(lead, user=None):
-        lead = DoubleTickLead.objects.select_for_update().select_related("matched_area", "conversation").get(pk=lead.pk)
+        lead = DoubleTickLead.objects.select_for_update(of=("self",)).select_related("matched_area", "conversation").get(pk=lead.pk)
         if not lead.matched_area_id:
             lead.status = DoubleTickLead.Status.FAILED
             lead.save(update_fields=["status", "updated_at"])

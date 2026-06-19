@@ -44,7 +44,8 @@ class DeviceFilter(BaseDateFilter):
         )
 
     def filter_is_online(self, queryset, name, value):
-        threshold = timezone.now() - timedelta(minutes=5)
+        from django.conf import settings
+        threshold = timezone.now() - timedelta(minutes=getattr(settings, "MONITORING_OFFLINE_AFTER_MINUTES", 20))
         if value:
             return queryset.filter(last_heartbeat__gte=threshold)
         return queryset.exclude(last_heartbeat__gte=threshold)
