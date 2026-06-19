@@ -81,7 +81,7 @@ const BranchMultiSelect = ({ branches, value, onChange, disabled }) => {
                     <input
                         value={search}
                         onChange={(event) => setSearch(event.target.value)}
-                        placeholder="Search branch, city, code"
+                        placeholder="Search branch, city, area, spa code"
                         disabled={disabled}
                         className="block w-full pl-9 pr-3 py-2 rounded-lg border border-border bg-background text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary text-sm transition"
                     />
@@ -167,6 +167,9 @@ const DoubleTickAreaMap = () => {
     const [workspaceTab, setWorkspaceTab] = useState('area-map');
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
+    const [bulkDeleting, setBulkDeleting] = useState(false);
+    const [selectedAreaMappingIds, setSelectedAreaMappingIds] = useState([]);
+    const [selectedMappedBranchIds, setSelectedMappedBranchIds] = useState([]);
 
     const activeAreas = useMemo(() => areas.filter((area) => area.is_active), [areas]);
     const activeBranches = useMemo(() => branches.filter((branch) => branch.is_active), [branches]);
@@ -194,6 +197,8 @@ const DoubleTickAreaMap = () => {
             setAreas(getList(areaRes));
             setBranches(getList(branchRes));
             setMappings(getList(mappingRes));
+            setSelectedAreaMappingIds((prev) => prev.filter((id) => getList(mappingRes).some((item) => item.id === id)));
+            setSelectedMappedBranchIds((prev) => prev.filter((id) => getList(mappingRes).some((item) => item.id === id)));
         } catch (error) {
             console.error('Failed to load DoubleTick lead area map data', error);
         } finally {
@@ -216,6 +221,7 @@ const DoubleTickAreaMap = () => {
     const selectArea = (area) => {
         setSelectedAreaId(area.id);
         setSelectedMappingId('');
+        setSelectedAreaMappingIds([]);
         setEditingMappingId(null);
         setWorkspaceTab('area-map');
         setMappingForm({ ...emptyMapping, lead_area: area.id });
@@ -292,7 +298,31 @@ const DoubleTickAreaMap = () => {
         if (selectedMappingId === mapping.id) {
             setSelectedMappingId('');
         }
+        setSelectedAreaMappingIds((prev) => prev.filter((id) => id !== mapping.id));
+        setSelectedMappedBranchIds((prev) => prev.filter((id) => id !== mapping.id));
         await loadData();
+    };
+
+    const bulkDeleteMappings = async (ids, label = 'selected mappings') => {
+        const uniqueIds = [...new Set(ids)].filter(Boolean);
+        if (uniqueIds.length === 0) return;
+        if (!window.confirm(`Delete ${uniqueIds.length} ${label}? This cannot be undone.`)) return;
+
+        setBulkDeleting(true);
+        try {
+            await Promise.all(uniqueIds.map((id) => doubletickAPI.deleteAreaBranch(id)));
+            if (uniqueIds.includes(selectedMappingId)) {
+                setSelectedMappingId('');
+            }
+            setSelectedAreaMappingIds((prev) => prev.filter((id) => !uniqueIds.includes(id)));
+            setSelectedMappedBranchIds((prev) => prev.filter((id) => !uniqueIds.includes(id)));
+            await loadData();
+        } catch (error) {
+            const data = error?.response?.data;
+            alert(data?.detail || 'Unable to delete selected mappings.');
+        } finally {
+            setBulkDeleting(false);
+        }
     };
 
     const areaColumns = [
@@ -371,6 +401,49 @@ const DoubleTickAreaMap = () => {
                                 title={selectedArea ? `${selectedArea.name} Branch Detail` : 'Branch Detail'}
                                 subtitle={selectedArea ? `${selectedAreaMappings.length} spa branch mapping${selectedAreaMappings.length === 1 ? '' : 's'} for this area.` : 'Select an area to view branch mappings.'}
                             />
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                                <p className="text-sm text-text-secondary">
+                                    {selectedAreaMappingIds.length} selected in this area
+                                </p>
+                                <div className="flex flex-wrap gap-2">
+                                    <Button
+                                        size="sm"
+                                        variant="secondary"
+                                        onClick={() => setSelectedAreaMappingIds(selectedAreaMappings.map((item) => item.id))}
+                                        disabled={selectedAreaMappings.length === 0}
+                                    >
+                                        Select All
+                                    </Button>
+                                    <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        onClick={() => setSelectedAreaMappingIds([])}
+                                        disabled={selectedAreaMappingIds.length === 0}
+                                    >
+                                        Clear
+                                    </Button>
+                                    <Button
+                                        size="sm"
+                                        variant="danger"
+                                        className="gap-2"
+                                        loading={bulkDeleting}
+                                        onClick={() => bulkDeleteMappings(selectedAreaMappingIds, 'area branch mappings')}
+                                        disabled={selectedAreaMappingIds.length === 0}
+                                    >
+                                        <Trash2 size={14} /> Delete Selected
+                                    </Button>
+                                    <Button
+                                        size="sm"
+                                        variant="danger"
+                                        className="gap-2"
+                                        loading={bulkDeleting}
+                                        onClick={() => bulkDeleteMappings(selectedAreaMappings.map((item) => item.id), 'area branch mappings')}
+                                        disabled={selectedAreaMappings.length === 0}
+                                    >
+                                        <Trash2 size={14} /> Delete All
+                                    </Button>
+                                </div>
+                            </div>
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
                                 <div className="bg-background border border-border rounded-lg p-3">
                                     <p className="font-medium text-text-primary">Area</p>
@@ -385,7 +458,14 @@ const DoubleTickAreaMap = () => {
                                     <p className="text-text-secondary mt-1">{selectedAreaMappings.filter((item) => item.is_active && item.receives_leads).length}</p>
                                 </div>
                             </div>
-                            <Table columns={mappingColumns} data={selectedAreaMappings} onRowClick={selectMapping} />
+                            <Table
+                                columns={mappingColumns}
+                                data={selectedAreaMappings}
+                                onRowClick={selectMapping}
+                                selectable
+                                selectedIds={selectedAreaMappingIds}
+                                onSelectionChange={(ids) => setSelectedAreaMappingIds(ids)}
+                            />
                         </div>
                     </div>
 
@@ -446,7 +526,57 @@ const DoubleTickAreaMap = () => {
                 <div className="grid grid-cols-1 xl:grid-cols-[1.15fr_0.85fr] gap-4">
                     <div className="bg-card border border-border rounded-lg p-5 space-y-4">
                         <SectionHeader icon={ListTree} title="Lead Mapped Branch List" subtitle="Every spa branch currently connected to a DoubleTick lead area." />
-                        <Table columns={mappedBranchColumns} data={mappings} onRowClick={selectMapping} />
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                            <p className="text-sm text-text-secondary">
+                                {selectedMappedBranchIds.length} selected from {mappings.length} mappings
+                            </p>
+                            <div className="flex flex-wrap gap-2">
+                                <Button
+                                    size="sm"
+                                    variant="secondary"
+                                    onClick={() => setSelectedMappedBranchIds(mappings.map((item) => item.id))}
+                                    disabled={mappings.length === 0}
+                                >
+                                    Select All
+                                </Button>
+                                <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={() => setSelectedMappedBranchIds([])}
+                                    disabled={selectedMappedBranchIds.length === 0}
+                                >
+                                    Clear
+                                </Button>
+                                <Button
+                                    size="sm"
+                                    variant="danger"
+                                    className="gap-2"
+                                    loading={bulkDeleting}
+                                    onClick={() => bulkDeleteMappings(selectedMappedBranchIds, 'mapped branch rows')}
+                                    disabled={selectedMappedBranchIds.length === 0}
+                                >
+                                    <Trash2 size={14} /> Delete Selected
+                                </Button>
+                                <Button
+                                    size="sm"
+                                    variant="danger"
+                                    className="gap-2"
+                                    loading={bulkDeleting}
+                                    onClick={() => bulkDeleteMappings(mappings.map((item) => item.id), 'mapped branch rows')}
+                                    disabled={mappings.length === 0}
+                                >
+                                    <Trash2 size={14} /> Delete All
+                                </Button>
+                            </div>
+                        </div>
+                        <Table
+                            columns={mappedBranchColumns}
+                            data={mappings}
+                            onRowClick={selectMapping}
+                            selectable
+                            selectedIds={selectedMappedBranchIds}
+                            onSelectionChange={(ids) => setSelectedMappedBranchIds(ids)}
+                        />
                     </div>
                     <div className="bg-card border border-border rounded-lg p-5 space-y-4">
                         <SectionHeader icon={PanelRight} title="Mapped Branch Side Panel" subtitle="Select one mapped branch row to inspect or edit it." />

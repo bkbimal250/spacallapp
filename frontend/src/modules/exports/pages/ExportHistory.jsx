@@ -42,7 +42,17 @@ const ExportHistory = () => {
             setBranches(
                 branchData.map(b => ({
                     value: b.id,
-                    label: b.spa_name
+                    label: b.spa_name,
+                    searchText: [
+                        b.spa_name,
+                        b.code,
+                        b.city,
+                        b.area,
+                        b.state,
+                        b.address,
+                        b.phone,
+                        b.branch_group_name,
+                    ].filter(Boolean).join(' ')
                 }))
             );
         } catch (error) {

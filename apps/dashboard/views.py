@@ -373,6 +373,10 @@ class DashboardStatsView(APIView):
             branch_data.append({
                 "id": str(b.id),
                 "name": b.spa_name,
+                "code": b.code,
+                "city": b.city,
+                "area": b.area,
+                "state": b.state,
                 "calls": b.total_calls_count,
                 "incoming": b.incoming_count,
                 "outgoing": b.outgoing_count,

@@ -48,7 +48,17 @@ const DeviceFilter = ({ onFilter, initialFilters = {} }) => {
                 setBranches(branchData.map(b => ({
                     value: b.id,
                     label: `${b.spa_name} ${b.code ? `(${b.code})` : ''}`,
-                    title: b.spa_name
+                    title: b.spa_name,
+                    searchText: [
+                        b.spa_name,
+                        b.code,
+                        b.city,
+                        b.area,
+                        b.state,
+                        b.address,
+                        b.phone,
+                        b.branch_group_name,
+                    ].filter(Boolean).join(' ')
                 })));
 
                 const uniqueCities = [...new Set(branchData.map(b => b.city).filter(Boolean))];
@@ -145,14 +155,13 @@ const DeviceFilter = ({ onFilter, initialFilters = {} }) => {
                         </div>
                     </div>
 
-                    <div className="w-full lg:w-96 relative">
-                        <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
+                    <div className="w-full lg:w-97 relative">
                         <Input
-                            placeholder="Search by Device ID, Android ID, or Token..."
+                            placeholder="Search device, branch, city, area, spa code..."
                             value={search}
                             onChange={(e) => setSearch(e.target.value)}
                             onKeyDown={(e) => e.key === 'Enter' && handleApplyFilters()}
-                            className="pl-10 h-11 bg-background border-border-light hover:border-primary transition-all"
+                            className="h-11 bg-background border-border-light"
                         />
                     </div>
                 </div>

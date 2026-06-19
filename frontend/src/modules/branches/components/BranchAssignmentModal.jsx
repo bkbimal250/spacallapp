@@ -53,10 +53,19 @@ const BranchAssignmentModal = ({ isOpen, onClose, group, onAssign }) => {
         }
     };
 
-    const filteredBranches = branches.filter(b => 
-        b.spa_name.toLowerCase().includes(search.toLowerCase()) ||
-        b.code.toLowerCase().includes(search.toLowerCase())
-    );
+    const filteredBranches = branches.filter(b => {
+        const haystack = [
+            b.spa_name,
+            b.code,
+            b.city,
+            b.area,
+            b.state,
+            b.address,
+            b.phone,
+            b.branch_group_name,
+        ].filter(Boolean).join(' ').toLowerCase();
+        return haystack.includes(search.toLowerCase());
+    });
 
     return (
         <Modal
@@ -70,7 +79,7 @@ const BranchAssignmentModal = ({ isOpen, onClose, group, onAssign }) => {
                     <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary" />
                     <input
                         type="text"
-                        placeholder="Search branches..."
+                        placeholder="Search branch, city, area, spa code..."
                         className="w-full pl-10 pr-4 py-2 bg-background border border-border rounded-lg text-sm"
                         value={search}
                         onChange={(e) => setSearch(e.target.value)}

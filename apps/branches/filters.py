@@ -7,7 +7,7 @@ class BranchFilter(BaseDateFilter):
     """
     Advanced filtering for Branches.
     Supports:
-        ?search=<spa_name_or_code>
+        ?search=<spa_name_city_area_code>
         ?city=<city>
         ?state=<state>
         ?status=true|false
@@ -30,7 +30,13 @@ class BranchFilter(BaseDateFilter):
             return queryset
         return queryset.filter(
             Q(spa_name__icontains=value) |
-            Q(code__icontains=value)
+            Q(code__icontains=value) |
+            Q(city__icontains=value) |
+            Q(area__icontains=value) |
+            Q(state__icontains=value) |
+            Q(address__icontains=value) |
+            Q(phone__icontains=value) |
+            Q(branch_group__name__icontains=value)
         )
 
 class BranchGroupFilter(BaseDateFilter):

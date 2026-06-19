@@ -10,9 +10,17 @@ const BranchPerformanceTable = ({ data = [] }) => {
     const navigate = useNavigate();
     const [searchTerm, setSearchTerm] = useState('');
 
-    const filteredData = data.filter(branch =>
-        branch.name.toLowerCase().includes(searchTerm.toLowerCase())
-    );
+    const filteredData = data.filter(branch => {
+        const haystack = [
+            branch.name,
+            branch.code,
+            branch.city,
+            branch.area,
+            branch.state,
+            branch.status,
+        ].filter(Boolean).join(' ').toLowerCase();
+        return haystack.includes(searchTerm.toLowerCase());
+    });
 
     const columns = [
         {
@@ -138,7 +146,7 @@ const BranchPerformanceTable = ({ data = [] }) => {
                         />
 
                         <Input
-                            placeholder="Search branch..."
+                            placeholder="Search branch, city, area, spa code..."
                             className="pl-10"
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}

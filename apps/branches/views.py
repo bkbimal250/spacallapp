@@ -13,7 +13,7 @@ Access Control:
     branch_manager → Read-only, see only their assigned branch.
 
 Filters:
-    ?search=<name_or_code>  → Search by spa_name or branch code.
+    ?search=<branch_city_area_code>  → Search by branch name, city, area, spa code, phone, address, or group.
     ?city=<city>            → Filter by city.
     ?state=<state>          → Filter by state.
     ?status=true|false      → Filter by is_active status.
@@ -76,7 +76,7 @@ class BranchViewSet(viewsets.ModelViewSet):
         summary="List Branches",
         parameters=[
             OpenApiParameter("all", type=bool, description="Set to true to disable pagination"),
-            OpenApiParameter("search", type=str, description="Search by spa name or branch code"),
+            OpenApiParameter("search", type=str, description="Search by branch name, city, area, spa code, phone, address, or group"),
             OpenApiParameter("city", type=str, description="Filter by city"),
             OpenApiParameter("state", type=str, description="Filter by state"),
             OpenApiParameter("status", type=bool, description="Filter by active status"),
@@ -147,7 +147,7 @@ class BranchViewSet(viewsets.ModelViewSet):
             # Select related branch_group to avoid N+1 for branch_group_name
             # Include fields required by BranchListSerializer
             queryset = queryset.only(
-                "id", "spa_name", "code", "city", "state", "is_active", 
+                "id", "spa_name", "code", "city", "area", "state", "postal_code", "address", "phone", "is_active",
                 "branch_group_id", "branch_group__name"
             )
 

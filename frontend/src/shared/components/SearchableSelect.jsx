@@ -30,9 +30,14 @@ const SearchableSelect = ({
         return () => document.removeEventListener("mousedown", handleClickOutside);
     }, []);
 
-    const filteredOptions = useMemo(() => options.filter(opt =>
-        opt.label.toLowerCase().includes(searchTerm.toLowerCase())
-    ), [options, searchTerm]);
+    const filteredOptions = useMemo(() => {
+        const normalizedSearch = searchTerm.toLowerCase();
+        return options.filter(opt =>
+            `${opt.label || ''} ${opt.title || ''} ${opt.searchText || ''}`
+                .toLowerCase()
+                .includes(normalizedSearch)
+        );
+    }, [options, searchTerm]);
 
     // 🔥 Highlight search text - Optimized
     const highlightedOptions = useMemo(() => {

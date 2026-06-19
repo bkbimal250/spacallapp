@@ -252,7 +252,7 @@ const LeadManagementSummary = () => {
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
 
                         <Input
-                            placeholder="Branch name..."
+                            placeholder="Search branch, city, area, spa code..."
                             className="bg-card border-border text-text-primary"
                             value={search}
                             onChange={handleSearchChange}

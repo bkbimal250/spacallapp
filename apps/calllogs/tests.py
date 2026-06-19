@@ -1,10 +1,12 @@
 from django.test import TestCase
 from django.utils import timezone
 from datetime import timedelta
+from unittest.mock import patch
 from apps.branches.models import Branch, BranchGroups
 from apps.devices.models import Device
 from apps.calllogs.models import CallLog, MissedCallFollowUp
 from apps.calllogs.services import FollowUpService
+from apps.calllogs.tasks import send_due_missed_call_reminders, send_missed_call_reminder
 
 class MissedCallFollowUpTests(TestCase):
     def setUp(self):
@@ -135,3 +137,59 @@ class MissedCallFollowUpTests(TestCase):
         self.assertTrue(followup.is_followed_up)
         self.assertEqual(followup.sla_status, "GOOD")
         self.assertEqual(followup.followup_call, outgoing_log)
+
+    @patch("apps.notifications.services.NotificationService.send_push", return_value=True)
+    def test_missed_call_reminder_pushes_to_android_device(self, send_push):
+        missed_log = CallLog.objects.create(
+            branch=self.branch,
+            device=self.device,
+            phone_number=self.phone,
+            call_type="missed",
+            duration=0,
+            sim_slot=1,
+            call_time=timezone.now() - timedelta(minutes=12),
+            call_hash="hash_reminder"
+        )
+        followup = MissedCallFollowUp.objects.create(
+            missed_call=missed_log,
+            branch=self.branch,
+            is_followed_up=False,
+        )
+
+        result = send_missed_call_reminder(str(missed_log.id), 1)
+
+        followup.refresh_from_db()
+        self.assertIn("notification sent", result)
+        self.assertEqual(followup.notification_step, 1)
+        self.assertEqual(followup.sla_status, "OK")
+        send_push.assert_called_once()
+        kwargs = send_push.call_args.kwargs
+        self.assertEqual(kwargs["recipient"], self.device)
+        self.assertEqual(kwargs["notification_type"], "missed_call_followup")
+        self.assertIn("Take follow-up on this number", kwargs["body"])
+        self.assertEqual(kwargs["data"]["phone_number"], self.phone)
+        self.assertEqual(kwargs["data"]["sla_step"], "1")
+
+    @patch("apps.calllogs.tasks.send_missed_call_reminder.delay")
+    def test_due_missed_call_sweep_queues_highest_due_step(self, delay):
+        missed_log = CallLog.objects.create(
+            branch=self.branch,
+            device=self.device,
+            phone_number=self.phone,
+            call_type="missed",
+            duration=0,
+            sim_slot=1,
+            call_time=timezone.now() - timedelta(minutes=35),
+            call_hash="hash_sweep"
+        )
+        MissedCallFollowUp.objects.create(
+            missed_call=missed_log,
+            branch=self.branch,
+            is_followed_up=False,
+            notification_step=1,
+        )
+
+        result = send_due_missed_call_reminders()
+
+        self.assertIn("Queued 1", result)
+        delay.assert_called_once_with(str(missed_log.id), 2)

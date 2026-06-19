@@ -11,6 +11,7 @@ class Notification(BaseModel, TimeStampedModel):
         ('alert', 'Alert / Warning'),
         ('system', 'System Announcement'),
         ('sync_issue', 'Device Stopped Syncing'),
+        ('missed_call_followup', 'Missed Call Follow-up'),
     )
 
     device = models.ForeignKey(

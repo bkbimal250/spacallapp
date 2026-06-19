@@ -185,7 +185,7 @@ class LeadManagementViewSet(viewsets.ModelViewSet):
         summary="Branch Lead Summary",
         description="Returns per-branch lead statistics (total vs status counts).",
         parameters=[
-            OpenApiParameter("branch_search", type=str, description="Search by branch name or code"),
+            OpenApiParameter("branch_search", type=str, description="Search by branch name, city, area, spa code, phone, address, or group"),
             OpenApiParameter("city", type=str, description="Filter by branch city"),
             OpenApiParameter("branch_status", type=str, description="Filter by branch status (active/inactive)"),
         ],
@@ -216,7 +216,7 @@ class LeadManagementViewSet(viewsets.ModelViewSet):
             branch_manager → only their branch
 
         Additional filters:
-            ?branch_search=<name_or_code>
+            ?branch_search=<branch_city_area_code>
             ?city=<city>
             ?branch_status=active|inactive (branch active status)
         """

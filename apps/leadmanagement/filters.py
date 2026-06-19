@@ -31,7 +31,13 @@ class LeadFilter(BaseDateFilter):
             return queryset
         return queryset.filter(
             Q(branch__spa_name__icontains=value) |
-            Q(branch__code__icontains=value)
+            Q(branch__code__icontains=value) |
+            Q(branch__city__icontains=value) |
+            Q(branch__area__icontains=value) |
+            Q(branch__state__icontains=value) |
+            Q(branch__address__icontains=value) |
+            Q(branch__phone__icontains=value) |
+            Q(branch__branch_group__name__icontains=value)
         )
 
     def filter_branch_status(self, queryset, name, value):

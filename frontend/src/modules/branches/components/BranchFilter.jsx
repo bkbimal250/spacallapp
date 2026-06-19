@@ -77,11 +77,11 @@ const BranchFilter = ({ onFilter, externalFilters = {} }) => {
             <div>
 
                 <label className="block text-sm font-medium text-text-secondary mb-1">
-                    Search name/code
+                    Master Search
                 </label>
 
                 <Input
-                    placeholder="Search branches..."
+                    placeholder="Search branch, city, area, spa code..."
                     value={search}
                     onChange={handleSearchChange}
                 />

@@ -30,5 +30,6 @@ class BranchListSerializer(serializers.ModelSerializer):
     class Meta:
         model = Branch
         fields = [
-            "id", "spa_name", "code", "city", "state", "is_active", "branch_group", "branch_group_name"
+            "id", "spa_name", "code", "city", "area", "state", "postal_code", "address", "phone",
+            "is_active", "branch_group", "branch_group_name"
         ]

@@ -121,7 +121,7 @@ class NotificationService:
             logger.error(f"Failed to broadcast notification: {e}")
 
     @staticmethod
-    def send_push(recipient, title, body, notification_type, data=None):
+    def send_push(recipient=None, title=None, body=None, notification_type=None, data=None, device=None, user=None):
         """
         Sends a push notification to a Device or User using FCM.
         
@@ -135,6 +135,11 @@ class NotificationService:
         Returns:
             bool: True if sent successfully, False otherwise.
         """
+        recipient = recipient or device or user
+        if recipient is None:
+            logger.error("FCM send skipped: no recipient provided")
+            return False
+
         # Determine if recipient is a Device or User (simplified check)
         from apps.devices.models import Device
         from django.contrib.auth import get_user_model
@@ -197,13 +202,18 @@ class NotificationService:
             return False
 
         try:
+            sent_at = timezone.now()
             message_data = {
                 "title": str(title),
                 "body": str(body),
                 "type": str(notification_type),
-                "sent_at": timezone.now().isoformat(),
+                "sent_at": sent_at.isoformat(),
+                "sent_at_ms": str(int(sent_at.timestamp() * 1000)),
                 **{str(key): str(value) for key, value in (data or {}).items()},
             }
+            if notif_log:
+                message_data.setdefault("notification_id", str(notif_log.id))
+
             message = messaging.Message(
                 notification=messaging.Notification(
                     title=title,

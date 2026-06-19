@@ -276,6 +276,10 @@ CELERY_BEAT_SCHEDULE = {
         'task': 'apps.monitoring.tasks.check_device_sync_health',
         'schedule': 900.0,  # 15 minutes
     },
+    'send-due-missed-call-reminders-every-5-mins': {
+        'task': 'apps.calllogs.tasks.send_due_missed_call_reminders',
+        'schedule': 300.0,  # 5 minutes
+    },
 }
 
 # Caching (Redis)

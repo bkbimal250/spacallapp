@@ -49,7 +49,20 @@ const LeadManagementList = () => {
             try {
                 const response = await branchesAPI.getBranches({ all: true });
                 const data = response.data.results || response.data;
-                setBranches(data.map(b => ({ value: b.id, label: b.spa_name })));
+                setBranches(data.map(b => ({
+                    value: b.id,
+                    label: b.spa_name,
+                    searchText: [
+                        b.spa_name,
+                        b.code,
+                        b.city,
+                        b.area,
+                        b.state,
+                        b.address,
+                        b.phone,
+                        b.branch_group_name,
+                    ].filter(Boolean).join(' ')
+                })));
             } catch (err) {
                 console.error("Failed to fetch branches", err);
             }

@@ -6,7 +6,10 @@ from apps.common.filters import BaseDateFilter
 from .models import Device
 
 class DeviceFilter(BaseDateFilter):
-    search = filters.CharFilter(method='filter_search', label="Search by device ID, phone name, Android ID, or token")
+    search = filters.CharFilter(
+        method='filter_search',
+        label="Search by device, phone, branch, city, area, spa code, Android ID, or token",
+    )
     branch = filters.UUIDFilter(field_name='branch_id')
     city = filters.CharFilter(field_name='branch__city', lookup_expr='icontains')
     area = filters.CharFilter(field_name='branch__area', lookup_expr='icontains')
@@ -27,7 +30,17 @@ class DeviceFilter(BaseDateFilter):
             Q(device_id__icontains=value) |
             Q(phone_name__icontains=value) |
             Q(android_id__icontains=value) |
-            Q(registration_token__icontains=value)
+            Q(registration_token__icontains=value) |
+            Q(sim_1_number__icontains=value) |
+            Q(sim_2_number__icontains=value) |
+            Q(branch__spa_name__icontains=value) |
+            Q(branch__code__icontains=value) |
+            Q(branch__city__icontains=value) |
+            Q(branch__area__icontains=value) |
+            Q(branch__state__icontains=value) |
+            Q(branch__address__icontains=value) |
+            Q(branch__phone__icontains=value) |
+            Q(branch__branch_group__name__icontains=value)
         )
 
     def filter_is_online(self, queryset, name, value):

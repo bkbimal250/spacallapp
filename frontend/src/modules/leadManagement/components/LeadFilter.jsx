@@ -70,7 +70,7 @@ const LeadFilter = ({
                             Branch
                         </label>
                         <SearchableSelect
-                            placeholder="Filter by branch..."
+                            placeholder="Search branch, city, area, spa code..."
                             options={branches}
                             value={localFilters.branch}
                             onChange={(val) => handleChange('branch', val)}

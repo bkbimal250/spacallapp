@@ -167,7 +167,17 @@ const DeviceForm = ({ isOpen, onClose, onSubmit, initialData }) => {
                             label="Assigned Branch"
                             options={branches.map(b => ({
                                 value: b.id,
-                                label: `${b.spa_name} (${b.code})`
+                                label: `${b.spa_name} (${b.code})`,
+                                searchText: [
+                                    b.spa_name,
+                                    b.code,
+                                    b.city,
+                                    b.area,
+                                    b.state,
+                                    b.address,
+                                    b.phone,
+                                    b.branch_group_name,
+                                ].filter(Boolean).join(' ')
                             }))}
                             value={formData.branch}
                             onChange={(value) =>

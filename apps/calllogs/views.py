@@ -571,7 +571,7 @@ class CallLogViewSet(viewsets.ModelViewSet):
         summary="Get per-branch summaries",
         description="Returns an overview of call counts for each branch.",
         parameters=[
-            OpenApiParameter("branch_search", str),
+            OpenApiParameter("branch_search", str, description="Search by branch name, city, area, spa code, phone, address, or group"),
             OpenApiParameter("city", str),
             OpenApiParameter("status", str, enum=["active", "inactive"]),
         ],

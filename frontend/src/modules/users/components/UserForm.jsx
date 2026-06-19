@@ -33,7 +33,16 @@ const BranchMultiSelect = ({ branches, value, onChange }) => {
         const searchValue = search.toLowerCase().trim();
 
         return branches.filter(branch => {
-            const label = `${branch.spa_name || ''} ${branch.code || ''} ${branch.city || ''} ${branch.state || ''} ${branch.branch_group_name || ''}`.toLowerCase();
+            const label = [
+                branch.spa_name,
+                branch.code,
+                branch.city,
+                branch.area,
+                branch.state,
+                branch.address,
+                branch.phone,
+                branch.branch_group_name,
+            ].filter(Boolean).join(' ').toLowerCase();
             const matchesSearch = !searchValue || label.includes(searchValue);
             const matchesCity = !cityFilter || branch.city === cityFilter;
             const matchesStatus =
@@ -89,7 +98,7 @@ const BranchMultiSelect = ({ branches, value, onChange }) => {
                     type="search"
                     value={search}
                     onChange={(event) => setSearch(event.target.value)}
-                    placeholder="Search branches..."
+                    placeholder="Search branch, city, area, spa code..."
                     className="w-full bg-background border border-border rounded-lg py-2.5 pl-9 pr-3 text-sm outline-none focus:border-primary"
                 />
             </div>
@@ -379,7 +388,17 @@ const UserForm = ({ isOpen, onClose, onSubmit, initialData, loading = false }) =
                             label="Assign Branch"
                             options={branches.map(branch => ({
                                 value: branch.id,
-                                label: `${branch.spa_name}${branch.code ? ` (${branch.code})` : ''} ${branch.city ? `(${branch.city})` : ''}`
+                                label: `${branch.spa_name}${branch.code ? ` (${branch.code})` : ''} ${branch.city ? `(${branch.city})` : ''}`,
+                                searchText: [
+                                    branch.spa_name,
+                                    branch.code,
+                                    branch.city,
+                                    branch.area,
+                                    branch.state,
+                                    branch.address,
+                                    branch.phone,
+                                    branch.branch_group_name,
+                                ].filter(Boolean).join(' ')
                             }))}
                             value={formData.branch}
                             onChange={(value) => setFormData(prev => ({ ...prev, branch: value }))}

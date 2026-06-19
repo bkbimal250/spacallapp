@@ -186,14 +186,13 @@ const CallLogsSummaryFilter = ({
                         </div>
                     </div>
 
-                    <div className="w-full lg:w-96 relative">
-                        <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary" />
+                    <div className="w-full lg:w-70 relative">
                         <Input
-                            placeholder="Search branch name or code..."
+                            placeholder="Search branch, city, area, spa code..."
                             value={search}
                             onChange={(e) => setSearch(e.target.value)}
                             onKeyDown={(e) => e.key === 'Enter' && handleApplyFilters()}
-                            className="pl-10 h-10 bg-background border-border-light hover:border-primary focus:border-primary transition-colors"
+                            className="h-10 bg-background border-border-light hover:border-primary focus:border-primary transition-colors"
                         />
                     </div>
                 </div>

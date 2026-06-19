@@ -44,6 +44,16 @@ const MonitoringFilters = ({ filters, onChange, onApply, onClear }) => {
                     value: branch.id,
                     label: `${branch.spa_name}${branch.code ? ` (${branch.code})` : ''}`,
                     title: branch.spa_name,
+                    searchText: [
+                        branch.spa_name,
+                        branch.code,
+                        branch.city,
+                        branch.area,
+                        branch.state,
+                        branch.address,
+                        branch.phone,
+                        branch.branch_group_name,
+                    ].filter(Boolean).join(' ')
                 })));
             } catch (error) {
                 console.error('Failed to fetch monitoring filter branches', error);

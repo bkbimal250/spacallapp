@@ -103,7 +103,17 @@ const CallLogFilter = ({
                     branchData.map(b => ({
                         value: b.id,
                         label: b.code ? `${b.spa_name} (${b.code})` : b.spa_name,
-                        title: b.spa_name
+                        title: b.spa_name,
+                        searchText: [
+                            b.spa_name,
+                            b.code,
+                            b.city,
+                            b.area,
+                            b.state,
+                            b.address,
+                            b.phone,
+                            b.branch_group_name,
+                        ].filter(Boolean).join(' ')
                     }))
                 );
             } catch (error) {
