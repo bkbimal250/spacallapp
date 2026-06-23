@@ -1,5 +1,6 @@
 import hashlib
 import json
+import logging
 import re
 import urllib.error
 import urllib.request
@@ -42,6 +43,8 @@ from .models import (
     DoubleTickTeamMemberMapping,
     DoubleTickWebhookLog,
 )
+
+logger = logging.getLogger(__name__)
 
 
 GREETING_WORDS = {
@@ -1276,6 +1279,40 @@ class DoubleTickConversationService:
     """Create/update customers, conversations and messages from webhooks."""
 
     @staticmethod
+    def _choose_customer(queryset, reason):
+        customers = list(queryset.order_by("created_at")[:50])
+        if not customers:
+            return None, 0
+
+        count = queryset.count()
+        customer = sorted(
+            customers,
+            key=lambda item: (
+                -sum(
+                    1
+                    for value in [
+                        item.customer_name,
+                        item.whatsapp_name,
+                        item.dt_customer_id,
+                        item.normalized_phone,
+                        item.phone_number,
+                        item.channel_id,
+                    ]
+                    if value
+                ),
+                item.created_at,
+            ),
+        )[0]
+        if count > 1:
+            logger.warning(
+                "DoubleTickCustomer duplicate group resolved without crashing webhook: reason=%s canonical_id=%s duplicate_count=%s",
+                reason,
+                customer.id,
+                count,
+            )
+        return customer, count
+
+    @staticmethod
     def _upsert_customer(parsed, payload, channel=None):
         now = timezone.now()
         dt_customer_id = parsed.get("doubletick_customer_id") or first_value(payload, ["dt_customer_id", "customer.id", "customerId"])
@@ -1283,32 +1320,64 @@ class DoubleTickConversationService:
         if not normalized_phone and not dt_customer_id:
             raise ValidationError("Webhook payload does not contain a customer id or phone number.")
 
-        lookup = {"dt_customer_id": dt_customer_id} if dt_customer_id else {"normalized_phone": normalized_phone}
-        customer, created = DoubleTickCustomer.objects.get_or_create(
-            **lookup,
-            defaults={
-                "phone_number": parsed.get("phone_number", ""),
-                "normalized_phone": normalized_phone,
-                "customer_name": parsed.get("customer_name", ""),
-                "whatsapp_name": parsed.get("whatsapp_name", ""),
-                "channel": channel,
-                "raw_profile": payload.get("customer", {}) if isinstance(payload, dict) else {},
-                "first_seen_at": now,
-                "last_seen_at": now,
-            },
-        )
+        customer = None
+        created = False
+
+        if dt_customer_id and channel:
+            customer, _ = DoubleTickConversationService._choose_customer(
+                DoubleTickCustomer.objects.filter(dt_customer_id=dt_customer_id, channel=channel),
+                "dt_customer_id_channel",
+            )
+        if not customer and normalized_phone and channel:
+            customer, _ = DoubleTickConversationService._choose_customer(
+                DoubleTickCustomer.objects.filter(normalized_phone=normalized_phone, channel=channel),
+                "normalized_phone_channel",
+            )
+        if not customer and dt_customer_id and not channel:
+            customer, _ = DoubleTickConversationService._choose_customer(
+                DoubleTickCustomer.objects.filter(dt_customer_id=dt_customer_id, channel__isnull=True),
+                "dt_customer_id_no_channel",
+            )
+        if not customer and normalized_phone:
+            phone_matches = DoubleTickCustomer.objects.filter(normalized_phone=normalized_phone)
+            if channel:
+                phone_matches = phone_matches.filter(Q(channel=channel) | Q(channel__isnull=True))
+            customer, _ = DoubleTickConversationService._choose_customer(
+                phone_matches,
+                "normalized_phone_safe",
+            )
+
+        if not customer:
+            customer = DoubleTickCustomer.objects.create(
+                dt_customer_id=dt_customer_id or "",
+                phone_number=parsed.get("phone_number", ""),
+                normalized_phone=normalized_phone or "",
+                customer_name=parsed.get("customer_name", ""),
+                whatsapp_name=parsed.get("whatsapp_name", ""),
+                channel=channel,
+                raw_profile=payload.get("customer", {}) if isinstance(payload, dict) else {},
+                first_seen_at=now,
+                last_seen_at=now,
+            )
+            created = True
+
         updates = []
         for field, value in {
+            "dt_customer_id": dt_customer_id or customer.dt_customer_id,
             "phone_number": parsed.get("phone_number", ""),
             "normalized_phone": normalized_phone,
             "customer_name": parsed.get("customer_name", ""),
             "whatsapp_name": parsed.get("whatsapp_name", ""),
             "channel": channel or customer.channel,
+            "raw_profile": payload.get("customer", {}) if isinstance(payload, dict) else {},
             "last_seen_at": now,
         }.items():
             if value and getattr(customer, field) != value:
                 setattr(customer, field, value)
                 updates.append(field)
+        if not customer.first_seen_at:
+            customer.first_seen_at = now
+            updates.append("first_seen_at")
         if updates:
             customer.save(update_fields=updates + ["updated_at"])
         return customer, created
@@ -1593,11 +1662,21 @@ class DoubleTickConversationService:
 class LeadQualificationService:
     """Convert confirmed conversations into qualified area leads."""
 
+    TERMINAL_LEAD_STATUSES = {
+        DoubleTickLead.Status.BOOKED,
+        DoubleTickLead.Status.NOT_INTERESTED,
+        DoubleTickLead.Status.LOST,
+        DoubleTickLead.Status.CLOSED,
+        DoubleTickLead.Status.EXPIRED,
+    }
+
     @staticmethod
     @transaction.atomic
     def ensure_conversation_lead(conversation, user=None, matched_area=None, distribute=True):
         now = timezone.now()
         lead = conversation.current_lead
+        if lead and lead.status in LeadQualificationService.TERMINAL_LEAD_STATUSES:
+            lead = None
         first_message = conversation.messages.order_by("received_at", "created_at").first()
         latest_customer = conversation.messages.filter(direction=DoubleTickMessage.Direction.INBOUND).order_by("-received_at", "-created_at").first()
         area = matched_area or conversation.matched_area

@@ -11,6 +11,7 @@ from apps.locations.models import Area, City, LocationGroup, LocationGroupArea, 
 
 from .models import (
     DoubleTickAreaAlias,
+    DoubleTickChannel,
     DoubleTickConversation,
     DoubleTickCustomer,
     DoubleTickLead,
@@ -20,7 +21,7 @@ from .models import (
     DoubleTickMessage,
     DoubleTickTeamMemberMapping,
 )
-from .services import CRMLocationMatchEngine, LeadQualificationService
+from .services import CRMLocationMatchEngine, DoubleTickConversationService, LeadQualificationService
 
 
 @override_settings(DOUBLETICK_WEBHOOK_SECRET="test-secret", DOUBLETICK_API_KEY="")
@@ -508,6 +509,220 @@ class DoubleTickBackendTests(APITestCase):
         self.assertIn("Total matched leads", report)
         self.assertIn("DoubleTickLeadArea without locations.Area link", report)
         self.assertIn("Failed distribution audits", report)
+
+    def test_upsert_customer_returns_canonical_when_duplicates_exist(self):
+        channel = DoubleTickChannel.objects.create(name="Main WABA", waba_number="918976822803")
+        canonical = DoubleTickCustomer.objects.create(
+            dt_customer_id="dt-dup-1",
+            phone_number="+91 98765 43210",
+            normalized_phone="+919876543210",
+            customer_name="Ravi Kumar",
+            channel=channel,
+        )
+        duplicate = DoubleTickCustomer.objects.create(
+            dt_customer_id="dt-dup-1",
+            phone_number="+91 98765 43210",
+            normalized_phone="+919876543210",
+            channel=channel,
+        )
+
+        customer, created = DoubleTickConversationService._upsert_customer(
+            {
+                "doubletick_customer_id": "dt-dup-1",
+                "phone_number": "+91 98765 43210",
+                "normalized_phone": "+919876543210",
+                "customer_name": "Ravi Updated",
+                "whatsapp_name": "Ravi WA",
+            },
+            {"customer": {"id": "dt-dup-1", "name": "Ravi Updated"}},
+            channel,
+        )
+
+        self.assertFalse(created)
+        self.assertEqual(customer.id, canonical.id)
+        customer.refresh_from_db()
+        duplicate.refresh_from_db()
+        self.assertEqual(customer.customer_name, "Ravi Updated")
+        self.assertEqual(duplicate.customer_name, "")
+
+    def test_duplicate_customer_same_phone_channel_does_not_crash_webhook(self):
+        channel = DoubleTickChannel.objects.create(name="Main WABA", waba_number="918976822803")
+        canonical = DoubleTickCustomer.objects.create(
+            phone_number="+91 98765 43210",
+            normalized_phone="+919876543210",
+            customer_name="Ravi Kumar",
+            channel=channel,
+        )
+        DoubleTickCustomer.objects.create(
+            phone_number="+91 98765 43210",
+            normalized_phone="+919876543210",
+            channel=channel,
+        )
+        payload = self.webhook_payload(message_id="dup-customer-1")
+        payload["wabaNumber"] = "918976822803"
+        payload["customer"]["phone"] = "+91 98765 43210"
+        payload["customer"]["id"] = "dt-webhook-dup"
+
+        response = self.client.post(
+            "/api/v1/doubletick/webhook/",
+            payload,
+            format="json",
+            HTTP_X_DOUBLETICK_SECRET="test-secret",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        conversation = DoubleTickConversation.objects.get(dt_conversation_id="chat-1")
+        message = DoubleTickMessage.objects.get(dt_message_id="dup-customer-1")
+        lead = DoubleTickLead.objects.get(conversation=conversation)
+        self.assertEqual(conversation.customer_id, canonical.id)
+        self.assertEqual(message.customer_id, canonical.id)
+        self.assertEqual(lead.customer_id, canonical.id)
+        self.assertTrue(DoubleTickLeadVisibility.objects.filter(lead=lead, branch=self.branch).exists())
+
+    def test_new_message_after_runtime_reset_creates_fresh_lead(self):
+        customer = DoubleTickCustomer.objects.create(
+            phone_number="+91 98765 43210",
+            normalized_phone="+919876543210",
+        )
+        DoubleTickConversation.objects.create(
+            customer=customer,
+            dt_conversation_id="old-reset-chat",
+            status=DoubleTickConversation.Status.CLOSED,
+        )
+        payload = self.webhook_payload(message_id="after-reset-1")
+        payload["chat"]["id"] = "fresh-chat-after-reset"
+
+        response = self.client.post(
+            "/api/v1/doubletick/webhook/",
+            payload,
+            format="json",
+            HTTP_X_DOUBLETICK_SECRET="test-secret",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        conversation = DoubleTickConversation.objects.get(dt_conversation_id="fresh-chat-after-reset")
+        self.assertIsNotNone(conversation.current_lead_id)
+        self.assertTrue(DoubleTickLeadVisibility.objects.filter(lead=conversation.current_lead, branch=self.branch).exists())
+
+    def test_closed_lost_current_lead_remessage_creates_new_active_lead(self):
+        customer = DoubleTickCustomer.objects.create(
+            phone_number="+91 98765 43210",
+            normalized_phone="+919876543210",
+        )
+        conversation = DoubleTickConversation.objects.create(
+            customer=customer,
+            status=DoubleTickConversation.Status.DISTRIBUTED,
+            dt_conversation_id="active-chat-with-lost-lead",
+        )
+        old_lead = DoubleTickLead.objects.create(
+            conversation=conversation,
+            customer=customer,
+            phone_number="+91 98765 43210",
+            normalized_phone="+919876543210",
+            status=DoubleTickLead.Status.LOST,
+        )
+        conversation.current_lead = old_lead
+        conversation.save(update_fields=["current_lead"])
+
+        payload = self.webhook_payload(message_id="lost-remessage-1")
+        payload["chat"]["id"] = "active-chat-with-lost-lead"
+
+        response = self.client.post(
+            "/api/v1/doubletick/webhook/",
+            payload,
+            format="json",
+            HTTP_X_DOUBLETICK_SECRET="test-secret",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        conversation.refresh_from_db()
+        old_lead.refresh_from_db()
+        self.assertNotEqual(conversation.current_lead_id, old_lead.id)
+        self.assertEqual(old_lead.status, DoubleTickLead.Status.LOST)
+        self.assertEqual(conversation.current_lead.status, DoubleTickLead.Status.AVAILABLE)
+        self.assertTrue(DoubleTickLeadVisibility.objects.filter(lead=conversation.current_lead, branch=self.branch).exists())
+
+    def test_dedupe_doubletick_customers_dry_run_does_not_change_db(self):
+        channel = DoubleTickChannel.objects.create(name="Main WABA", waba_number="918976822803")
+        canonical = DoubleTickCustomer.objects.create(
+            phone_number="+91 98765 43210",
+            normalized_phone="+919876543210",
+            customer_name="Ravi Kumar",
+            channel=channel,
+        )
+        duplicate = DoubleTickCustomer.objects.create(
+            phone_number="+91 98765 43210",
+            normalized_phone="+919876543210",
+            channel=channel,
+        )
+        conversation = DoubleTickConversation.objects.create(customer=duplicate)
+        lead = DoubleTickLead.objects.create(
+            conversation=conversation,
+            customer=duplicate,
+            phone_number="+91 98765 43210",
+            normalized_phone="+919876543210",
+        )
+        DoubleTickMessage.objects.create(
+            conversation=conversation,
+            lead=lead,
+            customer=duplicate,
+            dt_message_id="dry-run-msg",
+            direction=DoubleTickMessage.Direction.INBOUND,
+            origin=DoubleTickMessage.Origin.CUSTOMER,
+        )
+
+        output = StringIO()
+        call_command("dedupe_doubletick_customers", "--dry-run", stdout=output)
+
+        self.assertIn("Dry run only", output.getvalue())
+        self.assertEqual(DoubleTickCustomer.objects.count(), 2)
+        conversation.refresh_from_db()
+        lead.refresh_from_db()
+        self.assertEqual(conversation.customer_id, duplicate.id)
+        self.assertEqual(lead.customer_id, duplicate.id)
+        self.assertTrue(DoubleTickCustomer.objects.filter(id=canonical.id).exists())
+
+    def test_dedupe_doubletick_customers_commit_reassigns_related_rows(self):
+        channel = DoubleTickChannel.objects.create(name="Main WABA", waba_number="918976822803")
+        canonical = DoubleTickCustomer.objects.create(
+            phone_number="+91 98765 43210",
+            normalized_phone="+919876543210",
+            customer_name="Ravi Kumar",
+            channel=channel,
+        )
+        duplicate = DoubleTickCustomer.objects.create(
+            phone_number="+91 98765 43210",
+            normalized_phone="+919876543210",
+            whatsapp_name="Ravi WA",
+            channel=channel,
+        )
+        conversation = DoubleTickConversation.objects.create(customer=duplicate)
+        lead = DoubleTickLead.objects.create(
+            conversation=conversation,
+            customer=duplicate,
+            phone_number="+91 98765 43210",
+            normalized_phone="+919876543210",
+        )
+        message = DoubleTickMessage.objects.create(
+            conversation=conversation,
+            lead=lead,
+            customer=duplicate,
+            dt_message_id="commit-msg",
+            direction=DoubleTickMessage.Direction.INBOUND,
+            origin=DoubleTickMessage.Origin.CUSTOMER,
+        )
+
+        output = StringIO()
+        call_command("dedupe_doubletick_customers", "--commit", stdout=output)
+
+        self.assertIn("Duplicate DoubleTick customers merged", output.getvalue())
+        self.assertEqual(DoubleTickCustomer.objects.count(), 1)
+        conversation.refresh_from_db()
+        lead.refresh_from_db()
+        message.refresh_from_db()
+        self.assertEqual(conversation.customer_id, canonical.id)
+        self.assertEqual(lead.customer_id, canonical.id)
+        self.assertEqual(message.customer_id, canonical.id)
 
     def test_generic_messages_never_become_area_candidates(self):
         for text in [

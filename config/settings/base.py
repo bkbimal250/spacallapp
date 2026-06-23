@@ -333,7 +333,7 @@ DOUBLETICK_PENDING_ATTENTION_MINUTES = env.int("DOUBLETICK_PENDING_ATTENTION_MIN
 DOUBLETICK_PENDING_ARCHIVE_DAYS = env.int("DOUBLETICK_PENDING_ARCHIVE_DAYS", default=30)
 DOUBLETICK_LOCATION_REQUEST_MESSAGE = env(
     "DOUBLETICK_LOCATION_REQUEST_MESSAGE",
-    default="Please share your city and nearest area so we can find the best spa for you.",
+    default="Just Provide Me Your Location So That I Can Help You With Booking...\n\nबस मुझे अपना स्थान बताएं ताकि मैं बुकिंग में आपकी मदद कर सकूं..",
 )
 
 # Spectacular Settings for API Documentation
