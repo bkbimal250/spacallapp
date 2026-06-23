@@ -173,7 +173,7 @@ const BranchList = () => {
             render: (row) => (
                 <div className="flex items-center text-text-secondary">
                     <MapPin size={14} className="mr-1 text-primary" />
-                    {`${row.city}, ${row.state}`}
+                    {` ${row.area},  ${row.city}, ${row.state}`}
                 </div>
             )
         },
