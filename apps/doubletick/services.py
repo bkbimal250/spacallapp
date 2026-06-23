@@ -877,6 +877,8 @@ class AutoLocationRequestService:
 
     @staticmethod
     def request_if_needed(conversation, match_result, now=None):
+        if not getattr(settings, "DOUBLETICK_AUTO_REPLY_ENABLED", False):
+            return None
         now = now or timezone.now()
         if not match_result.get("should_request_location"):
             return None
@@ -2470,17 +2472,18 @@ def create_or_update_lead_from_webhook(payload):
         except Exception:
             pass
 
-        try:
-            from apps.bots.services import BotEngine
+        if getattr(settings, "DOUBLETICK_AUTO_REPLY_ENABLED", False):
+            try:
+                from apps.bots.services import BotEngine
 
-            BotEngine.handle_incoming_message(conversation, lead, message)
-        except Exception as bot_exc:
-            _activity(
-                conversation=conversation,
-                lead=lead,
-                action=DoubleTickActivity.Action.PROCESSING_FAILED,
-                note=f"Bot processing failed: {bot_exc}",
-            )
+                BotEngine.handle_incoming_message(conversation, lead, message)
+            except Exception as bot_exc:
+                _activity(
+                    conversation=conversation,
+                    lead=lead,
+                    action=DoubleTickActivity.Action.PROCESSING_FAILED,
+                    note=f"Bot processing failed: {bot_exc}",
+                )
 
         webhook_log.processed = True
         webhook_log.save(update_fields=["conversation", "message", "lead", "error_message", "processed", "updated_at"])

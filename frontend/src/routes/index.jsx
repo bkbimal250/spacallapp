@@ -14,6 +14,7 @@ const LoginRecords = lazy(() => import('../modules/users/pages/LoginRecords'));
 const BranchList = lazy(() => import('../modules/branches/pages/BranchList'));
 const GroupList = lazy(() => import('../modules/branches/pages/GroupList'));
 const Branch = lazy(() => import('../modules/branches/pages/Branch'));
+const BranchView = lazy(() => import('../modules/branches/pages/BranchView'));
 const DeviceList = lazy(() => import('../modules/devices/pages/DeviceList'));
 const CallLogSummary = lazy(() => import('../modules/calllogs/pages/CallLogSummary'));
 const CallLogList = lazy(() => import('../modules/calllogs/pages/CallLogList'));
@@ -71,6 +72,7 @@ export const AppRoutes = () => {
                         <Route path={ROUTES.BRANCHES} element={<Branch />}>
                             <Route index element={<BranchList />} />
                             <Route path="groups" element={<GroupList />} />
+                            <Route path=":id" element={<BranchView />} />
                         </Route>
 
                         <Route path={ROUTES.DEVICES} element={<DeviceList />} />

@@ -11,7 +11,11 @@ import Pagination from '../../../shared/components/Pagination';
 import BranchTabs from '../components/BranchTabs';
 
 import {
+    AlertTriangle,
+    CheckCircle2,
     Edit,
+    Eye,
+    Layers,
     Trash2,
     Plus,
     MapPin,
@@ -161,6 +165,37 @@ const BranchList = () => {
         }
     };
 
+    const hasLinkedLocation = (branch) => Boolean(
+        branch.location_state &&
+        branch.location_city &&
+        branch.location_area
+    );
+
+    const hasLocationGroup = (branch) => Boolean(branch.location_group);
+
+    const LinkedBadge = ({ ok, label, missingLabel, onClick }) => {
+        if (ok) {
+            return (
+                <span className="inline-flex items-center gap-1.5 rounded-md bg-success/10 px-2 py-1 text-xs font-semibold text-success">
+                    <CheckCircle2 size={14} />
+                    {label}
+                </span>
+            );
+        }
+
+        return (
+            <button
+                type="button"
+                onClick={onClick}
+                className="inline-flex items-center gap-1.5 rounded-md bg-warning/10 px-2 py-1 text-xs font-semibold text-warning hover:bg-warning/20"
+                title={missingLabel}
+            >
+                <AlertTriangle size={14} />
+                {missingLabel}
+            </button>
+        );
+    };
+
     const columns = useMemo(() => [
 
         { header: 'Spa Name', accessor: 'spa_name' },
@@ -174,6 +209,38 @@ const BranchList = () => {
                 <div className="flex items-center text-text-secondary">
                     <MapPin size={14} className="mr-1 text-primary" />
                     {` ${row.area},  ${row.city}, ${row.state}`}
+                </div>
+            )
+        },
+
+        {
+            header: 'Linked Location',
+            render: (row) => (
+                <LinkedBadge
+                    ok={hasLinkedLocation(row)}
+                    label="Added"
+                    missingLabel="Need Location"
+                    onClick={() => handleEdit(row)}
+                />
+            )
+        },
+
+        {
+            header: 'Location Group',
+            render: (row) => (
+                <div className="flex flex-col gap-1">
+                    <LinkedBadge
+                        ok={hasLocationGroup(row)}
+                        label="Added"
+                        missingLabel="Need Group"
+                        onClick={() => handleEdit(row)}
+                    />
+                    {row.location_group_name && (
+                        <span className="inline-flex items-center gap-1 text-xs text-text-secondary">
+                            <Layers size={12} />
+                            {row.location_group_name}
+                        </span>
+                    )}
                 </div>
             )
         },
@@ -198,6 +265,15 @@ const BranchList = () => {
             render: (row) => (
 
                 <div className="flex gap-2">
+
+                    {/* View */}
+                    <button
+                        onClick={() => navigate(`/branches/${row.id}`)}
+                        className="p-1 rounded-md text-text-secondary hover:bg-background"
+                        title="View Branch"
+                    >
+                        <Eye size={16} />
+                    </button>
 
                     {/* Call Logs */}
                     <button
