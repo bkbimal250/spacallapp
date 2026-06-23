@@ -62,6 +62,42 @@ class Branch(BaseModel, TimeStampedModel, SoftDeleteModel):
         help_text="Each branch belongs to only one group"
     )
 
+    # --- Normalized location FK links (Phase 2 migration) ---
+    # These are nullable FKs that link to the structured location hierarchy.
+    # Legacy text fields (state, city, area) above are preserved as fallback.
+    location_state = models.ForeignKey(
+        "locations.State",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="branches",
+        help_text="Normalized state (FK). Maps to locations.State."
+    )
+    location_city = models.ForeignKey(
+        "locations.City",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="branches",
+        help_text="Normalized city (FK). Maps to locations.City."
+    )
+    location_group = models.ForeignKey(
+        "locations.LocationGroup",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="branches",
+        help_text="Location group/zone for this branch (FK). Maps to locations.LocationGroup."
+    )
+    location_area = models.ForeignKey(
+        "locations.Area",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="branches",
+        help_text="Primary area for this branch (FK). Maps to locations.Area."
+    )
+
     class Meta:
         db_table = "branches"
         constraints = [

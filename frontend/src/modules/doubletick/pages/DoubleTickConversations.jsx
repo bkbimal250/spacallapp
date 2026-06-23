@@ -8,9 +8,21 @@ import ConversationTable from '../components/ConversationTable';
 import ConversationWindow from '../window/ConversationWindow';
 
 const pageSize = 30;
+const emptyFilters = {
+    status: '',
+    pending_reason: '',
+    requires_manual_attention: '',
+    search: '',
+    has_unread_messages: '',
+    is_unmatched: '',
+    phone_number: '',
+    waba_number: '',
+    created_from: '',
+    created_to: '',
+};
 
 const DoubleTickConversations = () => {
-    const [filters, setFilters] = useState({ status: '', pending_reason: '', requires_manual_attention: '', search: '' });
+    const [filters, setFilters] = useState(emptyFilters);
     const [conversations, setConversations] = useState([]);
     const [totalCount, setTotalCount] = useState(0);
     const [page, setPage] = useState(1);
@@ -39,15 +51,15 @@ const DoubleTickConversations = () => {
     }, [fetchConversations]);
 
     const reset = () => {
-        setFilters({ status: '', pending_reason: '', requires_manual_attention: '', search: '' });
+        setFilters(emptyFilters);
         setPage(1);
     };
 
     return (
         <div className="space-y-6">
-            <div>
-                <h1 className="text-2xl font-bold text-text-primary">Pending Conversations</h1>
-                <p className="text-sm text-text-secondary">Review incomplete chats, reply manually, match areas and qualify leads.</p>
+            <div className="space-y-2">
+                <h1 className="text-2xl font-bold text-text-primary">Pending Conversations Queue</h1>
+                <p className="text-sm text-text-secondary">Review incomplete chats, reply manually, match customer areas to CRM locations, and qualify leads for distribution. Once matched and qualified, conversations become leads available for spa managers to claim.</p>
             </div>
             <DoubleTickTabs />
             <ConversationFilters filters={filters} onChange={(next) => { setFilters(next); setPage(1); }} onReset={reset} onRefresh={fetchConversations} />

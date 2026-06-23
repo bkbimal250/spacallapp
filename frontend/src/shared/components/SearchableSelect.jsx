@@ -94,7 +94,7 @@ const SearchableSelect = ({
     }, [isOpen, filteredOptions, activeIndex, handleSelect]);
 
     return (
-        <div className={`relative ${className}`} ref={wrapperRef}>
+        <div className={`relative min-w-0 ${className || ''}`} ref={wrapperRef}>
 
             {label && (
                 <label className="block text-xs font-semibold text-text-secondary mb-1 ml-1 uppercase tracking-wider">
@@ -136,7 +136,7 @@ const SearchableSelect = ({
 
             {/* DROPDOWN */}
             {isOpen && (
-                <div className="absolute z-[999] mt-2.5 w-full rounded-xl bg-card border border-border shadow-2xl overflow-hidden animate-fadeIn backdrop-blur-sm">
+                <div className="absolute z-[9999] mt-2.5 w-full min-w-[280px] rounded-xl bg-card border border-border shadow-2xl overflow-hidden animate-fadeIn backdrop-blur-sm">
 
                     {/* SEARCH */}
                     <div className="sticky top-0 bg-background px-3 py-2 border-b border-border">

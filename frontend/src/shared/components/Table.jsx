@@ -12,7 +12,7 @@ const Table = memo(({
     sortConfig = { key: null, direction: 'asc' }
 }) => {
 
-    const allIds = useMemo(() => data.map(row => row.id || row.ID), [data]);
+    const allIds = useMemo(() => data.map(row => row.id || row.ID || row.uuid || row.pk).filter(Boolean), [data]);
     
     // Use a Set for O(1) lookups
     const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
@@ -105,7 +105,7 @@ const Table = memo(({
                 <tbody className="bg-background divide-y divide-border">
                     {data && data.length > 0 ? (
                         data.map((row, rowIndex) => {
-                            const rowId = row.id || row.ID;
+                            const rowId = row.id || row.ID || row.uuid || row.pk;
                             const isSelected = selectedSet.has(rowId);
 
                             return (
@@ -157,4 +157,4 @@ const Table = memo(({
     );
 });
 
-export default Table;
+export default Table;

@@ -9,6 +9,7 @@ const BranchFilter = ({ onFilter, externalFilters = {} }) => {
     const [search, setSearch] = useState('');
     const [city, setCity] = useState('');
     const [state, setState] = useState('');
+    const [area, setArea] = useState('');
     const [status, setStatus] = useState('');
     const [group, setGroup] = useState('');
     const [groups, setGroups] = useState([]);
@@ -42,6 +43,7 @@ const BranchFilter = ({ onFilter, externalFilters = {} }) => {
     const handleSearchChange = useCallback((e) => setSearch(e.target.value), []);
     const handleCityChange = useCallback((e) => setCity(e.target.value), []);
     const handleStateChange = useCallback((e) => setState(e.target.value), []);
+    const handleAreaChange = useCallback((e) => setArea(e.target.value), []);
     const handleStatusChange = useCallback((e) => setStatus(e.target.value), []);
 
     const handleFilter = useCallback(() => {
@@ -51,17 +53,19 @@ const BranchFilter = ({ onFilter, externalFilters = {} }) => {
         if (search) filters.search = search;
         if (city) filters.city = city;
         if (state) filters.state = state;
+        if (area) filters.area = area;
         if (status !== '') filters.status = status;
         if (group) filters.group = group;
 
         onFilter(filters);
-    }, [search, city, state, status, group, onFilter]);
+    }, [search, city, state, area, status, group, onFilter]);
 
     const handleClear = useCallback(() => {
 
         setSearch('');
         setCity('');
         setState('');
+        setArea('');
         setStatus('');
         setGroup('');
 
@@ -117,6 +121,20 @@ const BranchFilter = ({ onFilter, externalFilters = {} }) => {
                     placeholder="Filter by city..."
                     value={city}
                     onChange={handleCityChange}
+                />
+
+            </div>
+
+            <div>
+
+                <label className="block text-sm font-medium text-text-secondary mb-1">
+                    Area
+                </label>
+
+                <Input
+                    placeholder="Filter by area..."
+                    value={area}
+                    onChange={handleAreaChange}
                 />
 
             </div>

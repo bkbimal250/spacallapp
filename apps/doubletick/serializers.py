@@ -166,6 +166,10 @@ class DoubleTickConversationListSerializer(serializers.ModelSerializer):
     normalized_phone = serializers.CharField(source="customer.normalized_phone", read_only=True)
     matched_area_name = serializers.CharField(source="matched_area.name", read_only=True)
     channel_waba_number = serializers.CharField(source="channel.waba_number", read_only=True)
+    latest_customer_message = serializers.SerializerMethodField()
+    suggested_match = serializers.SerializerMethodField()
+    match_confidence = serializers.SerializerMethodField()
+    match_reason = serializers.SerializerMethodField()
 
     class Meta:
         model = DoubleTickConversation
@@ -185,6 +189,10 @@ class DoubleTickConversationListSerializer(serializers.ModelSerializer):
             "raw_service",
             "matched_area",
             "matched_area_name",
+            "latest_customer_message",
+            "suggested_match",
+            "match_confidence",
+            "match_reason",
             "last_message_at",
             "last_customer_message_at",
             "unread_count",
@@ -195,6 +203,33 @@ class DoubleTickConversationListSerializer(serializers.ModelSerializer):
             "current_lead",
             "created_at",
         ]
+
+    def _location_metadata(self, obj):
+        payload = obj.raw_payload if isinstance(obj.raw_payload, dict) else {}
+        return payload.get("location_match", {}) or {}
+
+    def get_latest_customer_message(self, obj):
+        messages = [
+            message for message in obj.messages.all()
+            if message.direction == DoubleTickMessage.Direction.INBOUND
+        ]
+        if not messages:
+            return ""
+        message = max(
+            messages,
+            key=lambda item: item.message_timestamp or item.received_at or item.created_at,
+        )
+        return message.text
+
+    def get_suggested_match(self, obj):
+        payload = obj.raw_payload if isinstance(obj.raw_payload, dict) else {}
+        return payload.get("suggested_match")
+
+    def get_match_confidence(self, obj):
+        return self._location_metadata(obj).get("confidence", 0.0)
+
+    def get_match_reason(self, obj):
+        return self._location_metadata(obj).get("reason", "")
 
 
 class DoubleTickConversationDetailSerializer(DoubleTickConversationListSerializer):
@@ -219,11 +254,34 @@ class DoubleTickConversationDetailSerializer(DoubleTickConversationListSerialize
 
 class DoubleTickLeadListSerializer(serializers.ModelSerializer):
     matched_area_name = serializers.CharField(source="matched_area.name", read_only=True)
+    location_status = serializers.SerializerMethodField()
+    raw_group = serializers.SerializerMethodField()
+    raw_branch = serializers.SerializerMethodField()
+    city_name = serializers.SerializerMethodField()
+    group_name = serializers.SerializerMethodField()
+    branch_name = serializers.SerializerMethodField()
+    spa_name = serializers.SerializerMethodField()
     current_branch_name = serializers.CharField(source="current_branch.spa_name", read_only=True)
     current_user_name = serializers.CharField(source="current_user.full_name", read_only=True)
+    current_device_name = serializers.CharField(source="current_device.phone_name", read_only=True)
     assigned_branch_name = serializers.CharField(source="assigned_branch.spa_name", read_only=True)
     assigned_user_name = serializers.CharField(source="assigned_user.full_name", read_only=True)
     assigned_device_name = serializers.CharField(source="assigned_device.phone_name", read_only=True)
+    unread_count = serializers.IntegerField(source="conversation.unread_count", read_only=True)
+    last_message_at = serializers.DateTimeField(source="conversation.last_message_at", read_only=True)
+    can_claim = serializers.SerializerMethodField()
+    can_reply = serializers.SerializerMethodField()
+    can_update_status = serializers.SerializerMethodField()
+    classification = serializers.SerializerMethodField()
+    match_method = serializers.SerializerMethodField()
+    match_confidence = serializers.SerializerMethodField()
+    match_reason = serializers.SerializerMethodField()
+    suggested_match = serializers.SerializerMethodField()
+    pending_reason = serializers.CharField(source="conversation.pending_reason", read_only=True)
+    android_visibility_count = serializers.SerializerMethodField()
+    android_device_count = serializers.SerializerMethodField()
+    android_user_count = serializers.SerializerMethodField()
+    sent_to_android = serializers.SerializerMethodField()
 
     class Meta:
         model = DoubleTickLead
@@ -239,18 +297,26 @@ class DoubleTickLeadListSerializer(serializers.ModelSerializer):
             "latest_customer_message",
             "message",
             "raw_city",
+            "raw_group",
             "raw_area",
+            "raw_branch",
             "raw_service",
             "city",
+            "city_name",
             "area",
             "service_name",
             "matched_area",
             "matched_area_name",
+            "location_status",
+            "group_name",
+            "branch_name",
+            "spa_name",
             "status",
             "current_branch",
             "current_branch_name",
             "current_user",
             "current_user_name",
+            "current_device_name",
             "assigned_branch",
             "assigned_branch_name",
             "assigned_user",
@@ -259,9 +325,274 @@ class DoubleTickLeadListSerializer(serializers.ModelSerializer):
             "assigned_device_name",
             "distributed_at",
             "claimed_at",
+            "last_message_at",
+            "unread_count",
+            "can_claim",
+            "can_reply",
+            "can_update_status",
+            "classification",
+            "match_method",
+            "match_confidence",
+            "match_reason",
+            "suggested_match",
+            "pending_reason",
+            "android_visibility_count",
+            "android_device_count",
+            "android_user_count",
+            "sent_to_android",
             "is_duplicate",
             "created_at",
         ]
+
+    def _match_meta(self, obj):
+        return (obj.raw_payload or {}).get("location_match", {}) if isinstance(obj.raw_payload, dict) else {}
+
+    def _conversation_payload(self, obj):
+        conversation = getattr(obj, "conversation", None)
+        return conversation.raw_payload if conversation and isinstance(conversation.raw_payload, dict) else {}
+
+    def _visibility_rows(self, obj):
+        return [item for item in obj.visibilities.all() if item.is_visible]
+
+    def get_location_status(self, obj):
+        if obj.matched_area_id:
+            return "matched"
+        if obj.status == DoubleTickLead.Status.UNASSIGNED:
+            return "pending"
+        return "unknown"
+
+    def get_raw_group(self, obj):
+        return self._match_meta(obj).get("raw_group") or ""
+
+    def get_raw_branch(self, obj):
+        return self._match_meta(obj).get("raw_branch") or ""
+
+    def get_city_name(self, obj):
+        return obj.city or obj.raw_city or (obj.matched_area.city if obj.matched_area else "")
+
+    def get_group_name(self, obj):
+        return self.get_raw_group(obj)
+
+    def get_branch_name(self, obj):
+        branch = obj.current_branch or obj.assigned_branch
+        return branch.spa_name if branch else ""
+
+    def get_spa_name(self, obj):
+        return self.get_branch_name(obj)
+
+    def get_classification(self, obj):
+        return self._match_meta(obj).get("classification") or self._conversation_payload(obj).get("location_match", {}).get("classification") or "unknown"
+
+    def get_match_method(self, obj):
+        return self._match_meta(obj).get("method") or self._conversation_payload(obj).get("location_match", {}).get("method") or "none"
+
+    def get_match_confidence(self, obj):
+        value = self._match_meta(obj).get("confidence")
+        if value is None:
+            value = self._conversation_payload(obj).get("location_match", {}).get("confidence", 0)
+        return value or 0
+
+    def get_match_reason(self, obj):
+        return self._match_meta(obj).get("reason") or self._conversation_payload(obj).get("location_match", {}).get("reason") or ""
+
+    def get_suggested_match(self, obj):
+        return self._conversation_payload(obj).get("suggested_match")
+
+    def get_android_visibility_count(self, obj):
+        return len(self._visibility_rows(obj))
+
+    def get_android_device_count(self, obj):
+        return sum(1 for item in self._visibility_rows(obj) if item.device_id)
+
+    def get_android_user_count(self, obj):
+        return sum(1 for item in self._visibility_rows(obj) if item.user_id)
+
+    def get_sent_to_android(self, obj):
+        return any(item.device_id for item in self._visibility_rows(obj))
+
+    def get_can_claim(self, obj):
+        return obj.status in [DoubleTickLead.Status.AVAILABLE, DoubleTickLead.Status.RELEASED]
+
+    def get_can_reply(self, obj):
+        return bool(obj.conversation_id)
+
+    def get_can_update_status(self, obj):
+        return obj.status in [
+            DoubleTickLead.Status.CLAIMED,
+            DoubleTickLead.Status.OPENED,
+            DoubleTickLead.Status.CONTACTING,
+            DoubleTickLead.Status.CONTACTED,
+            DoubleTickLead.Status.FOLLOW_UP,
+            DoubleTickLead.Status.BOOKED,
+            DoubleTickLead.Status.NOT_INTERESTED,
+            DoubleTickLead.Status.LOST,
+        ]
+
+
+class DoubleTickMobileMessageSerializer(serializers.ModelSerializer):
+    sender_name = serializers.SerializerMethodField()
+    timestamp = serializers.SerializerMethodField()
+
+    class Meta:
+        model = DoubleTickMessage
+        fields = ["id", "direction", "text", "status", "sender_name", "timestamp"]
+
+    def get_sender_name(self, obj):
+        return obj.sender_display_name or getattr(obj.sent_by, "full_name", None) or (
+            "Customer" if obj.direction == DoubleTickMessage.Direction.INBOUND else "Team"
+        )
+
+    def get_timestamp(self, obj):
+        return obj.message_timestamp or obj.received_at or obj.sent_at or obj.created_at
+
+
+class DoubleTickMobileLeadSerializer(serializers.ModelSerializer):
+    lead_id = serializers.UUIDField(source="id", read_only=True)
+    phone = serializers.CharField(source="phone_number", read_only=True)
+    location_status = serializers.SerializerMethodField()
+    city_name = serializers.SerializerMethodField()
+    group_name = serializers.SerializerMethodField()
+    area_name = serializers.SerializerMethodField()
+    branch_name = serializers.SerializerMethodField()
+    spa_name = serializers.SerializerMethodField()
+    owner_name = serializers.SerializerMethodField()
+    device_name = serializers.SerializerMethodField()
+    is_unclaimed = serializers.SerializerMethodField()
+    android_visibility_status = serializers.SerializerMethodField()
+    can_claim = serializers.SerializerMethodField()
+    can_reply = serializers.SerializerMethodField()
+    can_update_status = serializers.SerializerMethodField()
+    last_message_at = serializers.DateTimeField(source="conversation.last_message_at", read_only=True)
+    unread_count = serializers.IntegerField(source="conversation.unread_count", read_only=True)
+
+    class Meta:
+        model = DoubleTickLead
+        fields = [
+            "lead_id",
+            "customer_name",
+            "phone",
+            "latest_customer_message",
+            "status",
+            "location_status",
+            "city_name",
+            "group_name",
+            "area_name",
+            "branch_name",
+            "spa_name",
+            "owner_name",
+            "device_name",
+            "is_unclaimed",
+            "android_visibility_status",
+            "can_claim",
+            "can_reply",
+            "can_update_status",
+            "created_at",
+            "last_message_at",
+            "unread_count",
+        ]
+
+    def _location_area(self, obj):
+        return getattr(obj.matched_area, "location_area", None) if obj.matched_area else None
+
+    def _visible_rows(self, obj):
+        return [row for row in getattr(obj, "mobile_visibilities", []) if row.is_visible]
+
+    def _display_branch(self, obj):
+        branch = obj.current_branch or obj.assigned_branch
+        if branch:
+            return branch
+
+        device = self.context.get("mobile_device")
+        rows = self._visible_rows(obj)
+        if device:
+            for row in rows:
+                if row.device_id == device.id or row.branch_id == device.branch_id:
+                    return row.branch
+        return rows[0].branch if rows else None
+
+    def get_location_status(self, obj):
+        if obj.matched_area_id and self._location_area(obj):
+            return "matched"
+        if obj.matched_area_id:
+            return "legacy_matched"
+        return "pending"
+
+    def get_city_name(self, obj):
+        location_area = self._location_area(obj)
+        return (
+            getattr(getattr(location_area, "city", None), "name", None)
+            or obj.city
+            or obj.raw_city
+            or getattr(obj.matched_area, "city", None)
+            or "-"
+        )
+
+    def get_group_name(self, obj):
+        location_area = self._location_area(obj)
+        mappings = getattr(location_area, "mobile_group_mappings", []) if location_area else []
+        if mappings:
+            return mappings[0].group.name
+        metadata = (obj.raw_payload or {}).get("location_match", {}) if isinstance(obj.raw_payload, dict) else {}
+        return metadata.get("raw_group") or "-"
+
+    def get_area_name(self, obj):
+        location_area = self._location_area(obj)
+        return getattr(location_area, "name", None) or getattr(obj.matched_area, "name", None) or obj.area or obj.raw_area or "-"
+
+    def get_branch_name(self, obj):
+        branch = self._display_branch(obj)
+        return getattr(branch, "spa_name", None) or "-"
+
+    def get_spa_name(self, obj):
+        return self.get_branch_name(obj)
+
+    def get_owner_name(self, obj):
+        owner = obj.current_user or obj.assigned_user
+        return getattr(owner, "full_name", None) or "Unclaimed"
+
+    def get_device_name(self, obj):
+        device = obj.current_device or obj.assigned_device
+        return getattr(device, "phone_name", None) or "-"
+
+    def get_is_unclaimed(self, obj):
+        return not bool(obj.current_user_id or obj.current_device_id or obj.active_assignment_id)
+
+    def get_android_visibility_status(self, obj):
+        device = self.context.get("mobile_device")
+        if device and obj.current_device_id == device.id:
+            return "owned"
+        user = self.context.get("request_user")
+        if user and getattr(user, "is_authenticated", False) and obj.current_user_id == getattr(user, "id", None):
+            return "owned"
+        return "visible" if self._visible_rows(obj) else "not_visible"
+
+    def get_can_claim(self, obj):
+        return self.get_is_unclaimed(obj) and obj.status in [
+            DoubleTickLead.Status.AVAILABLE,
+            DoubleTickLead.Status.RELEASED,
+        ]
+
+    def get_can_reply(self, obj):
+        return bool(obj.conversation_id)
+
+    def get_can_update_status(self, obj):
+        return not self.get_is_unclaimed(obj) and obj.status in [
+            DoubleTickLead.Status.CLAIMED,
+            DoubleTickLead.Status.OPENED,
+            DoubleTickLead.Status.CONTACTING,
+            DoubleTickLead.Status.CONTACTED,
+            DoubleTickLead.Status.FOLLOW_UP,
+            DoubleTickLead.Status.BOOKED,
+            DoubleTickLead.Status.NOT_INTERESTED,
+            DoubleTickLead.Status.LOST,
+        ]
+
+
+class DoubleTickMobileLeadDetailSerializer(DoubleTickMobileLeadSerializer):
+    messages = DoubleTickMobileMessageSerializer(many=True, read_only=True)
+
+    class Meta(DoubleTickMobileLeadSerializer.Meta):
+        fields = DoubleTickMobileLeadSerializer.Meta.fields + ["messages"]
 
 
 class DoubleTickLeadSerializer(serializers.ModelSerializer):
@@ -286,9 +617,13 @@ class DoubleTickLeadSerializer(serializers.ModelSerializer):
 class DoubleTickLeadDetailSerializer(DoubleTickLeadListSerializer):
     visibilities = serializers.SerializerMethodField()
     active_assignment_detail = serializers.SerializerMethodField()
+    customer_detail = DoubleTickCustomerSerializer(source="customer", read_only=True)
+    chat_timeline = serializers.SerializerMethodField()
+    latest_distribution_audit = serializers.SerializerMethodField()
 
     class Meta(DoubleTickLeadListSerializer.Meta):
         fields = DoubleTickLeadListSerializer.Meta.fields + [
+            "customer_detail",
             "raw_payload",
             "lost_reason",
             "closed_reason",
@@ -296,6 +631,8 @@ class DoubleTickLeadDetailSerializer(DoubleTickLeadListSerializer):
             "visibilities",
             "active_assignment",
             "active_assignment_detail",
+            "chat_timeline",
+            "latest_distribution_audit",
         ]
 
     def get_visibilities(self, obj):
@@ -305,6 +642,14 @@ class DoubleTickLeadDetailSerializer(DoubleTickLeadListSerializer):
         if not obj.active_assignment_id:
             return None
         return DoubleTickLeadAssignmentSerializer(obj.active_assignment).data
+
+    def get_chat_timeline(self, obj):
+        queryset = obj.messages.select_related("sent_by", "customer").order_by("message_timestamp", "received_at", "sent_at", "created_at")
+        return DoubleTickMessageSerializer(queryset, many=True).data
+
+    def get_latest_distribution_audit(self, obj):
+        audit = obj.distribution_audits.order_by("-created_at").first()
+        return DoubleTickDistributionAuditSerializer(audit).data if audit else None
 
 
 class DoubleTickLeadVisibilitySerializer(serializers.ModelSerializer):

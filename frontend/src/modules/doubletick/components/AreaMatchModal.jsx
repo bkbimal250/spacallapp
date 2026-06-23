@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { CheckCircle2, MapPin } from 'lucide-react';
 import Modal from '../../../shared/components/Modal';
 import Button from '../../../shared/components/Button';
 import Input from '../../../shared/components/Input';
@@ -29,20 +30,80 @@ const AreaMatchModal = ({ isOpen, conversation, onClose, onSubmit }) => {
     };
 
     return (
-        <Modal isOpen={isOpen} onClose={onClose} title="Match CRM Area">
-            <div className="space-y-4">
-                <Input label="Lead Area ID" value={form.lead_area_id} onChange={(event) => setForm({ ...form, lead_area_id: event.target.value })} />
-                <Input label="Raw customer area / alias" value={form.raw_alias} onChange={(event) => setForm({ ...form, raw_alias: event.target.value })} />
-                <label className="flex items-center gap-2 text-sm text-text-primary">
-                    <input type="checkbox" checked={form.save_alias} onChange={(event) => setForm({ ...form, save_alias: event.target.checked })} />
-                    Save this alias for future auto matching
-                </label>
-                <label className="flex items-center gap-2 text-sm text-text-primary">
-                    <input type="checkbox" checked={form.qualify_as_lead} onChange={(event) => setForm({ ...form, qualify_as_lead: event.target.checked })} />
-                    Qualify and distribute after matching
-                </label>
-                <div className="flex justify-end">
-                    <Button loading={loading} disabled={!form.lead_area_id} onClick={submit}>Save Match</Button>
+        <Modal isOpen={isOpen} onClose={onClose} title="Match WhatsApp Conversation to CRM Area">
+            <div className="space-y-5">
+                <div className="bg-background border border-border rounded-lg p-4 space-y-2">
+                    <h3 className="font-semibold text-text-primary flex items-center gap-2">
+                        <MapPin size={16} className="text-primary" />
+                        Customer Information
+                    </h3>
+                    <div className="space-y-1 text-sm">
+                        <p><span className="text-text-secondary">Raw area input:</span> <span className="font-medium text-text-primary">{conversation?.raw_area || '-'}</span></p>
+                        <p><span className="text-text-secondary">Current city:</span> <span className="font-medium text-text-primary">{conversation?.raw_city || '-'}</span></p>
+                        <p><span className="text-text-secondary">Current service:</span> <span className="font-medium text-text-primary">{conversation?.raw_service || '-'}</span></p>
+                    </div>
+                </div>
+
+                <div className="space-y-4">
+                    <div>
+                        <label className="block text-sm font-semibold text-text-primary mb-2">
+                            <CheckCircle2 size={16} className="inline mr-1 text-success" />
+                            Select the CRM Area
+                        </label>
+                        <Input 
+                            label="Lead Area ID"
+                            placeholder="Enter the matched lead area ID"
+                            value={form.lead_area_id} 
+                            onChange={(event) => setForm({ ...form, lead_area_id: event.target.value })}
+                        />
+                        <p className="text-xs text-text-secondary mt-1">Choose the official CRM area this customer belongs to.</p>
+                    </div>
+
+                    <div>
+                        <label className="block text-sm font-semibold text-text-primary mb-2">Area Alias (Optional)</label>
+                        <Input 
+                            placeholder="e.g., North Delhi, Sector 5, Marina"
+                            value={form.raw_alias} 
+                            onChange={(event) => setForm({ ...form, raw_alias: event.target.value })}
+                        />
+                        <p className="text-xs text-text-secondary mt-1">Save this customer's area name for faster future matching.</p>
+                    </div>
+
+                    <div className="space-y-2 border-t border-border pt-4">
+                        <label className="flex items-start gap-3 cursor-pointer">
+                            <input 
+                                type="checkbox" 
+                                checked={form.save_alias} 
+                                onChange={(event) => setForm({ ...form, save_alias: event.target.checked })}
+                                className="mt-1 h-4 w-4"
+                            />
+                            <span className="text-sm text-text-primary">
+                                Save this alias for future auto-matching
+                                <p className="text-xs text-text-secondary font-normal">Customers who mention this area will be matched automatically next time.</p>
+                            </span>
+                        </label>
+
+                        <label className="flex items-start gap-3 cursor-pointer">
+                            <input 
+                                type="checkbox" 
+                                checked={form.qualify_as_lead} 
+                                onChange={(event) => setForm({ ...form, qualify_as_lead: event.target.checked })}
+                                className="mt-1 h-4 w-4"
+                            />
+                            <span className="text-sm text-text-primary">
+                                Qualify and distribute as a lead immediately
+                                <p className="text-xs text-text-secondary font-normal">Send this conversation to mapped branches for this area right away.</p>
+                            </span>
+                        </label>
+                    </div>
+                </div>
+
+                <div className="flex justify-end gap-2 border-t border-border pt-4">
+                    <Button variant="secondary" onClick={onClose} disabled={loading}>Cancel</Button>
+                    <Button loading={loading} disabled={!form.lead_area_id} onClick={submit}>
+                        <CheckCircle2 size={16} />
+                        Confirm Match & Proceed
+                    </Button>
                 </div>
             </div>
         </Modal>

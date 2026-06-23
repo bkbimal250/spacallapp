@@ -21,9 +21,9 @@ from .models import (
 
 @admin.register(DoubleTickChannel)
 class DoubleTickChannelAdmin(admin.ModelAdmin):
-    list_display = ("name", "waba_number", "state", "city", "branch_group", "is_active")
-    search_fields = ("name", "waba_number", "city", "state")
-    list_filter = ("is_active", "state", "city")
+    list_display = ("name", "waba_number", "state", "city", "branch_group", "is_active", "created_at", "updated_at")
+    search_fields = ("name", "waba_number", "city", "state", "branch_group__name")
+    list_filter = ("is_active", "state", "city", "branch_group")
 
 
 @admin.register(DoubleTickCustomer)

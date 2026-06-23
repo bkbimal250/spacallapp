@@ -85,6 +85,8 @@ INSTALLED_APPS = [
     "apps.leadmanagement",
     "apps.notifications",
     "apps.doubletick",
+    "apps.bots",
+    "apps.locations",
 ]
 
 

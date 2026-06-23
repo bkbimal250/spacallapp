@@ -82,6 +82,14 @@ class DoubleTickLeadArea(BaseModel, TimeStampedModel, SoftDeleteModel):
     state = models.CharField(max_length=100, blank=True)
     city = models.CharField(max_length=100, blank=True)
     normalized_name = models.CharField(max_length=255, db_index=True)
+    location_area = models.ForeignKey(
+        "locations.Area",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="doubletick_routing_profiles",
+        help_text="Master CRM area represented by this DoubleTick routing profile.",
+    )
     is_active = models.BooleanField(default=True)
     distribution_mode = models.CharField(
         max_length=30,
@@ -799,7 +807,7 @@ class DoubleTickWebhookLog(BaseModel, TimeStampedModel):
     """Raw webhook audit log. Every webhook is stored before processing."""
 
     event_type = models.CharField(max_length=100, blank=True)
-    doubletick_event_id = models.CharField(max_length=255, null=True, blank=True)
+    doubletick_event_id = models.CharField(max_length=255, null=True, blank=True, unique=True)
     payload = models.JSONField(default=dict, blank=True)
     processed = models.BooleanField(default=False, db_index=True)
     error_message = models.TextField(null=True, blank=True)

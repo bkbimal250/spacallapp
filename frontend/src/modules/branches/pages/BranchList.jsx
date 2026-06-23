@@ -103,9 +103,15 @@ const BranchList = () => {
         setIsModalOpen(true);
     };
 
-    const handleEdit = (branch) => {
-        setEditingBranch(branch);
-        setIsModalOpen(true);
+    const handleEdit = async (branch) => {
+        try {
+            const response = await branchesAPI.getBranch(branch.id);
+            setEditingBranch(response.data);
+            setIsModalOpen(true);
+        } catch (error) {
+            console.error('Failed to load branch details', error);
+            window.alert('Could not load branch details for edit.');
+        }
     };
 
     const handleDelete = async (id) => {

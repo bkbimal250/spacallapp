@@ -23,12 +23,32 @@ const DeviceHealth = lazy(() => import('../modules/monitoring/pages/DeviceHealth
 const ContactList = lazy(() => import('../modules/contacts/pages/ContactList'));
 const LeadManagementSummary = lazy(() => import('../modules/leadManagement/pages/LeadManagementSummary'));
 const LeadManagementList = lazy(() => import('../modules/leadManagement/pages/LeadManagementList'));
+const Locations = lazy(() => import('../modules/locations/locations'));
 const DoubleTickOverview = lazy(() => import('../modules/doubletick/pages/DoubleTickOverview'));
 const DoubleTickConversations = lazy(() => import('../modules/doubletick/pages/DoubleTickConversations'));
 const DoubleTickLeads = lazy(() => import('../modules/doubletick/pages/DoubleTickLeads'));
 const DoubleTickAreas = lazy(() => import('../modules/doubletick/pages/DoubleTickAreas'));
 const DoubleTickAreaMap = lazy(() => import('../modules/doubletick/pages/DoubleTickAreaMap'));
+const BotsOverview = lazy(() => import('../modules/bots/pages/Overview'));
+const BotsBuilder = lazy(() => import('../modules/bots/pages/Builder'));
+const BotsFlows = lazy(() => import('../modules/bots/pages/Flows'));
+const BotsNodes = lazy(() => import('../modules/bots/pages/Nodes'));
+const BotsNodeOptions = lazy(() => import('../modules/bots/pages/NodeOptions'));
+const BotsTransitions = lazy(() => import('../modules/bots/pages/Transitions'));
+const BotsTriggers = lazy(() => import('../modules/bots/pages/Triggers'));
+const BotsTemplates = lazy(() => import('../modules/bots/pages/Templates'));
+const BotsDataSources = lazy(() => import('../modules/bots/pages/DataSources'));
+const BotsHandoverRules = lazy(() => import('../modules/bots/pages/HandoverRules'));
+const BotsFallbackRules = lazy(() => import('../modules/bots/pages/FallbackRules'));
+const BotsSessions = lazy(() => import('../modules/bots/pages/Sessions'));
+const BotsSessionVariables = lazy(() => import('../modules/bots/pages/SessionVariables'));
+const BotsLogs = lazy(() => import('../modules/bots/pages/Logs'));
+const BotsApiCallLogs = lazy(() => import('../modules/bots/pages/ApiCallLogs'));
+const BotsSheetSyncLogs = lazy(() => import('../modules/bots/pages/SheetSyncLogs'));
+const BotsIntegrations = lazy(() => import('../modules/bots/pages/Integrations'));
+const BotsSimulator = lazy(() => import('../modules/bots/pages/Simulator'));
 const NotificationList = lazy(() => import('../modules/notifications/pages/NotificationList'));
+
 
 
 
@@ -62,11 +82,31 @@ export const AppRoutes = () => {
                         <Route path={ROUTES.CONTACTS} element={<ContactList />} />
                         <Route path={ROUTES.LEAD_MANAGEMENT} element={<LeadManagementSummary />} />
                         <Route path={ROUTES.LEAD_MANAGEMENT_LIST} element={<LeadManagementList />} />
+                        <Route path={ROUTES.LOCATIONS} element={<Locations />} />
                         <Route path={ROUTES.DOUBLETICK} element={<DoubleTickOverview />} />
                         <Route path={ROUTES.DOUBLETICK_CONVERSATIONS} element={<DoubleTickConversations />} />
                         <Route path={ROUTES.DOUBLETICK_LEADS} element={<DoubleTickLeads />} />
                         <Route path={ROUTES.DOUBLETICK_AREAS} element={<DoubleTickAreas />} />
                         <Route path={ROUTES.DOUBLETICK_AREA_MAP} element={<DoubleTickAreaMap />} />
+                        <Route path={ROUTES.BOTS} element={<BotsOverview />} />
+                        <Route path={ROUTES.BOTS_BUILDER} element={<BotsBuilder />} />
+                        <Route path={ROUTES.BOTS_BUILDER_FULLSCREEN} element={<BotsBuilder />} />
+                        <Route path={ROUTES.BOTS_FLOWS} element={<BotsFlows />} />
+                        <Route path={ROUTES.BOTS_NODES} element={<BotsNodes />} />
+                        <Route path={ROUTES.BOTS_NODE_OPTIONS} element={<BotsNodeOptions />} />
+                        <Route path={ROUTES.BOTS_TRANSITIONS} element={<BotsTransitions />} />
+                        <Route path={ROUTES.BOTS_TRIGGERS} element={<BotsTriggers />} />
+                        <Route path={ROUTES.BOTS_TEMPLATES} element={<BotsTemplates />} />
+                        <Route path={ROUTES.BOTS_DATA_SOURCES} element={<BotsDataSources />} />
+                        <Route path={ROUTES.BOTS_HANDOVER_RULES} element={<BotsHandoverRules />} />
+                        <Route path={ROUTES.BOTS_FALLBACK_RULES} element={<BotsFallbackRules />} />
+                        <Route path={ROUTES.BOTS_SESSIONS} element={<BotsSessions />} />
+                        <Route path={ROUTES.BOTS_SESSION_VARIABLES} element={<BotsSessionVariables />} />
+                        <Route path={ROUTES.BOTS_LOGS} element={<BotsLogs />} />
+                        <Route path={ROUTES.BOTS_API_CALL_LOGS} element={<BotsApiCallLogs />} />
+                        <Route path={ROUTES.BOTS_SHEET_SYNC_LOGS} element={<BotsSheetSyncLogs />} />
+                        <Route path={ROUTES.BOTS_INTEGRATIONS} element={<BotsIntegrations />} />
+                        <Route path={ROUTES.BOTS_SIMULATOR} element={<BotsSimulator />} />
                         <Route path={ROUTES.NOTIFICATIONS} element={<NotificationList />} />
 
                         {/* Super Admin Only Routes */}

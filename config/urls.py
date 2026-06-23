@@ -40,6 +40,8 @@ urlpatterns = [
     path("api/v1/leadmanagement/", include("apps.leadmanagement.urls")),
     path("api/v1/notifications/", include("apps.notifications.urls")),
     path("api/v1/doubletick/", include("apps.doubletick.urls")),
+    path("api/v1/bots/", include("apps.bots.urls")),
+    path("api/v1/locations/", include("apps.locations.urls")),
 ]
 
 if settings.DEBUG:

@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { MapPin, Send } from 'lucide-react';
+import { MapPin, Send, MessageSquare } from 'lucide-react';
 import Button from '../../../shared/components/Button';
+import { formatDate } from '../../../shared/utils/formatDate';
 
-const ReplyPanel = ({ onReply, onRequestLocation, disabled = false }) => {
+const ReplyPanel = ({ onReply, onRequestLocation, disabled = false, lastLocationRequestAt = null }) => {
     const [text, setText] = useState('');
     const [submitting, setSubmitting] = useState(false);
 
@@ -18,10 +19,14 @@ const ReplyPanel = ({ onReply, onRequestLocation, disabled = false }) => {
     };
 
     return (
-        <div className="border border-border rounded-lg p-3 bg-card space-y-3">
+        <div className="border border-border rounded-lg p-4 bg-card space-y-3">
+            <div className="flex items-center gap-2 text-sm font-semibold text-text-primary">
+                <MessageSquare size={16} />
+                Manual WhatsApp Reply
+            </div>
             <textarea
-                className="w-full min-h-[88px] bg-background border border-border rounded-lg px-3 py-2 text-sm outline-none focus:border-primary resize-none"
-                placeholder="Type a manual WhatsApp reply"
+                className="w-full min-h-[100px] bg-background border border-border rounded-lg px-3 py-2 text-sm outline-none focus:border-primary resize-none"
+                placeholder="Type your WhatsApp message here... (supports multi-line)"
                 value={text}
                 disabled={disabled || submitting}
                 onChange={(event) => setText(event.target.value)}
@@ -33,9 +38,12 @@ const ReplyPanel = ({ onReply, onRequestLocation, disabled = false }) => {
                 </Button>
                 <Button type="button" className="gap-2" loading={submitting} disabled={disabled || !text.trim()} onClick={submit}>
                     <Send size={16} />
-                    Reply
+                    Send Reply
                 </Button>
             </div>
+            {lastLocationRequestAt && (
+                <p className="text-xs text-text-secondary">Last location request: {formatDate(lastLocationRequestAt, 'MMM dd, HH:mm')}</p>
+            )}
         </div>
     );
 };

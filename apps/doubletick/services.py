@@ -17,6 +17,7 @@ from rest_framework.exceptions import APIException, PermissionDenied, Validation
 from apps.branches.models import Branch
 from apps.devices.models import Device
 
+from .channel_setup import find_channel_for_waba_number, normalize_waba_number
 from .integrations.doubletick import (
     classify_webhook_event,
     first_value,
@@ -43,11 +44,81 @@ from .models import (
 )
 
 
-GREETING_WORDS = {"hello", "hi", "hey", "okay", "ok", "hii", "hiii", "namaste"}
+GREETING_WORDS = {
+    "acha",
+    "accha",
+    "call me",
+    "can i get more info",
+    "charges",
+    "details",
+    "good evening",
+    "good morning",
+    "he",
+    "hell",
+    "hello",
+    "hello sir",
+    "helloo",
+    "helo",
+    "hey",
+    "hi",
+    "hi sir",
+    "hii",
+    "hiii",
+    "hmm",
+    "hy",
+    "hyy",
+    "information",
+    "more info",
+    "namaste",
+    "no",
+    "ok",
+    "okay",
+    "please call",
+    "price",
+    "rate",
+    "yes",
+    "à¤¨à¤®à¤¸à¥à¤¤à¥‡",
+    "à¤¨à¤®à¤¸à¥à¤•à¤¾à¤°",
+    "à¤¹à¥‡à¤²à¥‹",
+    "à¤¹à¤¾à¤¯",
+    "à¤°à¤¾à¤® à¤°à¤¾à¤®",
+}
+JOB_INQUIRY_WORDS = {
+    "job",
+    "job chahiye",
+    "kaam chahiye",
+    "mujhe job chahiye",
+    "naukri",
+    "salary",
+    "vacancy",
+    "work",
+    "à¤•à¤¾à¤®",
+    "à¤•à¤¾à¤® à¤šà¤¾à¤¹à¤¿à¤",
+    "à¤¨à¥Œà¤•à¤°à¥€ à¤šà¤¾à¤¹à¤¿à¤",
+}
+SERVICE_ACTION_WORDS = {
+    "explore services",
+    "service",
+    "services",
+}
+GENERIC_NON_LOCATION_PHRASES = {
+    "hello",
+    "hi",
+    "hey",
+    "hii",
+    "hiii",
+    "ok",
+    "okay",
+    "namaste",
+    "नमस्ते",
+    "hindi me message kijiye",
+    "hindi mein message kijiye",
+    "please message in hindi",
+}
 LOCATION_REQUEST_MESSAGE = getattr(
     settings,
     "DOUBLETICK_LOCATION_REQUEST_MESSAGE",
-    "Please share your city and nearest area so we can find the best spa for you.",
+    "Just Provide Me Your Location So That I Can Help You With Booking...\n\nबस मुझे अपना स्थान बताएं ताकि मैं बुकिंग में आपकी मदद कर सकूं..",
 )
 
 
@@ -61,6 +132,15 @@ def normalize_area_text(value):
     """Normalize free-form area text for alias matching."""
     text = re.sub(r"\s+", " ", str(value or "").strip().lower())
     return re.sub(r"[^0-9a-z\u0900-\u097f ]+", "", text)
+
+
+def _is_generic_non_location_text(value):
+    normalized = normalize_area_text(value)
+    if not normalized:
+        return True
+    if normalized in {normalize_area_text(item) for item in GENERIC_NON_LOCATION_PHRASES}:
+        return True
+    return any(fragment in normalized for fragment in ["message kijiye", "hindi me", "hindi mein"])
 
 
 def _contains_normalized(haystack, needle):
@@ -98,10 +178,7 @@ def _normalized_lookup_values(value):
 
 
 def _channel_from_waba_number(waba_number):
-    values = _normalized_lookup_values(waba_number)
-    if not values:
-        return None
-    return DoubleTickChannel.objects.filter(waba_number__in=values).first()
+    return find_channel_for_waba_number(waba_number)
 
 
 def _provider_message_type(payload):
@@ -109,7 +186,19 @@ def _provider_message_type(payload):
 
 
 def _message_text(payload):
-    return str(first_value(payload, ["message.text", "message.body", "data.message.text", "data.message.body", "text", "body"]) or "")
+    return str(first_value(payload, [
+        "message.text",
+        "message.body",
+        "message.button.text",
+        "message.interactive.button_reply.title",
+        "message.interactive.list_reply.title",
+        "interactive.button_reply.title",
+        "interactive.list_reply.title",
+        "data.message.text",
+        "data.message.body",
+        "text",
+        "body",
+    ]) or "")
 
 
 def _digits_only(value):
@@ -160,6 +249,434 @@ def _resolve_outbound_sender(sent_by, assigned_to, channel=None):
 def _activity(**kwargs):
     """Create an immutable timeline entry without leaking provider secrets."""
     return DoubleTickActivity.objects.create(**kwargs)
+
+
+class CRMLocationMatchEngine:
+    """Match inbound raw location text against the normalized CRM locations app data."""
+
+    @staticmethod
+    def normalize_text(value):
+        if not value:
+            return ""
+        try:
+            from apps.locations.models import normalize_location_name
+
+            return normalize_location_name(value)
+        except Exception:
+            return normalize_area_text(value)
+
+    @staticmethod
+    def find_area(raw_area, raw_city="", group_id=None):
+        normalized_area = CRMLocationMatchEngine.normalize_text(raw_area)
+        if not normalized_area:
+            return None
+
+        try:
+            from apps.locations.models import Area, AreaAlias
+
+            qs = Area.objects.filter(is_deleted=False, is_active=True)
+            if group_id:
+                qs = qs.filter(area_groups__group_id=group_id, area_groups__is_deleted=False)
+
+            if raw_city:
+                normalized_city = CRMLocationMatchEngine.normalize_text(raw_city)
+                qs = qs.filter(
+                    Q(city__normalized_name=normalized_city)
+                    | Q(city__aliases__normalized_alias=normalized_city)
+                )
+
+            area = qs.filter(normalized_name=normalized_area).select_related("city", "city__state").first()
+            if area:
+                return area
+
+            alias_qs = AreaAlias.objects.filter(is_deleted=False, is_active=True, normalized_alias=normalized_area)
+            if raw_city:
+                alias_qs = alias_qs.filter(
+                    Q(area__city__normalized_name=normalized_city)
+                    | Q(area__city__aliases__normalized_alias=normalized_city)
+                )
+            if group_id:
+                alias_qs = alias_qs.filter(area__area_groups__group_id=group_id, area__area_groups__is_deleted=False)
+
+            alias = alias_qs.select_related("area", "area__city", "area__city__state").first()
+            return alias.area if alias else None
+        except Exception:
+            return None
+
+    @staticmethod
+    def ensure_area_from_location_area(location_area, raw_alias=None, channel=None):
+        if not location_area:
+            return None
+
+        normalized = CRMLocationMatchEngine.normalize_text(location_area.name)
+        if not normalized:
+            return None
+
+        lead_area = DoubleTickLeadArea.objects.filter(
+            location_area=location_area,
+            is_deleted=False,
+        ).order_by("-is_active", "priority", "created_at").first()
+
+        if not lead_area:
+            city_name = location_area.city.name if location_area.city else ""
+            lead_area = DoubleTickLeadArea.objects.filter(
+                location_area__isnull=True,
+                normalized_name=normalized,
+                city__iexact=city_name,
+                is_deleted=False,
+            ).order_by("-is_active", "priority", "created_at").first()
+            if lead_area:
+                lead_area.location_area = location_area
+                lead_area.save(update_fields=["location_area", "updated_at"])
+
+        if not lead_area:
+            lead_area = DoubleTickLeadArea.objects.create(
+                location_area=location_area,
+                normalized_name=normalized,
+                city=location_area.city.name if location_area.city else "",
+                name=location_area.name,
+                state=location_area.city.state.name if location_area.city and location_area.city.state else "",
+                is_active=True,
+                description="Auto-created from CRM location area.",
+            )
+
+        if raw_alias:
+            alias_normalized = normalize_area_text(raw_alias)
+            if alias_normalized:
+                DoubleTickAreaAlias.objects.get_or_create(
+                    lead_area=lead_area,
+                    normalized_alias=alias_normalized,
+                    defaults={
+                        "alias": raw_alias,
+                        "channel": channel,
+                        "created_from_manual_mapping": True,
+                    },
+                )
+
+        try:
+            from apps.locations.models import BranchCoverageArea
+            from django.contrib.contenttypes.models import ContentType
+
+            branches = list(
+                Branch.objects.filter(location_area=location_area, is_active=True, is_deleted=False)
+            )
+            if not branches:
+                branch_ct = ContentType.objects.get_for_model(Branch)
+                coverage_qs = BranchCoverageArea.objects.filter(
+                    is_deleted=False,
+                    is_active=True,
+                    area=location_area,
+                    content_type=branch_ct,
+                )
+                for coverage in coverage_qs.select_related("content_type"):
+                    branch = getattr(coverage, "branch", None)
+                    if branch and branch.is_active and not branch.is_deleted:
+                        branches.append(branch)
+
+            for branch in branches:
+                DoubleTickLeadAreaBranch.objects.get_or_create(
+                    lead_area=lead_area,
+                    branch=branch,
+                    defaults={
+                        "is_active": True,
+                        "receives_leads": True,
+                        "notes": "Auto-created from CRM location coverage.",
+                    },
+                )
+        except Exception:
+            pass
+
+        return lead_area
+
+    @staticmethod
+    def _base_result(text):
+        return {
+            "classification": "unknown",
+            "confidence": 0.0,
+            "reason": "",
+            "state": None,
+            "city": None,
+            "location_group": None,
+            "area": None,
+            "branch": None,
+            "raw_city": "",
+            "raw_group": "",
+            "raw_area": "",
+            "raw_branch": "",
+            "raw_service": "",
+            "matched_area": None,
+            "current_branch": None,
+            "should_request_location": False,
+            "input": str(text or "").strip(),
+        }
+
+    @staticmethod
+    def _active_locations():
+        from apps.locations.models import Area, AreaAlias, City, CityAlias, LocationGroup, State
+
+        return {
+            "states": State.objects.filter(is_deleted=False, is_active=True),
+            "cities": City.objects.filter(is_deleted=False, is_active=True).select_related("state"),
+            "city_aliases": CityAlias.objects.filter(is_deleted=False, is_active=True).select_related("city", "city__state"),
+            "groups": LocationGroup.objects.filter(is_deleted=False, is_active=True).select_related("city", "city__state"),
+            "areas": Area.objects.filter(is_deleted=False, is_active=True).select_related("city", "city__state"),
+            "area_aliases": AreaAlias.objects.filter(is_deleted=False, is_active=True).select_related("area", "area__city", "area__city__state"),
+        }
+
+    @staticmethod
+    def _matches_normalized(candidate, normalized):
+        candidate_norm = CRMLocationMatchEngine.normalize_text(candidate)
+        return bool(candidate_norm and normalized and candidate_norm == normalized)
+
+    @staticmethod
+    def classify_message(text, raw_city="", channel=None):
+        raw_text = str(text or "").strip()
+        normalized = CRMLocationMatchEngine.normalize_text(raw_text)
+        result = CRMLocationMatchEngine._base_result(raw_text)
+        if not normalized:
+            result.update(classification="greeting", reason="empty_message", should_request_location=True)
+            return result
+
+        normalized_greetings = {CRMLocationMatchEngine.normalize_text(item) for item in GREETING_WORDS}
+        normalized_jobs = {CRMLocationMatchEngine.normalize_text(item) for item in JOB_INQUIRY_WORDS}
+        normalized_services = {CRMLocationMatchEngine.normalize_text(item) for item in SERVICE_ACTION_WORDS}
+
+        if normalized in normalized_jobs or any(word and word in normalized for word in normalized_jobs):
+            result.update(classification="job_inquiry", confidence=0.95, reason="job_inquiry_phrase")
+            return result
+        if normalized in normalized_greetings:
+            result.update(classification="greeting", confidence=0.95, reason="greeting_or_general", should_request_location=True)
+            return result
+        if normalized in normalized_services:
+            result.update(classification="service_action", confidence=0.9, reason="service_action_phrase", raw_service=raw_text)
+            return result
+
+        # Branch labels often arrive as "SPA NAME - AREA". Match the branch and
+        # then route through the real area part only.
+        branch_part = raw_text
+        area_part = ""
+        if " - " in raw_text or "-" in raw_text:
+            pieces = [part.strip() for part in re.split(r"\s+-\s+|-", raw_text, maxsplit=1) if part.strip()]
+            if len(pieces) == 2:
+                branch_part, area_part = pieces
+
+        from apps.locations.services.fuzzy_matcher import (
+            AUTO_APPLY_SCORE,
+            SUGGESTION_SCORE,
+            fuzzy_match_branch,
+            fuzzy_match_location,
+        )
+
+        branch_match = None
+        if area_part:
+            branch_match = fuzzy_match_branch(
+                branch_part,
+                context={"raw_city": raw_city, "channel_id": getattr(channel, "id", None)},
+            )
+        else:
+            branch_match = fuzzy_match_branch(
+                raw_text,
+                context={"raw_city": raw_city, "channel_id": getattr(channel, "id", None)},
+            )
+            # A plain area name may resemble a branch name. Only an explicit
+            # "BRANCH - AREA" label or a high-confidence branch match may
+            # pre-empt normal city/group/area matching.
+            if branch_match and branch_match["score"] < AUTO_APPLY_SCORE:
+                branch_match = None
+
+        if branch_match:
+            candidate = branch_match['candidate']
+            score = branch_match['score']
+            method = branch_match['method']
+            branch = Branch.objects.filter(id=candidate['id'], is_active=True, is_deleted=False).first()
+            if branch:
+                branch_area_text = area_part or branch.area or branch.spa_name
+                area_match = fuzzy_match_location(
+                    branch_area_text,
+                    context={"raw_city": raw_city or branch.city, "channel_id": getattr(channel, "id", None)},
+                )
+                area_score = area_match["score"] if area_part and area_match else score
+                applied = score >= AUTO_APPLY_SCORE and area_score >= AUTO_APPLY_SCORE
+                lead_area = None
+                matched_area_name = branch_area_text
+                if applied:
+                    area_candidate = area_match["candidate"] if area_match else {}
+                    if area_candidate.get("type") in ["area", "area_alias"]:
+                        from apps.locations.models import Area
+
+                        location_area = Area.objects.filter(
+                            id=area_candidate.get("area_id") or area_candidate.get("id"),
+                            is_active=True,
+                            is_deleted=False,
+                        ).first()
+                        if location_area:
+                            matched_area_name = location_area.name
+                            lead_area = CRMLocationMatchEngine.ensure_area_from_location_area(location_area)
+                    elif area_candidate.get("type") in ["doubletick_area", "doubletick_area_alias"]:
+                        lead_area = DoubleTickLeadArea.objects.filter(
+                            id=area_candidate.get("lead_area_id"),
+                            is_active=True,
+                            is_deleted=False,
+                        ).first()
+                        matched_area_name = area_candidate.get("area_name") or branch_area_text
+                    if not lead_area:
+                        lead_area = AreaMatchingService.ensure_area_from_branch(
+                            branch_area_text, raw_city or branch.city, branch, channel
+                        )
+                result.update(
+                    classification="branch",
+                    confidence=min(score, area_score) / 100.0,
+                    reason=f"branch_{method}_match",
+                    branch=branch,
+                    area=matched_area_name if applied else None,
+                    raw_branch=branch.spa_name,
+                    raw_city=(raw_city or branch.city) if applied else "",
+                    raw_area=matched_area_name if applied else "",
+                    matched_area=lead_area if applied else None,
+                    current_branch=branch if applied else None,
+                    should_request_location=not applied,
+                    method=method
+                )
+                if SUGGESTION_SCORE <= min(score, area_score) < AUTO_APPLY_SCORE:
+                    result['suggested_match'] = {
+                        'name': branch.spa_name,
+                        'type': 'branch',
+                        'id': str(branch.id),
+                        'area_name': matched_area_name,
+                        'confidence': min(score, area_score) / 100.0,
+                        'reason': f"Possible branch match: {branch.spa_name}"
+                    }
+                return result
+
+        loc_match = fuzzy_match_location(
+            raw_text,
+            context={"raw_city": raw_city, "channel_id": getattr(channel, "id", None)},
+        )
+        if loc_match:
+            candidate = loc_match['candidate']
+            score = loc_match['score']
+            method = loc_match['method']
+            c_type = candidate['type']
+            applied = score >= AUTO_APPLY_SCORE
+
+            if c_type == 'state':
+                result.update(
+                    classification="state" if applied else "unknown",
+                    confidence=score / 100.0,
+                    reason=f"state_{method}",
+                    raw_city="",
+                    method=method
+                )
+                if not applied:
+                    result["suggested_match"] = {
+                        "name": candidate["name"], "type": "state", "id": str(candidate["id"]),
+                        "confidence": score / 100.0, "reason": f"Possible state match: {candidate['name']}",
+                    }
+                return result
+
+            elif c_type in ['city', 'city_alias']:
+                from apps.locations.models import City
+                city_id = candidate.get('city_id') or candidate['id']
+                city = City.objects.filter(id=city_id, is_active=True, is_deleted=False).first()
+                result.update(
+                    classification="city" if applied else "unknown",
+                    confidence=score / 100.0,
+                    reason=f"city_{method}",
+                    state=city.state if city else None,
+                    city=city,
+                    raw_city=city.name if city and applied else "",
+                    raw_area="",
+                    should_request_location=True,
+                    method=method
+                )
+                if not applied and city:
+                    result["suggested_match"] = {
+                        "name": city.name, "type": "city", "id": str(city.id),
+                        "confidence": score / 100.0, "reason": f"Possible city match: {city.name}",
+                    }
+                return result
+
+            elif c_type == 'location_group':
+                from apps.locations.models import LocationGroup
+                group = LocationGroup.objects.filter(id=candidate['id'], is_active=True, is_deleted=False).first()
+                result.update(
+                    classification="location_group" if applied else "unknown",
+                    confidence=score / 100.0,
+                    reason=f"location_group_{method}",
+                    state=group.city.state if group and group.city else None,
+                    city=group.city if group else None,
+                    location_group=group,
+                    raw_city=group.city.name if group and group.city and applied else "",
+                    raw_group=group.name if group and applied else "",
+                    raw_area="",
+                    should_request_location=True,
+                    method=method
+                )
+                if not applied and group:
+                    result["suggested_match"] = {
+                        "name": group.name, "type": "location_group", "id": str(group.id),
+                        "confidence": score / 100.0, "reason": f"Possible group match: {group.name}",
+                    }
+                return result
+
+            elif c_type in ['area', 'area_alias']:
+                from apps.locations.models import Area
+                area_id = candidate.get('area_id') or candidate['id']
+                area = Area.objects.filter(id=area_id, is_active=True, is_deleted=False).first()
+                if area:
+                    lead_area = (
+                        CRMLocationMatchEngine.ensure_area_from_location_area(area)
+                        if applied else None
+                    )
+                    result.update(
+                        classification="area",
+                        confidence=score / 100.0,
+                        reason=f"area_{method}",
+                        state=area.city.state if area.city else None,
+                        city=area.city,
+                        area=area,
+                        raw_city=area.city.name if area.city and applied else "",
+                        raw_area=area.name if applied else "",
+                        matched_area=lead_area if applied else None,
+                        should_request_location=not applied,
+                        method=method
+                    )
+                    if SUGGESTION_SCORE <= score < AUTO_APPLY_SCORE:
+                        result['suggested_match'] = {
+                            'name': area.name,
+                            'type': 'area',
+                            'id': str(area.id),
+                            'confidence': score / 100.0,
+                            'reason': f"Fuzzy matched area '{area.name}' with score {score}"
+                        }
+                    return result
+
+            elif c_type in ["doubletick_area", "doubletick_area_alias"]:
+                lead_area = DoubleTickLeadArea.objects.filter(
+                    id=candidate.get("lead_area_id"),
+                    is_active=True,
+                    is_deleted=False,
+                ).first()
+                if lead_area:
+                    result.update(
+                        classification="area",
+                        confidence=score / 100.0,
+                        reason=f"area_{method}",
+                        raw_city=lead_area.city if applied else "",
+                        raw_area=lead_area.name if applied else "",
+                        matched_area=lead_area if applied else None,
+                        should_request_location=not applied,
+                        method=method,
+                    )
+                    if not applied:
+                        result["suggested_match"] = {
+                            "name": lead_area.name, "type": "lead_area", "id": str(lead_area.id),
+                            "confidence": score / 100.0, "reason": f"Possible trained area match: {lead_area.name}",
+                        }
+                    return result
+
+        result.update(classification="unknown", confidence=0.1, reason="no_location_match", should_request_location=True)
+        return result
 
 
 def send_lead_notification(lead, recipient):
@@ -225,7 +742,7 @@ class PendingConversationService:
         else:
             conversation.status = DoubleTickConversation.Status.AWAITING_LOCATION
             conversation.pending_reason = DoubleTickConversation.PendingReason.MISSING_LOCATION
-        conversation.requires_manual_attention = False
+        conversation.requires_manual_attention = True
         conversation.save(update_fields=["status", "pending_reason", "requires_manual_attention", "updated_at"])
         if old_status != conversation.status:
             _activity(
@@ -270,11 +787,160 @@ class PendingConversationService:
         return updated
 
 
+class GreetingAutomationService:
+    """Save first-touch bot messages and send them when DoubleTick API is configured."""
+
+    @staticmethod
+    def _create_outbound(conversation, text, message_type="text", origin=None, interactive_payload=None):
+        now = timezone.now()
+        fingerprint = "|".join([str(conversation.id), message_type, text, now.isoformat()])
+        dt_message_id = "local-" + hashlib.sha256(fingerprint.encode("utf-8")).hexdigest()
+        message = DoubleTickMessage.objects.create(
+            conversation=conversation,
+            lead=conversation.current_lead,
+            customer=conversation.customer,
+            dt_message_id=dt_message_id,
+            message_id=dt_message_id,
+            direction=DoubleTickMessage.Direction.OUTBOUND,
+            origin=origin or DoubleTickMessage.Origin.BOT,
+            message_type=message_type,
+            text=text,
+            interactive_payload=interactive_payload or {},
+            status=DoubleTickMessage.Status.QUEUED,
+            sender_display_name="Bot",
+            customer_number=conversation.customer.phone_number,
+            waba_number=conversation.channel.waba_number if conversation.channel else "",
+            message_timestamp=now,
+            sent_at=now,
+            raw_payload={"local_automation": True},
+        )
+        return message
+
+    @staticmethod
+    def send_first_touch(conversation):
+        if conversation.messages.filter(direction=DoubleTickMessage.Direction.OUTBOUND, origin=DoubleTickMessage.Origin.BOT).exists():
+            return []
+        greeting_text = getattr(
+            settings,
+            "DOUBLETICK_GREETING_MESSAGE",
+            "Namaste! Thanks for messaging us. Please choose your nearest location so we can connect you with the right spa.",
+        )
+        list_text = getattr(settings, "DOUBLETICK_LOCATION_REQUEST_MESSAGE", LOCATION_REQUEST_MESSAGE)
+        messages = [
+            GreetingAutomationService._create_outbound(conversation, greeting_text, "text"),
+            GreetingAutomationService._create_outbound(
+                conversation,
+                list_text,
+                "interactive_list",
+                interactive_payload={"purpose": "location_request"},
+            ),
+        ]
+        for message in messages:
+            if not getattr(settings, "DOUBLETICK_API_KEY", ""):
+                message.status = DoubleTickMessage.Status.QUEUED
+                message.failure_reason = "DoubleTick API key is not configured; message saved locally."
+                message.save(update_fields=["status", "failure_reason", "updated_at"])
+                continue
+            try:
+                response = DoubleTickReplyService._send_text(conversation, message.text)
+                message.status = DoubleTickMessage.Status.SENT
+                message.raw_payload = response
+                message.save(update_fields=["status", "raw_payload", "updated_at"])
+            except Exception as exc:
+                message.status = DoubleTickMessage.Status.FAILED
+                message.failed_at = timezone.now()
+                message.failure_reason = str(exc)
+                message.save(update_fields=["status", "failed_at", "failure_reason", "updated_at"])
+        conversation.last_agent_message_at = timezone.now()
+        conversation.team_last_replied_at = conversation.last_agent_message_at
+        conversation.save(update_fields=["last_agent_message_at", "team_last_replied_at", "updated_at"])
+        _activity(conversation=conversation, action=DoubleTickActivity.Action.LOCATION_REQUESTED)
+        return messages
+
+
+class AutoLocationRequestService:
+    """Send one location request for vague inbound customer messages."""
+
+    @staticmethod
+    def recently_requested(conversation, now=None):
+        now = now or timezone.now()
+        cutoff = now - timedelta(minutes=30)
+        return conversation.messages.filter(
+            direction=DoubleTickMessage.Direction.OUTBOUND,
+            origin__in=[DoubleTickMessage.Origin.BOT, DoubleTickMessage.Origin.API],
+            text=LOCATION_REQUEST_MESSAGE,
+            created_at__gte=cutoff,
+        ).exists()
+
+    @staticmethod
+    def request_if_needed(conversation, match_result, now=None):
+        now = now or timezone.now()
+        if not match_result.get("should_request_location"):
+            return None
+        if match_result.get("classification") == "job_inquiry":
+            return None
+        if conversation.matched_area_id or conversation.raw_area:
+            return None
+        if AutoLocationRequestService.recently_requested(conversation, now):
+            return None
+
+        fingerprint = "|".join([str(conversation.id), "location-request", now.isoformat()])
+        dt_message_id = "local-" + hashlib.sha256(fingerprint.encode("utf-8")).hexdigest()
+        message = DoubleTickMessage.objects.create(
+            conversation=conversation,
+            lead=conversation.current_lead,
+            customer=conversation.customer,
+            dt_message_id=dt_message_id,
+            message_id=dt_message_id,
+            direction=DoubleTickMessage.Direction.OUTBOUND,
+            origin=DoubleTickMessage.Origin.BOT,
+            message_type="text",
+            text=LOCATION_REQUEST_MESSAGE,
+            status=DoubleTickMessage.Status.QUEUED,
+            sender_display_name="Bot",
+            customer_number=conversation.customer.phone_number,
+            waba_number=conversation.channel.waba_number if conversation.channel else "",
+            message_timestamp=now,
+            sent_at=now,
+            raw_payload={"local_automation": True, "purpose": "location_request"},
+        )
+        if getattr(settings, "DOUBLETICK_API_KEY", ""):
+            try:
+                response = DoubleTickReplyService._send_text(conversation, LOCATION_REQUEST_MESSAGE)
+                message.status = DoubleTickMessage.Status.SENT
+                message.raw_payload = response
+                message.save(update_fields=["status", "raw_payload", "updated_at"])
+            except Exception as exc:
+                message.status = DoubleTickMessage.Status.FAILED
+                message.failed_at = timezone.now()
+                message.failure_reason = str(exc)
+                message.save(update_fields=["status", "failed_at", "failure_reason", "updated_at"])
+
+        conversation.last_agent_message_at = now
+        conversation.team_last_replied_at = now
+        conversation.save(update_fields=["last_agent_message_at", "team_last_replied_at", "updated_at"])
+        _activity(
+            conversation=conversation,
+            lead=conversation.current_lead,
+            action=DoubleTickActivity.Action.LOCATION_REQUESTED,
+            note="Auto location request sent.",
+            metadata={"classification": match_result.get("classification"), "reason": match_result.get("reason")},
+        )
+        return message
+
+
 class AreaMatchingService:
     """Controlled area and alias matching."""
 
     @staticmethod
-    def find_area(raw_area, raw_city="", channel=None):
+    def _find_or_create_lead_area_from_crm(raw_area, raw_city="", channel=None):
+        location_area = CRMLocationMatchEngine.find_area(raw_area, raw_city)
+        if not location_area:
+            return None
+        return CRMLocationMatchEngine.ensure_area_from_location_area(location_area, raw_alias=raw_area, channel=channel)
+
+    @staticmethod
+    def find_area(raw_area, raw_city="", channel=None, create_if_missing=True):
         normalized = normalize_area_text(raw_area)
         if not normalized:
             return None
@@ -293,20 +959,66 @@ class AreaMatchingService:
         area_qs = DoubleTickLeadArea.objects.filter(normalized_name=normalized, is_active=True)
         if raw_city:
             area_qs = area_qs.filter(Q(city__iexact=raw_city) | Q(city=""))
-        return area_qs.order_by("priority", "name").first()
+        lead_area = area_qs.order_by("priority", "name").first()
+        if lead_area:
+            return lead_area
+
+        if create_if_missing:
+            return AreaMatchingService._find_or_create_lead_area_from_crm(raw_area, raw_city, channel)
+        return None
 
     @staticmethod
     def find_branch_candidates(raw_area, raw_city=""):
         """
-        Find active spa branches using existing branch city/area/spa metadata.
+        Find active spa branches using normalized CRM location FK coverage first,
+        then fall back to legacy branch city/area/spa text matching.
 
-        This is a fallback for real-world WhatsApp replies where the customer
-        gives a location that has not yet been configured as a DoubleTick area.
+        Priority:
+          1. Branch.location_area PK match via CRM Area
+          2. BranchCoverageArea CRM coverage mapping
+          3. Legacy text-field fuzzy match (backward-compat fallback)
         """
         normalized_area = normalize_area_text(raw_area)
         normalized_city = normalize_area_text(raw_city)
         if not normalized_area and not normalized_city:
             return []
+
+        try:
+            from django.contrib.contenttypes.models import ContentType
+            from apps.locations.models import BranchCoverageArea
+
+            location_area = CRMLocationMatchEngine.find_area(raw_area, raw_city)
+            if location_area:
+                fk_branches = list(
+                    Branch.objects.filter(
+                        is_active=True,
+                        is_deleted=False,
+                        location_area=location_area,
+                    ).order_by("spa_name")
+                )
+                if fk_branches:
+                    return fk_branches
+
+                branch_ct = ContentType.objects.get_for_model(Branch)
+                coverage_qs = BranchCoverageArea.objects.filter(
+                    is_deleted=False,
+                    is_active=True,
+                    area=location_area,
+                    content_type=branch_ct,
+                ).order_by("priority", "-is_primary")
+                pk_branch_ids = list(coverage_qs.values_list("object_id", flat=True))
+                if pk_branch_ids:
+                    pk_branches = list(
+                        Branch.objects.filter(
+                            id__in=pk_branch_ids,
+                            is_active=True,
+                            is_deleted=False,
+                        ).order_by("spa_name")
+                    )
+                    if pk_branches:
+                        return pk_branches
+        except Exception:
+            pass
 
         branches = Branch.objects.filter(is_active=True, is_deleted=False)
         if normalized_city:
@@ -331,6 +1043,7 @@ class AreaMatchingService:
 
         matches.sort(key=lambda item: (-item[0], item[1].spa_name or ""))
         return [branch for _, branch in matches]
+
 
     @staticmethod
     def ensure_area_from_branch(raw_area, raw_city="", branch=None, channel=None):
@@ -384,6 +1097,116 @@ class AreaMatchingService:
                 },
             )
         return lead_area
+
+    @staticmethod
+    def apply_match_result(conversation, match_result):
+        metadata = dict(conversation.raw_payload or {})
+        if "suggested_match" in match_result:
+            metadata["suggested_match"] = match_result["suggested_match"]
+        else:
+            metadata.pop("suggested_match", None)
+
+        metadata["location_match"] = {
+            key: (
+                str(value.id) if hasattr(value, "id") else value
+            )
+            for key, value in match_result.items()
+            if key not in {"state", "city", "location_group", "area", "branch", "matched_area", "current_branch", "suggested_match"}
+        }
+        conversation.raw_payload = metadata
+
+        classification = match_result.get("classification")
+        if classification == "city":
+            conversation.raw_city = match_result.get("raw_city") or ""
+            conversation.raw_area = ""
+            conversation.status = DoubleTickConversation.Status.AWAITING_LOCATION
+            conversation.pending_reason = DoubleTickConversation.PendingReason.MISSING_LOCATION
+            conversation.requires_manual_attention = True
+            conversation.area_confirmed = False
+            conversation.matched_area = None
+        elif classification == "location_group":
+            conversation.raw_city = match_result.get("raw_city") or conversation.raw_city
+            conversation.raw_area = ""
+            conversation.status = DoubleTickConversation.Status.AWAITING_LOCATION
+            conversation.pending_reason = DoubleTickConversation.PendingReason.MISSING_LOCATION
+            conversation.requires_manual_attention = True
+            conversation.area_confirmed = False
+            conversation.matched_area = None
+        elif classification in ["area", "branch"]:
+            if match_result.get("matched_area"):
+                conversation.raw_city = match_result.get("raw_city") or conversation.raw_city
+                conversation.raw_area = match_result.get("raw_area") or ""
+                conversation.matched_area = match_result["matched_area"]
+                conversation.area_confirmed = True
+                conversation.status = DoubleTickConversation.Status.QUALIFIED
+                conversation.pending_reason = ""
+                conversation.requires_manual_attention = False
+            else:
+                conversation.raw_city = match_result.get("raw_city") or conversation.raw_city
+                conversation.raw_area = match_result.get("raw_area") or ""
+                conversation.status = DoubleTickConversation.Status.AREA_UNMATCHED
+                conversation.pending_reason = DoubleTickConversation.PendingReason.UNMATCHED_LOCATION
+                conversation.requires_manual_attention = True
+                conversation.area_confirmed = False
+                conversation.matched_area = None
+        elif classification == "service_action":
+            conversation.raw_service = match_result.get("raw_service") or conversation.raw_service
+            conversation.raw_area = ""
+            conversation.status = DoubleTickConversation.Status.AWAITING_LOCATION
+            conversation.pending_reason = DoubleTickConversation.PendingReason.MISSING_LOCATION
+            conversation.requires_manual_attention = True
+            conversation.area_confirmed = False
+        elif classification == "job_inquiry":
+            conversation.raw_area = ""
+            conversation.status = DoubleTickConversation.Status.MANUAL_ATTENTION
+            conversation.pending_reason = DoubleTickConversation.PendingReason.MANUAL_REPLY_REQUIRED
+            conversation.requires_manual_attention = True
+            conversation.area_confirmed = False
+            conversation.matched_area = None
+        elif classification in ["greeting", "unknown", "state"]:
+            conversation.raw_area = ""
+            conversation.status = DoubleTickConversation.Status.AWAITING_LOCATION
+            conversation.pending_reason = (
+                DoubleTickConversation.PendingReason.GREETING_ONLY
+                if classification == "greeting"
+                else DoubleTickConversation.PendingReason.MISSING_LOCATION
+            )
+            conversation.requires_manual_attention = True
+            conversation.area_confirmed = False
+            conversation.matched_area = None
+
+        conversation.save()
+
+        raw_text = match_result.get("input") or ""
+        normalized = CRMLocationMatchEngine.normalize_text(raw_text)
+        method = match_result.get("method") or ("exact" if match_result.get("confidence", 0) == 1.0 else "none")
+
+        _activity(
+            conversation=conversation,
+            action=(
+                DoubleTickActivity.Action.AREA_MATCHED
+                if conversation.matched_area_id
+                else DoubleTickActivity.Action.AREA_UNMATCHED
+            ),
+            new_status=conversation.status,
+            note=match_result.get("reason", ""),
+            metadata={
+                "original_text": raw_text,
+                "normalized_text": normalized,
+                "method": method,
+                "classification": classification,
+                "confidence": match_result.get("confidence", 0.0),
+                "reason": match_result.get("reason", ""),
+                "applied": "yes" if conversation.area_confirmed else "no",
+                "matched_city": match_result.get("raw_city") or "",
+                "matched_group": match_result.get("raw_group") or "",
+                "matched_area": getattr(conversation.matched_area, "name", "") if conversation.matched_area else "",
+                "matched_branch": getattr(match_result.get("branch"), "spa_name", "") if match_result.get("branch") else "",
+                "conversation_id": str(conversation.id),
+                "lead_id": str(conversation.current_lead_id) if conversation.current_lead_id else "",
+            },
+        )
+        return conversation
 
     @staticmethod
     def match_conversation(conversation, raw_area=None, raw_city=None, save_alias=False):
@@ -536,7 +1359,18 @@ class DoubleTickConversationService:
 
         received_at = _timestamp_from_payload(payload)
         dt_message_id = parsed.get("doubletick_message_id") or first_value(payload, ["dtMessageId", "message.id", "messageId"])
-        text = parsed.get("message", "")
+        text = parsed.get("message", "") or _message_text(payload)
+        message_type = _provider_message_type(payload)
+        interactive_payload = first_value(payload, [
+            "interactive",
+            "message.interactive",
+            "button",
+            "listReply",
+            "reply",
+            "flowResponse",
+            "flow_response",
+            "data.interactive",
+        ], default={}) or {}
         if not dt_message_id:
             fingerprint = "|".join([
                 str(conversation.id),
@@ -554,11 +1388,20 @@ class DoubleTickConversationService:
                 "customer": customer,
                 "direction": DoubleTickMessage.Direction.INBOUND,
                 "origin": DoubleTickMessage.Origin.CUSTOMER,
-                "message_type": str(first_value(payload, ["message.type", "messageType"], default="text")),
+                "message_type": message_type,
                 "text": text,
+                "interactive_payload": interactive_payload if isinstance(interactive_payload, dict) else {"value": interactive_payload},
                 "status": DoubleTickMessage.Status.RECEIVED,
                 "customer_number": parsed.get("phone_number", ""),
-                "waba_number": str(first_value(payload, ["waba_number", "wabaNumber", "channel.waba_number", "to"]) or ""),
+                "waba_number": normalize_waba_number(first_value(payload, [
+                    "waba_number",
+                    "wabaNumber",
+                    "channel.waba_number",
+                    "data.wabaNumber",
+                    "data.channel.waba_number",
+                    "to",
+                    "from",
+                ])),
                 "message_timestamp": received_at,
                 "received_at": received_at,
                 "raw_payload": payload,
@@ -581,10 +1424,6 @@ class DoubleTickConversationService:
             conversation.raw_city = extracted_city
         if extracted_area:
             conversation.raw_area = extracted_area
-        elif text and not PendingConversationService.is_greeting_only(text):
-            # Treat a short free-text reply as a possible area only for inbound
-            # customer text, never for outgoing bot recommendation messages.
-            conversation.raw_area = conversation.raw_area or text.strip()
         if extracted_service:
             conversation.raw_service = extracted_service
 
@@ -756,13 +1595,14 @@ class LeadQualificationService:
 
     @staticmethod
     @transaction.atomic
-    def qualify_conversation(conversation, user=None, distribute=True):
-        if not conversation.area_confirmed or not conversation.matched_area_id:
-            raise ValidationError("Conversation cannot be qualified until a CRM area is confirmed.")
+    def ensure_conversation_lead(conversation, user=None, matched_area=None, distribute=True):
         now = timezone.now()
         lead = conversation.current_lead
         first_message = conversation.messages.order_by("received_at", "created_at").first()
         latest_customer = conversation.messages.filter(direction=DoubleTickMessage.Direction.INBOUND).order_by("-received_at", "-created_at").first()
+        area = matched_area or conversation.matched_area
+        has_area = bool(conversation.area_confirmed and area)
+        lead_status = DoubleTickLead.Status.QUALIFIED if has_area else DoubleTickLead.Status.UNASSIGNED
         defaults = {
             "customer": conversation.customer,
             "channel": conversation.channel,
@@ -776,18 +1616,18 @@ class LeadQualificationService:
             "raw_area": conversation.raw_area,
             "raw_service": conversation.raw_service,
             "city": conversation.raw_city,
-            "area": conversation.raw_area,
+            "area": conversation.raw_area if has_area else "",
             "service_name": conversation.raw_service,
-            "matched_area": conversation.matched_area,
-            "status": DoubleTickLead.Status.QUALIFIED,
+            "matched_area": area if has_area else None,
+            "status": lead_status,
             "dt_customer_id": conversation.customer.dt_customer_id,
             "doubletick_customer_id": conversation.customer.dt_customer_id,
             "dt_first_message_id": first_message.dt_message_id if first_message else "",
             "dt_last_message_id": latest_customer.dt_message_id if latest_customer else "",
             "doubletick_message_id": latest_customer.dt_message_id if latest_customer else "",
             "received_at": conversation.first_message_at,
-            "qualified_at": now,
-            "area_matched_at": now,
+            "qualified_at": now if has_area else None,
+            "area_matched_at": now if has_area else None,
             "raw_payload": conversation.raw_payload,
         }
         if lead:
@@ -798,8 +1638,25 @@ class LeadQualificationService:
             lead = DoubleTickLead.objects.create(conversation=conversation, **defaults)
             conversation.current_lead = lead
 
-        conversation.status = DoubleTickConversation.Status.QUALIFIED
-        conversation.save(update_fields=["current_lead", "status", "updated_at"])
+        DoubleTickMessage.objects.filter(conversation=conversation, lead__isnull=True).update(lead=lead)
+
+        if has_area:
+            conversation.status = DoubleTickConversation.Status.QUALIFIED
+            conversation.pending_reason = ""
+            conversation.requires_manual_attention = False
+        elif conversation.raw_area:
+            conversation.status = DoubleTickConversation.Status.AREA_UNMATCHED
+            conversation.pending_reason = DoubleTickConversation.PendingReason.UNMATCHED_LOCATION
+            conversation.requires_manual_attention = True
+        else:
+            conversation.status = DoubleTickConversation.Status.AWAITING_LOCATION
+            conversation.pending_reason = (
+                DoubleTickConversation.PendingReason.GREETING_ONLY
+                if latest_customer and PendingConversationService.is_greeting_only(latest_customer.text)
+                else DoubleTickConversation.PendingReason.MISSING_LOCATION
+            )
+            conversation.requires_manual_attention = True
+        conversation.save(update_fields=["current_lead", "status", "pending_reason", "requires_manual_attention", "updated_at"])
         _activity(
             conversation=conversation,
             lead=lead,
@@ -807,9 +1664,16 @@ class LeadQualificationService:
             action=DoubleTickActivity.Action.LEAD_QUALIFIED,
             new_status=lead.status,
         )
-        if distribute:
+        if has_area and distribute:
             LeadDistributionService.distribute(lead, user=user)
         return lead
+
+    @staticmethod
+    @transaction.atomic
+    def qualify_conversation(conversation, user=None, distribute=True):
+        if not conversation.area_confirmed or not conversation.matched_area_id:
+            raise ValidationError("Conversation cannot be qualified until a CRM area is confirmed.")
+        return LeadQualificationService.ensure_conversation_lead(conversation, user=user, distribute=distribute)
 
 
 class LeadDistributionService:
@@ -866,14 +1730,14 @@ class LeadDistributionService:
     def distribute(lead, user=None):
         lead = DoubleTickLead.objects.select_for_update(of=("self",)).select_related("matched_area", "conversation").get(pk=lead.pk)
         if not lead.matched_area_id:
-            lead.status = DoubleTickLead.Status.FAILED
+            lead.status = DoubleTickLead.Status.UNASSIGNED
             lead.save(update_fields=["status", "updated_at"])
-            _activity(lead=lead, action=DoubleTickActivity.Action.PROCESSING_FAILED, note="Lead has no matched area.")
+            _activity(lead=lead, action=DoubleTickActivity.Action.MANUAL_ATTENTION_REQUIRED, note="Lead has no matched area.")
             DoubleTickDistributionAudit.objects.create(
                 lead=lead,
                 conversation=lead.conversation,
-                status=DoubleTickDistributionAudit.Status.FAILED,
-                failure_reason="Lead has no matched area.",
+                status=DoubleTickDistributionAudit.Status.SUCCESS,
+                failure_reason="Lead has no matched area; kept in manual queue.",
             )
             return lead
 
@@ -908,6 +1772,36 @@ class LeadDistributionService:
                 },
             )
             return lead
+
+        mode = lead.matched_area.distribution_mode or DoubleTickLeadArea.DistributionMode.BROADCAST_CLAIM
+        if mode == DoubleTickLeadArea.DistributionMode.MANUAL:
+            lead.status = DoubleTickLead.Status.UNASSIGNED
+            lead.distributed_at = timezone.now()
+            lead.save(update_fields=["status", "distributed_at", "updated_at"])
+            DoubleTickDistributionAudit.objects.create(
+                lead=lead,
+                conversation=lead.conversation,
+                matched_area=lead.matched_area,
+                status=DoubleTickDistributionAudit.Status.SUCCESS,
+                mapped_branch_count=len(mappings),
+                failure_reason="Manual distribution mode; lead kept in admin/manager queue.",
+            )
+            _activity(conversation=lead.conversation, lead=lead, user=user, action=DoubleTickActivity.Action.LEAD_DISTRIBUTED, metadata={"mode": mode})
+            return lead
+
+        if mode == DoubleTickLeadArea.DistributionMode.ROUND_ROBIN:
+            last_audit = DoubleTickDistributionAudit.objects.filter(
+                matched_area=lead.matched_area,
+                metadata__round_robin_branch_id__isnull=False,
+            ).order_by("-created_at").first()
+            last_branch_id = (last_audit.metadata or {}).get("round_robin_branch_id") if last_audit else None
+            start_index = 0
+            if last_branch_id:
+                for index, mapping in enumerate(mappings):
+                    if str(mapping.branch_id) == str(last_branch_id):
+                        start_index = (index + 1) % len(mappings)
+                        break
+            mappings = [mappings[start_index]]
 
         User = get_user_model()
         notified_count = 0
@@ -993,6 +1887,8 @@ class LeadDistributionService:
             notification_failure_count=notification_failure_count,
             metadata={
                 "branch_ids": branch_ids,
+                "mode": mode,
+                "round_robin_branch_id": branch_ids[0] if mode == DoubleTickLeadArea.DistributionMode.ROUND_ROBIN and branch_ids else "",
                 "auto_created_mapping_ids": [str(mapping.id) for mapping in auto_created_mappings],
                 "raw_city": lead.raw_city or lead.city,
                 "raw_area": lead.raw_area or lead.area,
@@ -1290,8 +2186,8 @@ class DoubleTickReplyService:
 
     @staticmethod
     def reply(conversation, user, text, message_type="text"):
-        if getattr(user, "role", None) not in ["super_admin", "admin"]:
-            raise PermissionDenied("Only internal CRM staff can reply to central pending conversations.")
+        if not getattr(user, "is_authenticated", False):
+            raise PermissionDenied("A CRM user is required to reply to DoubleTick conversations.")
         now = timezone.now()
         message = DoubleTickMessage.objects.create(
             conversation=conversation,
@@ -1351,10 +2247,20 @@ class DoubleTickReplyService:
 
 
 def find_channel_from_payload(payload):
-    waba_number = first_value(payload, ["waba_number", "wabaNumber", "channel.waba_number", "to"])
-    if not waba_number:
-        return None
-    return DoubleTickChannel.objects.filter(waba_number=str(waba_number)).first()
+    waba_number = first_value(payload, [
+        "waba_number",
+        "wabaNumber",
+        "channel.waba_number",
+        "data.wabaNumber",
+        "data.channel.waba_number",
+        "to",
+        "from",
+    ])
+    channel = _channel_from_waba_number(waba_number)
+    if channel:
+        return channel
+    active_channels = list(DoubleTickChannel.objects.filter(is_active=True)[:2])
+    return active_channels[0] if len(active_channels) == 1 else None
 
 
 @transaction.atomic
@@ -1369,22 +2275,36 @@ def create_or_update_lead_from_webhook(payload):
     event_type = get_event_type(payload)
     event_id = get_event_id(payload)
     event_class = DoubleTickWebhookClassifier.classify(payload)
-    webhook_log = DoubleTickWebhookLog.objects.create(
-        event_type=event_type,
-        doubletick_event_id=event_id,
-        payload=payload,
-    )
+
+    webhook_log = None
+    if event_id:
+        webhook_log = DoubleTickWebhookLog.objects.filter(doubletick_event_id=event_id).select_for_update().first()
+        if webhook_log and webhook_log.processed:
+            webhook_log.error_message = "duplicate_event_skipped"
+            return webhook_log.lead, webhook_log
+
+    if not webhook_log:
+        webhook_log = DoubleTickWebhookLog.objects.create(
+            event_type=event_type,
+            doubletick_event_id=event_id,
+            payload=payload,
+        )
+
     _activity(action=DoubleTickActivity.Action.WEBHOOK_RECEIVED, metadata={"event_type": event_type, "event_class": event_class})
 
     try:
-        if event_class == "outbound_message_status":
+        if event_class in ["message_status_update", "outgoing_api_message", "outgoing_agent_message"]:
             message = DoubleTickConversationService.update_outbound_status(payload)
             webhook_log.message = message
+            if message:
+                webhook_log.conversation = message.conversation
+                webhook_log.lead = message.lead
             webhook_log.processed = True
-            webhook_log.save(update_fields=["message", "processed", "updated_at"])
+            webhook_log.save(update_fields=["conversation", "lead", "message", "processed", "updated_at"])
             return None, webhook_log
 
-        if event_class != "inbound_message":
+        inbound_classes = ["incoming_customer_message", "interactive_reply", "template_reply", "flow_response", "customer_custom_field_updated"]
+        if event_class not in inbound_classes:
             webhook_log.processed = True
             webhook_log.save(update_fields=["processed", "updated_at"])
             return None, webhook_log
@@ -1392,25 +2312,99 @@ def create_or_update_lead_from_webhook(payload):
         conversation, message, created_message = DoubleTickConversationService.upsert_inbound_message(payload)
         webhook_log.conversation = conversation
         webhook_log.message = message
+        if not conversation.channel_id:
+            webhook_log.error_message = "channel_not_found"
+            _activity(
+                conversation=conversation,
+                action=DoubleTickActivity.Action.PROCESSING_FAILED,
+                note="DoubleTick channel not found for webhook payload.",
+                metadata={
+                    "reason": "channel_not_found",
+                    "waba_candidates": [
+                        normalize_waba_number(first_value(payload, [path]))
+                        for path in [
+                            "wabaNumber",
+                            "waba_number",
+                            "channel.waba_number",
+                            "data.wabaNumber",
+                            "data.channel.waba_number",
+                            "to",
+                            "from",
+                        ]
+                        if first_value(payload, [path])
+                    ],
+                },
+            )
 
         if not created_message:
+            if conversation.current_lead_id and message.lead_id != conversation.current_lead_id:
+                message.lead = conversation.current_lead
+                message.save(update_fields=["lead", "updated_at"])
             webhook_log.processed = True
-            webhook_log.save(update_fields=["conversation", "message", "processed", "updated_at"])
+            webhook_log.save(update_fields=["conversation", "message", "error_message", "processed", "updated_at"])
             return conversation.current_lead, webhook_log
 
-        if conversation.raw_area:
-            matched_area = AreaMatchingService.match_conversation(conversation)
-            if matched_area:
-                lead = LeadQualificationService.qualify_conversation(conversation, distribute=True)
-                webhook_log.lead = lead
-            else:
-                lead = None
-        else:
-            PendingConversationService.apply_pending_state(conversation, message.text)
-            lead = None
+        parsed_payload = parse_doubletick_payload(payload)
+        inbound_text = conversation.raw_area or parsed_payload.get("area") or message.text
+        match_result = CRMLocationMatchEngine.classify_message(
+            inbound_text,
+            raw_city=conversation.raw_city or parsed_payload.get("city", ""),
+            channel=conversation.channel,
+        )
+        if parsed_payload.get("service_name") and match_result.get("classification") in ["unknown", "greeting"]:
+            match_result.update(
+                classification="service_action",
+                confidence=0.9,
+                reason="payload_service",
+                raw_service=parsed_payload["service_name"],
+                should_request_location=not bool(conversation.raw_area),
+            )
+        AreaMatchingService.apply_match_result(conversation, match_result)
+        lead = LeadQualificationService.ensure_conversation_lead(
+            conversation,
+            matched_area=conversation.matched_area,
+            distribute=bool(conversation.area_confirmed and conversation.matched_area_id),
+        )
+        if match_result.get("classification") in ["branch"] and match_result.get("current_branch"):
+            lead.current_branch = match_result["current_branch"]
+            lead.assigned_branch = match_result["current_branch"]
+            lead.save(update_fields=["current_branch", "assigned_branch", "updated_at"])
+        AutoLocationRequestService.request_if_needed(conversation, match_result)
+
+        webhook_log.lead = lead
+        if lead and message.lead_id != lead.id:
+            message.lead = lead
+            message.save(update_fields=["lead", "updated_at"])
+
+        # Simple duplicate detection: if a previous lead with the same
+        # normalized phone exists, mark this new lead as a duplicate and
+        # point `duplicate_of` to the earlier lead. This is intentionally
+        # conservative and non-blocking; failures here should not break
+        # webhook processing.
+        try:
+            if lead and lead.normalized_phone:
+                existing_lead = DoubleTickLead.objects.filter(normalized_phone=lead.normalized_phone).exclude(id=lead.id).order_by("created_at").first()
+                if existing_lead:
+                    lead.is_duplicate = True
+                    lead.duplicate_of = existing_lead
+                    lead.save(update_fields=["is_duplicate", "duplicate_of", "updated_at"])
+        except Exception:
+            pass
+
+        try:
+            from apps.bots.services import BotEngine
+
+            BotEngine.handle_incoming_message(conversation, lead, message)
+        except Exception as bot_exc:
+            _activity(
+                conversation=conversation,
+                lead=lead,
+                action=DoubleTickActivity.Action.PROCESSING_FAILED,
+                note=f"Bot processing failed: {bot_exc}",
+            )
 
         webhook_log.processed = True
-        webhook_log.save(update_fields=["conversation", "message", "lead", "processed", "updated_at"])
+        webhook_log.save(update_fields=["conversation", "message", "lead", "error_message", "processed", "updated_at"])
         return lead, webhook_log
     except Exception as exc:
         webhook_log.error_message = str(exc)

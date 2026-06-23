@@ -1,7 +1,7 @@
 import React from 'react';
 import clsx from 'clsx';
 
-const Modal = ({ isOpen, onClose, title, children }) => {
+const Modal = ({ isOpen, onClose, title, children, maxWidth = 'max-w-4xl', hideFooter = false }) => {
 
     if (!isOpen) return null;
 
@@ -20,7 +20,7 @@ const Modal = ({ isOpen, onClose, title, children }) => {
 
             {/* MODAL */}
             <div
-                className="relative w-full max-w-4xl h-[80vh] bg-card border border-border rounded-xl shadow-xl flex flex-col"
+                className={`relative w-full ${maxWidth} h-[88vh] bg-card border border-border rounded-xl shadow-xl flex flex-col`}
             >
 
                 {/* HEADER */}
@@ -43,14 +43,16 @@ const Modal = ({ isOpen, onClose, title, children }) => {
                 </div>
 
                 {/* FOOTER */}
-                <div className="px-6 py-4 border-t border-border flex justify-end">
-                    <button
-                        onClick={onClose}
-                        className="px-4 py-2 rounded-lg bg-primary text-white hover:bg-primary-hover transition"
-                    >
-                        Close
-                    </button>
-                </div>
+                {!hideFooter && (
+                    <div className="px-6 py-4 border-t border-border flex justify-end">
+                        <button
+                            onClick={onClose}
+                            className="px-4 py-2 rounded-lg bg-primary text-white hover:bg-primary-hover transition"
+                        >
+                            Close
+                        </button>
+                    </div>
+                )}
 
             </div>
 

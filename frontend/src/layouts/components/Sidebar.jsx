@@ -19,7 +19,9 @@ import {
     Bell,
     Contact,
     Briefcase,
-    MessageCircle
+    MessageCircle,
+    Workflow,
+    MapPinned
 } from 'lucide-react';
 
 const Sidebar = () => {
@@ -47,7 +49,9 @@ const Sidebar = () => {
         { to: ROUTES.EXPORTS, label: 'Exports', icon: Download },
         { to: ROUTES.CONTACTS, label: 'Contacts', icon: Contact },
         { to: ROUTES.LEAD_MANAGEMENT, label: 'Lead Management', icon: Briefcase },
+        { to: ROUTES.LOCATIONS, label: 'Locations', icon: MapPinned },
         { to: ROUTES.DOUBLETICK, label: 'DoubleTick', icon: MessageCircle },
+        { to: ROUTES.BOTS, label: 'Bot Builder', icon: Workflow },
         { to: ROUTES.NOTIFICATIONS, label: 'Notifications', icon: Bell },
     ];
 

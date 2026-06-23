@@ -185,11 +185,26 @@ def classify_webhook_event(payload):
         "origin",
         "data.lastMessageOrigin",
     ]) or "").upper()
+    sent_by = str(first_value(payload, ["sentBy", "sent_by", "data.sentBy"]) or "").upper()
+    assigned_to = str(first_value(payload, ["assignedTo", "assigned_to", "data.assignedTo"]) or "")
+    message_text = first_value(payload, ["message.text", "message.body", "data.message.text", "data.message.body", "text", "body", "message"])
+    message_type = str(first_value(payload, ["message.type", "messageType", "data.message.type", "type"], default="") or "").lower()
+    interactive_payload = first_value(payload, ["interactive", "message.interactive", "button", "listReply", "reply", "flowResponse", "data.interactive"], default=None)
 
     if event_type in ["SENT", "DELIVERED", "READ", "FAILED"] or message_status in ["SENT", "DELIVERED", "READ", "FAILED"]:
-        return "outbound_message_status"
-    if origin == "CUSTOMER" or first_value(payload, ["from", "customer.phone", "contact.phone", "phone", "to"]):
-        return "inbound_message"
+        return "message_status_update"
+    if sent_by == "API":
+        return "outgoing_api_message"
+    if sent_by or assigned_to:
+        return "outgoing_agent_message"
+    if "flow" in message_type or first_value(payload, ["flowResponse", "flow_response", "data.flowResponse"], default=None):
+        return "flow_response"
+    if interactive_payload is not None or message_type in ["interactive", "button", "list", "list_reply", "button_reply"]:
+        return "interactive_reply"
+    if "template" in message_type:
+        return "template_reply"
+    if origin == "CUSTOMER" or (first_value(payload, ["from", "customer.phone", "contact.phone", "phone", "customerPhone"]) and message_text):
+        return "incoming_customer_message"
     if event_type in ["CUSTOMER_CUSTOM_FIELD_UPDATED", "CUSTOMER_FIELD_UPDATED"]:
         return "customer_custom_field_updated"
     if event_type in ["CHAT_ASSIGNED"]:
