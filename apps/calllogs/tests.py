@@ -5,6 +5,8 @@ from unittest.mock import patch
 from apps.branches.models import Branch, BranchGroups
 from apps.devices.models import Device
 from apps.calllogs.models import CallLog, MissedCallFollowUp
+from apps.calllogs.filters import CallLogFilter
+from apps.calllogs.serializers import CallLogListSerializer
 from apps.calllogs.services import FollowUpService
 from apps.calllogs.tasks import send_due_missed_call_reminders, send_missed_call_reminder
 
@@ -193,3 +195,72 @@ class MissedCallFollowUpTests(TestCase):
 
         self.assertIn("Queued 1", result)
         delay.assert_called_once_with(str(missed_log.id), 2)
+
+
+class CallLogSimFilterTests(TestCase):
+    def setUp(self):
+        group = BranchGroups.objects.create(name="SIM Filter Group")
+        self.branch = Branch.objects.create(
+            spa_name="SIM Filter Branch",
+            code="SIM-01",
+            city="Pune",
+            state="Maharashtra",
+            postal_code=411001,
+            branch_group=group,
+        )
+        self.device = Device.objects.create(
+            branch=self.branch,
+            device_id="SPA-SIM-101",
+            phone_name="Reception Phone",
+            sim_1_number="9000000001",
+            sim_2_number="9000000002",
+            is_registered=True,
+        )
+        self.sim1_log = CallLog.objects.create(
+            branch=self.branch,
+            device=self.device,
+            phone_number="8000000001",
+            call_type="incoming",
+            duration=30,
+            sim_slot=1,
+            call_time=timezone.now(),
+            call_hash="sim-filter-1",
+        )
+        self.sim2_log = CallLog.objects.create(
+            branch=self.branch,
+            device=self.device,
+            phone_number="8000000002",
+            call_type="outgoing",
+            duration=45,
+            sim_slot=2,
+            call_time=timezone.now(),
+            call_hash="sim-filter-2",
+        )
+
+    def test_sim_number_filter_matches_the_sim_slot_used_by_the_call(self):
+        sim1_results = CallLogFilter(
+            data={"sim_number": self.device.sim_1_number},
+            queryset=CallLog.objects.all(),
+        ).qs
+        sim2_results = CallLogFilter(
+            data={"sim_number": self.device.sim_2_number},
+            queryset=CallLog.objects.all(),
+        ).qs
+
+        self.assertQuerySetEqual(sim1_results, [self.sim1_log], transform=lambda item: item)
+        self.assertQuerySetEqual(sim2_results, [self.sim2_log], transform=lambda item: item)
+
+    def test_list_serializer_includes_both_sim_numbers_and_used_slot(self):
+        data = CallLogListSerializer(self.sim2_log).data
+
+        self.assertEqual(data["sim_slot"], 2)
+        self.assertEqual(data["sim_1_number"], "9000000001")
+        self.assertEqual(data["sim_2_number"], "9000000002")
+
+    def test_general_search_matches_device_sim_number(self):
+        results = CallLogFilter(
+            data={"search": "9000000002"},
+            queryset=CallLog.objects.all(),
+        ).qs
+
+        self.assertEqual(set(results), {self.sim1_log, self.sim2_log})

@@ -21,10 +21,11 @@ import {
     Briefcase,
     MessageCircle,
     Workflow,
-    MapPinned
+    MapPinned,
+    X
 } from 'lucide-react';
 
-const Sidebar = () => {
+const Sidebar = ({ collapsed = false, mobileOpen = false, onMobileClose }) => {
 
     const { user } = useSelector((state) => state.auth);
     const dispatch = useDispatch();
@@ -56,19 +57,42 @@ const Sidebar = () => {
     ];
 
     return (
-        <aside className="w-64 bg-sidebar border-r border-border text-text-primary flex flex-col">
+        <>
+            {mobileOpen && (
+                <button
+                    type="button"
+                    aria-label="Close sidebar"
+                    onClick={onMobileClose}
+                    className="fixed inset-0 z-40 bg-black/50 lg:hidden"
+                />
+            )}
+
+            <aside
+                className={`fixed inset-y-0 left-0 z-50 flex h-screen w-64 shrink-0 flex-col border-r border-border bg-sidebar text-text-primary transition-all duration-300 ease-in-out lg:static lg:translate-x-0 ${
+                    mobileOpen ? 'translate-x-0' : '-translate-x-full'
+                } ${collapsed ? 'lg:w-20' : 'lg:w-64'}`}
+            >
 
             {/* LOGO */}
-            <div className="h-16 flex items-center px-6 border-b border-border">
+            <div className={`flex h-16 shrink-0 items-center border-b border-border ${collapsed ? 'lg:justify-center lg:px-2' : 'px-6'}`}>
 
-                <span className="text-lg font-semibold text-primary">
-                    Call Monitoring
+                <span className="truncate text-lg font-semibold text-primary">
+                    <span className={collapsed ? 'lg:hidden' : ''}>Master Call</span>
+                    <span className={collapsed ? 'hidden lg:inline' : 'hidden'}>MC</span>
                 </span>
 
+                <button
+                    type="button"
+                    onClick={onMobileClose}
+                    className="ml-auto rounded-lg p-1.5 text-text-secondary hover:bg-card hover:text-text-primary lg:hidden"
+                    aria-label="Close sidebar"
+                >
+                    <X size={20} />
+                </button>
             </div>
 
             {/* NAVIGATION */}
-            <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
+            <nav className={`custom-scrollbar min-h-0 flex-1 space-y-1 overflow-y-auto ${collapsed ? 'lg:px-3' : ''} p-4`}>
 
                 {navItems.map((item) => {
 
@@ -78,7 +102,9 @@ const Sidebar = () => {
                         <Link
                             key={item.to}
                             to={item.to}
-                            className={`flex items-center gap-3 px-4 py-2.5 rounded-lg transition-all
+                            onClick={onMobileClose}
+                            title={collapsed ? item.label : undefined}
+                            className={`flex items-center gap-3 rounded-lg px-4 py-2.5 transition-all ${collapsed ? 'lg:justify-center lg:px-2' : ''}
                                 
                                 ${isActive
                                     ? "bg-primary/20 text-primary"
@@ -86,9 +112,9 @@ const Sidebar = () => {
                                 
                             `}
                         >
-                            <item.icon size={18} />
+                            <item.icon size={18} className="shrink-0" />
 
-                            <span className="text-sm font-medium">
+                            <span className={`whitespace-nowrap text-sm font-medium ${collapsed ? 'lg:hidden' : ''}`}>
                                 {item.label}
                             </span>
                         </Link>
@@ -100,12 +126,14 @@ const Sidebar = () => {
 
                     <Link
                         to={ROUTES.USERS}
-                        className="flex items-center gap-3 px-4 py-2.5 rounded-lg text-warning hover:bg-card transition"
+                        onClick={onMobileClose}
+                        title={collapsed ? 'Users' : undefined}
+                        className={`flex items-center gap-3 rounded-lg px-4 py-2.5 text-warning transition hover:bg-card ${collapsed ? 'lg:justify-center lg:px-2' : ''}`}
                     >
 
-                        <Users size={18} />
+                        <Users size={18} className="shrink-0" />
 
-                        <span className="text-sm font-medium">
+                        <span className={`whitespace-nowrap text-sm font-medium ${collapsed ? 'lg:hidden' : ''}`}>
                             Users
                         </span>
 
@@ -116,16 +144,17 @@ const Sidebar = () => {
             </nav>
 
             {/* LOGOUT */}
-            <div className="p-4 border-t border-border">
+            <div className="shrink-0 border-t border-border p-4">
 
                 <button
                     onClick={handleLogout}
-                    className="flex w-full items-center gap-3 px-4 py-2.5 rounded-lg text-text-secondary hover:bg-danger/10 hover:text-danger transition"
+                    title={collapsed ? 'Logout' : undefined}
+                    className={`flex w-full items-center gap-3 rounded-lg px-4 py-2.5 text-text-secondary transition hover:bg-danger/10 hover:text-danger ${collapsed ? 'lg:justify-center lg:px-2' : ''}`}
                 >
 
-                    <LogOut size={18} />
+                    <LogOut size={18} className="shrink-0" />
 
-                    <span className="text-sm font-medium">
+                    <span className={`whitespace-nowrap text-sm font-medium ${collapsed ? 'lg:hidden' : ''}`}>
                         Logout
                     </span>
 
@@ -133,7 +162,8 @@ const Sidebar = () => {
 
             </div>
 
-        </aside>
+            </aside>
+        </>
     );
 };
 

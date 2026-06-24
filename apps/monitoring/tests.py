@@ -99,3 +99,41 @@ class MonitoringAlertServiceTests(TestCase):
         self.device.health.refresh_from_db()
         self.assertFalse(self.device.health.is_online)
         self.assertEqual(send_push.call_count, 2)
+
+    @override_settings(
+        MONITORING_OFFLINE_AFTER_MINUTES=20,
+        MONITORING_UNINSTALL_SUSPECT_AFTER_HOURS=24,
+    )
+    @patch("apps.notifications.services.NotificationService.send_push", return_value=True)
+    def test_long_offline_device_creates_possible_uninstall_warning(self, send_push):
+        self.device.last_heartbeat = timezone.now() - timedelta(hours=25)
+        self.device.save(update_fields=["last_heartbeat"])
+
+        check_offline_devices()
+
+        warning = DeviceEvent.objects.get(
+            device=self.device,
+            event_type="app_uninstall_suspected",
+            resolved=False,
+        )
+        self.assertIn("Possible reasons", warning.description)
+        self.assertIn("app uninstalled", warning.description)
+        self.assertEqual(send_push.call_count, 4)
+
+    @override_settings(
+        MONITORING_OFFLINE_AFTER_MINUTES=20,
+        MONITORING_UNINSTALL_SUSPECT_AFTER_HOURS=24,
+    )
+    @patch("apps.notifications.services.NotificationService.send_push", return_value=True)
+    def test_short_offline_device_does_not_create_uninstall_warning(self, send_push):
+        self.device.last_heartbeat = timezone.now() - timedelta(minutes=25)
+        self.device.save(update_fields=["last_heartbeat"])
+
+        check_offline_devices()
+
+        self.assertFalse(
+            DeviceEvent.objects.filter(
+                device=self.device,
+                event_type="app_uninstall_suspected",
+            ).exists()
+        )

@@ -2,12 +2,14 @@ import logging
 from datetime import timedelta
 
 from celery import shared_task
+from django.conf import settings
 from django.db.models import Q
 from django.utils import timezone
 
 from apps.devices.models import Device
 from .models import DeviceHealth
 from .services import MonitoringAlertService, offline_threshold
+from .compliance import DeviceComplianceService
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +21,9 @@ def check_offline_devices():
     device, branch manager, area manager, and realtime dashboard.
     """
     threshold = offline_threshold()
+    uninstall_threshold = timezone.now() - timedelta(
+        hours=getattr(settings, "MONITORING_UNINSTALL_SUSPECT_AFTER_HOURS", 24)
+    )
 
     late_devices = Device.objects.filter(
         is_active=True,
@@ -41,6 +46,17 @@ def check_offline_devices():
             event_type="offline",
             description=f"Device went offline. Last seen: {last_seen}",
         )
+        if device.last_heartbeat is None or device.last_heartbeat < uninstall_threshold:
+            hours = getattr(settings, "MONITORING_UNINSTALL_SUSPECT_AFTER_HOURS", 24)
+            MonitoringAlertService.raise_event(
+                device=device,
+                event_type="app_uninstall_suspected",
+                description=(
+                    f"No app heartbeat for at least {hours} hours. "
+                    "Possible reasons: app uninstalled or force-stopped, phone switched off, "
+                    f"or no internet. Last seen: {last_seen}"
+                ),
+            )
         MonitoringAlertService.broadcast_device_status(device, "offline")
         affected += 1
 
@@ -108,3 +124,10 @@ def check_device_sync_health():
         logger.info("Sent 2h sync reminder to device %s", health.device.device_id)
 
     return f"Checked sync health. Reminders: {reminder_count}, critical: {critical_count}"
+
+
+@shared_task
+def send_device_compliance_alerts():
+    from django.core.management import call_command
+
+    call_command("send_device_compliance_alerts", "--commit")

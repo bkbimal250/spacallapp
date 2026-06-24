@@ -39,6 +39,7 @@ const CallLogList = () => {
     const queryParams = new URLSearchParams(location.search);
     const initialBranch = queryParams.get('branch') || '';
     const initialDevice = queryParams.get('device') || '';
+    const initialSimNumber = queryParams.get('sim_number') || '';
     const initialSearch = queryParams.get('search') || '';
     const initialCallType = queryParams.get('call_type') || '';
     const initialSlaStatus = queryParams.get('sla_status') || '';
@@ -52,6 +53,7 @@ const CallLogList = () => {
     const [filters, setFilters] = useState({
         branch: initialBranch,
         device: initialDevice,
+        sim_number: initialSimNumber,
         search: initialSearch,
         quick_date: queryParams.has('quick_date') ? queryParams.get('quick_date') : (queryParams.has('start_date') || queryParams.has('end_date') ? '' : 'today'),
         start_date: queryParams.get('start_date') || '',
@@ -108,6 +110,7 @@ const CallLogList = () => {
             search: queryParams.get('search') || '',
             branch: queryParams.get('branch') || '',
             device: queryParams.get('device') || '',
+            sim_number: queryParams.get('sim_number') || '',
             quick_date: queryParams.has('quick_date') ? queryParams.get('quick_date') : (queryParams.has('start_date') || queryParams.has('end_date') ? '' : 'today'),
             start_date: queryParams.get('start_date') || '',
             end_date: queryParams.get('end_date') || '',
@@ -319,13 +322,21 @@ const CallLogList = () => {
             {
                 header: "Device",
                 render: (row) => (
-                    <div className="flex flex-col">
-                        {row.phone_name && (
-                            <span className="font-semibold text-primary text-xs uppercase tracking-wider">
-                                {row.phone_name}
-                            </span>
-                        )}
-                        <span className="font-mono text-xs text-text-secondary">{row.device_uid}</span>
+                    <div className="flex min-w-[190px] flex-col gap-1">
+                        <span className="font-semibold text-primary text-xs uppercase tracking-wider">
+                            {row.phone_name || "Unnamed Phone"}
+                        </span>
+                        <span className="font-mono text-xs text-text-secondary">{row.device_uid || "No device ID"}</span>
+                        <div className="mt-1 space-y-0.5 text-[11px]">
+                            <div className={row.sim_slot === 1 ? "font-semibold text-success" : "text-text-secondary"}>
+                                SIM 1: {row.sim_1_number || "Not available"}
+                                {row.sim_slot === 1 && <span className="ml-1 text-[9px] uppercase">(Used)</span>}
+                            </div>
+                            <div className={row.sim_slot === 2 ? "font-semibold text-success" : "text-text-secondary"}>
+                                SIM 2: {row.sim_2_number || "Not available"}
+                                {row.sim_slot === 2 && <span className="ml-1 text-[9px] uppercase">(Used)</span>}
+                            </div>
+                        </div>
                     </div>
                 )
             },
@@ -445,6 +456,7 @@ const CallLogList = () => {
                     onFilter={handleFilter}
                     initialBranch={initialBranch}
                     initialDevice={initialDevice}
+                    initialSimNumber={initialSimNumber}
                     initialSearch={initialSearch}
                     initialCallType={filters.call_type}
                     initialSlaStatus={filters.sla_status}

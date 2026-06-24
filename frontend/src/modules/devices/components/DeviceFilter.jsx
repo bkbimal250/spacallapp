@@ -25,6 +25,8 @@ const DeviceFilter = ({ onFilter, initialFilters = {} }) => {
     const [selectedBranch, setSelectedBranch] = useState(initialFilters.branch || '');
     const [selectedCity, setSelectedCity] = useState(initialFilters.city || '');
     const [registrationStatus, setRegistrationStatus] = useState(initialFilters.is_registered || '');
+    const [androidIdStatus, setAndroidIdStatus] = useState(initialFilters.has_android_id || '');
+    const [complianceStatus, setComplianceStatus] = useState(initialFilters.compliance_status || '');
     const [activeStatus, setActiveStatus] = useState(initialFilters.is_active || '');
     const [blockedStatus, setBlockedStatus] = useState(initialFilters.is_blocked || '');
 
@@ -76,6 +78,8 @@ const DeviceFilter = ({ onFilter, initialFilters = {} }) => {
             branch: selectedBranch || undefined,
             city: selectedCity.trim() || undefined,
             is_registered: registrationStatus || undefined,
+            has_android_id: androidIdStatus || undefined,
+            compliance_status: complianceStatus || undefined,
             is_active: activeStatus || undefined,
             is_blocked: blockedStatus || undefined,
         };
@@ -95,13 +99,15 @@ const DeviceFilter = ({ onFilter, initialFilters = {} }) => {
             Object.entries(filters).filter(([_, v]) => v !== undefined)
         );
         onFilter(cleanFilters);
-    }, [search, selectedBranch, selectedCity, registrationStatus, activeStatus, blockedStatus, dateMode, quickDate, singleDate, dateRange, onFilter]);
+    }, [search, selectedBranch, selectedCity, registrationStatus, androidIdStatus, complianceStatus, activeStatus, blockedStatus, dateMode, quickDate, singleDate, dateRange, onFilter]);
 
     const handleClear = () => {
         setSearch('');
         setSelectedBranch('');
         setSelectedCity('');
         setRegistrationStatus('');
+        setAndroidIdStatus('');
+        setComplianceStatus('');
         setActiveStatus('');
         setBlockedStatus('');
         setQuickDate('');
@@ -202,7 +208,7 @@ const DeviceFilter = ({ onFilter, initialFilters = {} }) => {
                 )}
 
                 {/* ── BOTTOM: ADVANCED GRIDS ── */}
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 pt-4 border-t border-border/50">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4 pt-4 border-t border-border/50">
                     <div className="space-y-1.5">
                         <div className="flex items-center gap-2">
                             <MapPin size={14} className="text-primary/70" />
@@ -215,6 +221,43 @@ const DeviceFilter = ({ onFilter, initialFilters = {} }) => {
                             onChange={setSelectedBranch}
                             className="bg-background"
                         />
+                    </div>
+
+                    <div className="space-y-1.5">
+                        <div className="flex items-center gap-2">
+                            <Activity size={14} className="text-warning/70" />
+                            <span className="text-[10px] uppercase font-bold text-text-secondary">Compliance</span>
+                        </div>
+                        <select
+                            className="w-full h-[42px] px-3 bg-background border border-border rounded-lg text-sm transition-all focus:ring-2 focus:ring-primary/20 outline-none"
+                            value={complianceStatus}
+                            onChange={(e) => setComplianceStatus(e.target.value)}
+                        >
+                            <option value="">All</option>
+                            <option value="OK">OK</option>
+                            <option value="MISSING_ANDROID_ID">Missing Android ID</option>
+                            <option value="MISSING_FCM_TOKEN">Missing FCM Token</option>
+                            <option value="OUTDATED_APP">Outdated App</option>
+                            <option value="HEARTBEAT_MISSING">Heartbeat Missing</option>
+                            <option value="SUSPECTED_UNINSTALLED">Suspected Uninstalled</option>
+                            <option value="AUTH_BROKEN">Auth Broken</option>
+                        </select>
+                    </div>
+
+                    <div className="space-y-1.5">
+                        <div className="flex items-center gap-2">
+                            <Smartphone size={14} className="text-primary/70" />
+                            <span className="text-[10px] uppercase font-bold text-text-secondary">Android ID</span>
+                        </div>
+                        <select
+                            className="w-full h-[42px] px-3 bg-background border border-border rounded-lg text-sm transition-all focus:ring-2 focus:ring-primary/20 outline-none"
+                            value={androidIdStatus}
+                            onChange={(e) => setAndroidIdStatus(e.target.value)}
+                        >
+                            <option value="">All Devices</option>
+                            <option value="true">Android ID Present</option>
+                            <option value="false">Android ID Missing</option>
+                        </select>
                     </div>
 
                     <div className="space-y-1.5">

@@ -135,7 +135,7 @@ class DeviceViewSet(viewsets.ModelViewSet):
                 return Device.objects.all()
             return Device.objects.none()
 
-        queryset = Device.objects.select_related("branch").all().order_by("-created_at")
+        queryset = Device.objects.select_related("branch", "health", "compliance_state").all().order_by("-created_at")
 
         queryset = apply_branch_filter(queryset, "branch_id", user)
 
@@ -225,6 +225,27 @@ class DeviceViewSet(viewsets.ModelViewSet):
             "status": "success",
             "new_token": new_token
         })
+
+    @action(detail=True, methods=["post"])
+    def send_update_notification(self, request, pk=None):
+        from apps.monitoring.compliance import DeviceComplianceService
+
+        device = self.get_object()
+        status_value, reason, state = DeviceComplianceService.check_device(device)
+        sent, result = DeviceComplianceService.send_update_notification(device, state=state)
+        return Response({
+            "sent": sent,
+            "result": result,
+            "status": status_value,
+            "reason": reason,
+        })
+
+    @action(detail=True, methods=["post"])
+    def mark_followed_up(self, request, pk=None):
+        from apps.monitoring.compliance import DeviceComplianceService
+
+        state = DeviceComplianceService.mark_followed_up(self.get_object())
+        return Response({"status": "success", "followed_up_at": state.followed_up_at})
 
 
 class ClaimRegistrationView(APIView):
@@ -447,6 +468,48 @@ class UpdateFCMTokenSerializer(serializers.Serializer):
     fcm_token = serializers.CharField(allow_blank=False, trim_whitespace=True)
 
 
+class CurrentDeviceView(APIView):
+    """
+    Return the CRM identity for the authenticated Android handset.
+
+    SIM values reported by the latest heartbeat take precedence over the
+    manager-entered fallback values stored on the Device record.
+    """
+    authentication_classes = [DeviceAuthentication]
+    permission_classes = [IsDevice]
+
+    @extend_schema(
+        summary="Get Current Android Device",
+        description="Returns the authenticated phone name, branch, and latest known SIM numbers.",
+        responses={200: inline_serializer(
+            name="CurrentAndroidDeviceResponse",
+            fields={
+                "device_id": serializers.CharField(),
+                "phone_name": serializers.CharField(allow_blank=True),
+                "branch_name": serializers.CharField(allow_blank=True),
+                "sim_1_number": serializers.CharField(allow_null=True),
+                "sim_2_number": serializers.CharField(allow_null=True),
+            },
+        )},
+    )
+    def get(self, request):
+        device = request.auth
+        from apps.monitoring.models import DeviceHealth
+
+        health = DeviceHealth.objects.filter(device=device).first()
+        return Response({
+            "device_id": device.device_id,
+            "phone_name": device.phone_name or "",
+            "branch_name": device.branch.spa_name if device.branch else "",
+            "sim_1_number": (
+                getattr(health, "sim_1_number", None) or device.sim_1_number
+            ),
+            "sim_2_number": (
+                getattr(health, "sim_2_number", None) or device.sim_2_number
+            ),
+        })
+
+
 class UpdateFCMTokenView(APIView):
     """
     Android app uses this to update its FCM registration token.
@@ -543,6 +606,11 @@ class UpdateFCMTokenView(APIView):
                 locked_device = Device.objects.select_for_update().get(pk=device.pk)
                 locked_device.fcm_token = token
                 locked_device.save(update_fields=["fcm_token", "updated_at"])
+                try:
+                    from apps.monitoring.compliance import DeviceComplianceService
+                    DeviceComplianceService.mark_fcm_valid(locked_device)
+                except Exception:
+                    logger.exception("Failed to clear device FCM compliance flag")
         except Device.DoesNotExist:
             logger.warning(
                 "FCM token update rejected: authenticated device disappeared before save",

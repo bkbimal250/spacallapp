@@ -7,7 +7,8 @@ const SearchableSelect = ({
     onChange,
     placeholder = "Select option...",
     label,
-    className
+    className,
+    disabled = false
 }) => {
 
     const [isOpen, setIsOpen] = useState(false);
@@ -104,16 +105,25 @@ const SearchableSelect = ({
 
             {/* SELECT BOX */}
             <div
-                className={`relative w-full cursor-pointer bg-background border border-border rounded-lg py-2.5 pl-4 pr-10 text-left transition
-                ${isOpen ? 'border-primary ring-2 ring-primary/20 shadow-md' : 'hover:border-border/80'}`}
+                className={`relative w-full bg-background border border-border rounded-lg py-2.5 pl-4 pr-10 text-left transition
+                ${disabled ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}
+                ${isOpen ? 'border-primary ring-2 ring-primary/20 shadow-md' : disabled ? '' : 'hover:border-border/80'}`}
                 onClick={() => {
+                    if (disabled) return;
                     setIsOpen(!isOpen);
                     setTimeout(() => inputRef.current?.focus(), 100);
                 }}
             >
 
-                <span className={`block truncate text-sm ${!selectedOption ? 'text-text-muted' : 'text-text-primary font-medium'}`}>
-                    {selectedOption ? selectedOption.label : placeholder}
+                <span className="block min-w-0">
+                    <span className={`block truncate text-sm ${!selectedOption ? 'text-text-muted' : 'text-text-primary font-medium'}`}>
+                        {selectedOption ? selectedOption.label : placeholder}
+                    </span>
+                    {selectedOption?.description && (
+                        <span className="mt-0.5 block truncate text-[11px] text-text-secondary">
+                            {selectedOption.description}
+                        </span>
+                    )}
                 </span>
 
                 {/* ARROW */}
@@ -124,7 +134,7 @@ const SearchableSelect = ({
                 </span>
 
                 {/* CLEAR BUTTON */}
-                {value && (
+                {value && !disabled && (
                     <button
                         onClick={clearSelection}
                         className="absolute inset-y-0 right-8 flex items-center group"
@@ -191,6 +201,13 @@ const SearchableSelect = ({
                                     <span className="block truncate font-medium">
                                         {highlightText(option.label)}
                                     </span>
+                                    {option.description && (
+                                        <span className={`mt-0.5 block text-xs whitespace-normal break-words ${
+                                            value === option.value ? 'text-white/80' : 'text-text-secondary'
+                                        }`}>
+                                            {highlightText(option.description)}
+                                        </span>
+                                    )}
                                 </div>
                             ))
                         )}

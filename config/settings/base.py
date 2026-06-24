@@ -269,11 +269,15 @@ CELERY_TASK_SERIALIZER = "json"
 CELERY_RESULT_SERIALIZER = "json"
 CELERY_TIMEZONE = TIME_ZONE
 MONITORING_OFFLINE_AFTER_MINUTES = env.int("MONITORING_OFFLINE_AFTER_MINUTES", default=20)
+MONITORING_UNINSTALL_SUSPECT_AFTER_HOURS = env.int("MONITORING_UNINSTALL_SUSPECT_AFTER_HOURS", default=24)
 MONITORING_LOW_BATTERY_PERCENT = env.int("MONITORING_LOW_BATTERY_PERCENT", default=15)
 MONITORING_BATTERY_RECOVERY_PERCENT = env.int("MONITORING_BATTERY_RECOVERY_PERCENT", default=20)
 MONITORING_WEAK_SIGNAL_DBM = env.int("MONITORING_WEAK_SIGNAL_DBM", default=-105)
 MONITORING_SIGNAL_RECOVERY_DBM = env.int("MONITORING_SIGNAL_RECOVERY_DBM", default=-95)
 MONITORING_STORAGE_ALERT_MB = env.float("MONITORING_STORAGE_ALERT_MB", default=1024.0)
+MASTERCALL_MIN_ANDROID_APP_VERSION = env("MASTERCALL_MIN_ANDROID_APP_VERSION", default="")
+DEVICE_COMPLIANCE_ADMIN_EMAILS = env.list("DEVICE_COMPLIANCE_ADMIN_EMAILS", default=[])
+DEVICE_COMPLIANCE_ADMIN_EMAIL_COOLDOWN_MINUTES = env.int("DEVICE_COMPLIANCE_ADMIN_EMAIL_COOLDOWN_MINUTES", default=60)
 
 CELERY_BEAT_SCHEDULE = {
     'check-offline-devices-every-5-mins': {
@@ -283,6 +287,10 @@ CELERY_BEAT_SCHEDULE = {
     'check-sync-health-every-15-mins': {
         'task': 'apps.monitoring.tasks.check_device_sync_health',
         'schedule': 900.0,  # 15 minutes
+    },
+    'send-device-compliance-alerts-hourly': {
+        'task': 'apps.monitoring.tasks.send_device_compliance_alerts',
+        'schedule': 3600.0,
     },
     'send-due-missed-call-reminders-every-5-mins': {
         'task': 'apps.calllogs.tasks.send_due_missed_call_reminders',

@@ -20,6 +20,7 @@ const CallLogFilter = ({
     onFilter,
     initialBranch = '',
     initialDevice = '',
+    initialSimNumber = '',
     initialSearch = '',
     initialCallType = '',
     initialSlaStatus = '',
@@ -51,6 +52,8 @@ const CallLogFilter = ({
     const [selectedBranch, setSelectedBranch] = useState(initialBranch);
     const [devices, setDevices] = useState([]);
     const [selectedDevice, setSelectedDevice] = useState(initialDevice);
+    const [simOptions, setSimOptions] = useState([]);
+    const [selectedSimNumber, setSelectedSimNumber] = useState(initialSimNumber);
     const [selectedCallType, setSelectedCallType] = useState(initialCallType);
     const [selectedSlaStatus, setSelectedSlaStatus] = useState(initialSlaStatus);
     const [branchGroups, setBranchGroups] = useState([]);
@@ -64,6 +67,7 @@ const CallLogFilter = ({
         setSearch(initialSearch);
         setSelectedBranch(initialBranch);
         setSelectedDevice(initialDevice);
+        setSelectedSimNumber(initialSimNumber);
         setSelectedCallType(initialCallType);
         setSelectedSlaStatus(initialSlaStatus);
         setSelectedBranchGroup(initialBranchGroup);
@@ -85,7 +89,7 @@ const CallLogFilter = ({
             setSingleDate('');
             setDateRange({ startDate: '', endDate: '' });
         }
-    }, [initialSearch, initialBranch, initialDevice, initialCallType, initialSlaStatus, initialBranchGroup, initialUnique, initialQuickDate, initialStartDate, initialEndDate]);
+    }, [initialSearch, initialBranch, initialDevice, initialSimNumber, initialCallType, initialSlaStatus, initialBranchGroup, initialUnique, initialQuickDate, initialStartDate, initialEndDate]);
 
     useEffect(() => {
         const fetchBranches = async () => {
@@ -148,19 +152,44 @@ const CallLogFilter = ({
             const branchId = isRestrictedManager ? user?.branch : selectedBranch;
             if (!branchId) {
                 setDevices([]);
+                setSimOptions([]);
                 setSelectedDevice('');
+                setSelectedSimNumber('');
                 return;
             }
             setLoadingDevices(true);
             try {
                 const response = await devicesAPI.getDevices({ branch: branchId, all: true });
                 const deviceData = response.data.results || response.data;
-                setDevices(
-                    deviceData.map(d => ({
+                setDevices(deviceData.map(d => ({
                         value: d.device_id,
-                        label: d.phone_name ? `${d.phone_name} (${d.device_id})` : `${d.device_id} (${d.sim_1_number || 'No SIM'})`,
-                        title: d.phone_name || d.device_id
-                    }))
+                        label: d.phone_name || d.device_id || 'Unnamed phone',
+                        description: `${d.device_id || 'No device ID'} • SIM 1: ${d.sim_1_number || 'Not available'} • SIM 2: ${d.sim_2_number || 'Not available'}`,
+                        title: d.phone_name || d.device_id,
+                        searchText: [d.phone_name, d.device_id, d.sim_1_number, d.sim_2_number]
+                            .filter(Boolean)
+                            .join(' ')
+                    })));
+
+                const availableSims = deviceData.flatMap(d => ([
+                    d.sim_1_number ? {
+                        value: d.sim_1_number,
+                        label: `SIM 1: ${d.sim_1_number}`,
+                        description: `${d.phone_name || d.device_id} • ${d.device_id}`,
+                        searchText: `${d.sim_1_number} ${d.phone_name || ''} ${d.device_id || ''} SIM 1`
+                    } : null,
+                    d.sim_2_number ? {
+                        value: d.sim_2_number,
+                        label: `SIM 2: ${d.sim_2_number}`,
+                        description: `${d.phone_name || d.device_id} • ${d.device_id}`,
+                        searchText: `${d.sim_2_number} ${d.phone_name || ''} ${d.device_id || ''} SIM 2`
+                    } : null
+                ])).filter(Boolean);
+
+                setSimOptions(
+                    availableSims.filter((option, index, all) =>
+                        all.findIndex(item => item.value === option.value) === index
+                    )
                 );
             } catch (error) {
                 console.error("Failed to fetch devices for branch", error);
@@ -176,6 +205,7 @@ const CallLogFilter = ({
         const baseSearch = overrides.search !== undefined ? overrides.search : (search || '');
         const baseBranch = overrides.branch !== undefined ? overrides.branch : (selectedBranch && !isRestrictedManager ? selectedBranch : undefined);
         const baseDevice = overrides.device !== undefined ? overrides.device : (selectedDevice || '');
+        const baseSimNumber = overrides.sim_number !== undefined ? overrides.sim_number : (selectedSimNumber || '');
         const baseBranchGroup = overrides.branch_group !== undefined ? overrides.branch_group : (selectedBranchGroup || '');
         const baseIsUnique = overrides.is_unique !== undefined ? overrides.is_unique : !!isUnique;
 
@@ -204,6 +234,7 @@ const CallLogFilter = ({
             end_date: baseEndDate,
             branch: baseBranch,
             device: baseDevice,
+            sim_number: baseSimNumber,
             branch_group: baseBranchGroup,
             call_type: baseCallType,
             sla_status: baseSlaStatus,
@@ -214,7 +245,7 @@ const CallLogFilter = ({
         return Object.fromEntries(
             Object.entries(filters).filter(([_, v]) => v !== undefined && v !== null && v !== '')
         );
-    }, [search, quickDate, singleDate, dateRange, dateMode, selectedBranch, selectedDevice, selectedBranchGroup, selectedCallType, selectedSlaStatus, isUnique, isRestrictedManager]);
+    }, [search, quickDate, singleDate, dateRange, dateMode, selectedBranch, selectedDevice, selectedSimNumber, selectedBranchGroup, selectedCallType, selectedSlaStatus, isUnique, isRestrictedManager]);
 
     const handleFilter = useCallback((additionalFilters = {}) => {
         const filters = getActiveFilters(additionalFilters);
@@ -242,6 +273,7 @@ const CallLogFilter = ({
         setDateMode('preset');
         setSelectedBranch(initialBranch || '');
         setSelectedDevice('');
+        setSelectedSimNumber('');
         setSelectedCallType('');
         setSelectedSlaStatus('');
         setSelectedBranchGroup('');
@@ -252,6 +284,7 @@ const CallLogFilter = ({
             branch: initialBranch || '',
             branch_group: '',
             search: '',
+            sim_number: '',
             call_type: '',
             sla_status: '',
             is_unique: false
@@ -385,7 +418,8 @@ const CallLogFilter = ({
                                         setSelectedBranchGroup(val);
                                         setSelectedBranch('');
                                         setSelectedDevice('');
-                                        onFilter(getActiveFilters({ branch_group: val, branch: '', device: '' }));
+                                        setSelectedSimNumber('');
+                                        onFilter(getActiveFilters({ branch_group: val, branch: '', device: '', sim_number: '' }));
                                     }}
                                     className="w-full"
                                 />
@@ -403,7 +437,8 @@ const CallLogFilter = ({
                                     onChange={(val) => {
                                         setSelectedBranch(val);
                                         setSelectedDevice('');
-                                        onFilter(getActiveFilters({ branch: val, device: '' }));
+                                        setSelectedSimNumber('');
+                                        onFilter(getActiveFilters({ branch: val, device: '', sim_number: '' }));
                                     }}
                                     className="w-full"
                                 />
@@ -422,9 +457,32 @@ const CallLogFilter = ({
                             value={selectedDevice}
                             onChange={(val) => {
                                 setSelectedDevice(val);
-                                onFilter(getActiveFilters({ device: val }));
+                                setSelectedSimNumber('');
+                                onFilter(getActiveFilters({ device: val, sim_number: '' }));
                             }}
                             disabled={!selectedBranch && !isRestrictedManager}
+                            className="w-full"
+                        />
+                    </div>
+
+                    <div className="space-y-2">
+                        <div className="flex items-center gap-2 px-1">
+                            <PhoneCall size={14} className="text-primary/60" />
+                            <span className="text-[11px] uppercase font-bold text-text-secondary/80 tracking-wider">SIM Number</span>
+                        </div>
+                        <SearchableSelect
+                            placeholder={loadingDevices ? "Loading..." : "All SIM Numbers"}
+                            options={simOptions.filter(option => {
+                                if (!selectedDevice) return true;
+                                const selected = devices.find(device => device.value === selectedDevice);
+                                return selected?.searchText?.includes(option.value);
+                            })}
+                            value={selectedSimNumber}
+                            onChange={(val) => {
+                                setSelectedSimNumber(val);
+                                onFilter(getActiveFilters({ sim_number: val }));
+                            }}
+                            disabled={(!selectedBranch && !isRestrictedManager) || simOptions.length === 0}
                             className="w-full"
                         />
                     </div>

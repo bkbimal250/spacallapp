@@ -34,7 +34,7 @@ const Sidebar = ({ isOpen, onClose }) => {
             >
                 <div className="flex h-14 lg:h-16 items-center justify-between border-b border-border/10 px-6">
                     <span className="text-base lg:text-lg font-semibold tracking-wide text-primary">
-                        Call Monitoring
+                        Master Call 
                     </span>
                     {/* Mobile Close Button */}
                     <button

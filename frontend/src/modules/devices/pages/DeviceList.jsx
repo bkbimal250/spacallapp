@@ -6,7 +6,7 @@ import DeviceStatusBadge from '../components/DeviceStatusBadge';
 import DeviceForm from '../components/DeviceForm';
 import DeviceFilter from '../components/DeviceFilter';
 import Pagination from '../../../shared/components/Pagination';
-import { Edit, Trash2, Plus, Smartphone, RefreshCcw } from 'lucide-react';
+import { Bell, CheckCircle2, Copy, Edit, Trash2, Plus, Smartphone, RefreshCcw } from 'lucide-react';
 import { formatDate } from '../../../shared/utils/formatDate';
 import StatsCard from '../components/StatsCard';
 import { useAuth } from '../../../shared/hooks/useAuth';
@@ -117,6 +117,33 @@ const DeviceList = () => {
 
     };
 
+    const handleSendUpdateNotification = async (device) => {
+        try {
+            const response = await devicesAPI.sendUpdateNotification(device.id);
+            alert(response.data.sent ? "Update notification sent." : `Notification not sent: ${response.data.result}`);
+            fetchDevices(filters, page, true);
+        } catch (error) {
+            console.error("Failed to send update notification", error);
+            alert("Failed to send update notification.");
+        }
+    };
+
+    const handleMarkFollowedUp = async (device) => {
+        try {
+            await devicesAPI.markFollowedUp(device.id);
+            fetchDevices(filters, page, true);
+        } catch (error) {
+            console.error("Failed to mark followed up", error);
+            alert("Failed to mark followed up.");
+        }
+    };
+
+    const complianceClass = (status) => {
+        if (!status || status === 'OK') return 'bg-success/10 text-success border-success/20';
+        if (status === 'SUSPECTED_UNINSTALLED' || status === 'AUTH_BROKEN') return 'bg-danger/10 text-danger border-danger/20';
+        return 'bg-warning/10 text-warning border-warning/20';
+    };
+
 
     const handleSubmit = async (data) => {
 
@@ -176,9 +203,25 @@ const DeviceList = () => {
         {
             header: 'Android ID',
             render: (row) => (
-                <span className="font-mono text-xs text-text-secondary">
-                    {row.android_id || "—"}
-                </span>
+                <div className="space-y-1">
+                    <span className="font-mono text-xs text-text-secondary">
+                        {row.android_id || "—"}
+                    </span>
+                    <div>
+                        <span
+                            title={row.compliance_reason}
+                            className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${complianceClass(row.compliance_status)}`}
+                        >
+                            {row.compliance_status || 'OK'}
+                        </span>
+                    </div>
+                    {row.app_version && (
+                        <div className="text-[10px] text-text-muted">App {row.app_version}</div>
+                    )}
+                    <div className="text-[10px] text-text-muted">
+                        Last seen {formatDate(row.last_seen_at || row.last_heartbeat, 'MMM dd, HH:mm')}
+                    </div>
+                </div>
             )
         },
 
@@ -289,6 +332,30 @@ const DeviceList = () => {
                         title="Edit Device"
                     >
                         <Edit size={16} />
+                    </button>
+                    <button
+                        onClick={() => handleSendUpdateNotification(row)}
+                        className="p-1.5 rounded-lg text-warning hover:bg-warning/10 transition-colors"
+                        title="Send Update Notification"
+                    >
+                        <Bell size={16} />
+                    </button>
+                    <button
+                        onClick={() => handleMarkFollowedUp(row)}
+                        className="p-1.5 rounded-lg text-success hover:bg-success/10 transition-colors"
+                        title="Mark Followed Up"
+                    >
+                        <CheckCircle2 size={16} />
+                    </button>
+                    <button
+                        onClick={() => {
+                            navigator.clipboard.writeText('https://mastercall.in/download');
+                            alert('Download link copied!');
+                        }}
+                        className="p-1.5 rounded-lg text-primary hover:bg-primary/10 transition-colors"
+                        title="Copy Download Link"
+                    >
+                        <Copy size={16} />
                     </button>
                     <button
                         onClick={() => handleDelete(row.id)}

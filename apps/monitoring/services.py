@@ -54,6 +54,11 @@ EVENT_NOTIFICATION_COPY = {
         "body": "{device} at {branch} reported an app crash. {detail}",
         "notification_type": "alert",
     },
+    "app_uninstall_suspected": {
+        "title": "Possible App Uninstall",
+        "body": "{device} at {branch} may have removed or stopped the app. {detail}",
+        "notification_type": "alert",
+    },
 }
 
 

@@ -9,6 +9,7 @@ Access Control:
 """
 
 from datetime import timedelta
+import logging
 from django.conf import settings
 from django.utils import timezone
 from rest_framework import viewsets, permissions, views, response, status
@@ -25,6 +26,8 @@ from apps.devices.models import Device
 from apps.common.utils import get_branch_filter_ids
 from core.authentication import DeviceAuthentication
 from core.permissions import IsDevice
+
+logger = logging.getLogger(__name__)
 
 
 class DeviceHeartbeatView(views.APIView):
@@ -59,6 +62,9 @@ class DeviceHeartbeatView(views.APIView):
                 "storage_used_mb": serializers.FloatField(required=False),
                 "sim_1_number": serializers.CharField(required=False),
                 "sim_2_number": serializers.CharField(required=False),
+                "android_id": serializers.CharField(required=False),
+                "fcm_token": serializers.CharField(required=False),
+                "device_model": serializers.CharField(required=False),
                 "permission_denied": serializers.BooleanField(required=False),
                 "permission_name": serializers.CharField(required=False),
                 "app_crash": serializers.BooleanField(required=False),
@@ -78,7 +84,14 @@ class DeviceHeartbeatView(views.APIView):
         # Update device's last heartbeat timestamp
         was_offline = not device.is_online
         device.last_heartbeat = now
-        device.save(update_fields=["last_heartbeat"])
+        update_fields = ["last_heartbeat"]
+        if health_data.get("android_id") and not device.android_id:
+            device.android_id = health_data["android_id"]
+            update_fields.append("android_id")
+        if health_data.get("fcm_token"):
+            device.fcm_token = health_data["fcm_token"]
+            update_fields.append("fcm_token")
+        device.save(update_fields=update_fields)
 
         # Update or create device health record
         health, _ = DeviceHealth.objects.get_or_create(device=device)
@@ -139,6 +152,8 @@ class DeviceHeartbeatView(views.APIView):
                 MonitoringAlertService.resolve_events(device, ["network_weak"])
         if "app_version" in health_data:
             health.app_version = health_data["app_version"]
+        if "device_model" in health_data:
+            health.app_version = health.app_version
         if "storage_used_mb" in health_data:
             storage_used = float(health_data["storage_used_mb"])
             health.storage_used_mb = storage_used
@@ -170,12 +185,23 @@ class DeviceHeartbeatView(views.APIView):
 
         health.save()
 
-        # If this device had an active 'offline' alert, resolve it automatically
-        resolved_count = MonitoringAlertService.resolve_events(device, ["offline"])
+        # A successful heartbeat proves the app is installed and running again.
+        resolved_count = MonitoringAlertService.resolve_events(
+            device,
+            ["offline", "app_uninstall_suspected"],
+        )
         if was_offline or resolved_count:
             MonitoringAlertService.broadcast_device_status(device, "online")
         else:
             MonitoringAlertService.broadcast_device_status(device, "heartbeat")
+
+        try:
+            from .compliance import DeviceComplianceService
+            if health_data.get("fcm_token"):
+                DeviceComplianceService.mark_fcm_valid(device)
+            DeviceComplianceService.check_device(device)
+        except Exception:
+            logger.exception("Failed to update device compliance after heartbeat")
 
         return response.Response(
             {"status": "heartbeat acknowledged"},
@@ -355,6 +381,7 @@ class DeviceStatusResultView(views.APIView):
                 "active_devices": serializers.IntegerField(),
                 "online_devices": serializers.IntegerField(),
                 "offline_alerts": serializers.IntegerField(),
+                "uninstall_warning_alerts": serializers.IntegerField(),
                 "sim_change_alerts": serializers.IntegerField(),
                 "sync_failure_alerts": serializers.IntegerField(),
                 "battery_low_alerts": serializers.IntegerField(),
@@ -387,6 +414,7 @@ class DeviceStatusResultView(views.APIView):
                 "active_devices": 0,
                 "online_devices": 0,
                 "offline_alerts": 0,
+                "uninstall_warning_alerts": 0,
                 "sim_change_alerts": 0,
                 "sync_failure_alerts": 0,
                 "battery_low_alerts": 0,
@@ -425,6 +453,11 @@ class DeviceStatusResultView(views.APIView):
             event_type="sim_change", 
             resolved=False
         ).count()
+        uninstall_warning_alerts = events_qs.filter(
+            device__is_deleted=False,
+            event_type="app_uninstall_suspected",
+            resolved=False,
+        ).count()
         sync_failure_alerts = events_qs.filter(
             device__is_deleted=False,
             event_type="sync_failure",
@@ -455,6 +488,7 @@ class DeviceStatusResultView(views.APIView):
             "active_devices": active_devices,
             "online_devices": online_devices,
             "offline_alerts": offline_alerts,
+            "uninstall_warning_alerts": uninstall_warning_alerts,
             "sim_change_alerts": sim_change_alerts,
             "sync_failure_alerts": sync_failure_alerts,
             "battery_low_alerts": battery_low_alerts,

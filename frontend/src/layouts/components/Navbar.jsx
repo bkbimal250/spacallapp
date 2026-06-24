@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useSelector } from 'react-redux';
 import {
     Bell,
+    AlertTriangle,
     ShieldCheck,
     Smartphone,
     WifiOff,
@@ -10,31 +11,30 @@ import {
     CircleDot,
     Check,
     Trash2,
-    CheckCircle2
+    CheckCircle2,
+    Menu,
+    PanelLeftClose,
+    PanelLeftOpen
 } from 'lucide-react';
 import { monitoringAPI } from '../../modules/monitoring/api';
 import { formatDate } from '../../shared/utils/formatDate';
 
-const Navbar = () => {
+const Navbar = ({ sidebarCollapsed = false, onToggleSidebar, onOpenMobileSidebar }) => {
 
     const { user } = useSelector((state) => state.auth);
 
     const [notifications, setNotifications] = useState([]);
     const [showNotifications, setShowNotifications] = useState(false);
-    const [loading, setLoading] = useState(false);
 
     const notificationRef = useRef(null);
 
     const fetchNotifications = async () => {
-        setLoading(true);
         try {
             const response = await monitoringAPI.getAlerts({ resolved: false });
             const data = response.data.results || response.data;
             setNotifications(data.slice(0, 8));
         } catch (error) {
             console.error("Failed to fetch notifications", error);
-        } finally {
-            setLoading(false);
         }
     };
 
@@ -68,9 +68,12 @@ const Navbar = () => {
     };
 
     useEffect(() => {
-        fetchNotifications();
+        const initialFetch = setTimeout(fetchNotifications, 0);
         const interval = setInterval(fetchNotifications, 30000);
-        return () => clearInterval(interval);
+        return () => {
+            clearTimeout(initialFetch);
+            clearInterval(interval);
+        };
     }, []);
 
     useEffect(() => {
@@ -88,6 +91,8 @@ const Navbar = () => {
         switch (type) {
             case 'offline':
                 return { icon: <WifiOff size={16} className="text-danger" />, label: 'Device Offline' };
+            case 'app_uninstall_suspected':
+                return { icon: <AlertTriangle size={16} className="text-danger" />, label: 'Possible App Uninstall' };
             case 'battery_low':
                 return { icon: <BatteryLow size={16} className="text-warning" />, label: 'Battery Low' };
             case 'sim_change':
@@ -98,14 +103,33 @@ const Navbar = () => {
     };
 
     return (
-        <header className="bg-sidebar border-b border-border h-16 flex items-center justify-between px-6 sticky top-0 z-40">
+        <header className="z-30 flex h-16 shrink-0 items-center justify-between border-b border-border bg-sidebar px-3 sm:px-4 lg:px-6">
 
             {/* USER INFO */}
-            <div className="flex items-center gap-3">
+            <div className="flex min-w-0 items-center gap-3">
 
-                <div className="flex flex-col">
+                <button
+                    type="button"
+                    onClick={onOpenMobileSidebar}
+                    className="rounded-lg p-2 text-text-secondary transition hover:bg-card hover:text-text-primary lg:hidden"
+                    aria-label="Open sidebar"
+                >
+                    <Menu size={20} />
+                </button>
 
-                    <span className="text-sm font-semibold text-text-primary">
+                <button
+                    type="button"
+                    onClick={onToggleSidebar}
+                    className="hidden rounded-lg p-2 text-text-secondary transition hover:bg-card hover:text-text-primary lg:inline-flex"
+                    aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+                    title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+                >
+                    {sidebarCollapsed ? <PanelLeftOpen size={20} /> : <PanelLeftClose size={20} />}
+                </button>
+
+                <div className="min-w-0 flex flex-col">
+
+                    <span className="truncate text-sm font-semibold text-text-primary">
                         {user?.full_name || "Admin"}
                     </span>
 
@@ -119,7 +143,7 @@ const Navbar = () => {
             </div>
 
             {/* RIGHT SECTION */}
-            <div className="flex items-center gap-6">
+            <div className="flex shrink-0 items-center gap-2 sm:gap-4 lg:gap-6">
 
                 {/* NOTIFICATIONS */}
                 <div className="relative" ref={notificationRef}>
@@ -140,7 +164,7 @@ const Navbar = () => {
                     </button>
 
                     {showNotifications && (
-                        <div className="absolute right-0 mt-4 w-96 bg-card rounded-xl shadow-2xl border border-border overflow-hidden">
+                        <div className="absolute right-0 mt-4 w-[min(24rem,calc(100vw-1.5rem))] overflow-hidden rounded-xl border border-border bg-card shadow-2xl">
 
                             {/* HEADER */}
                             <div className="flex items-center justify-between px-4 py-3 border-b border-border">
@@ -266,7 +290,7 @@ const Navbar = () => {
                 </div>
 
                 {/* PROFILE */}
-                <div className="flex items-center gap-3 border-l border-border pl-6">
+                <div className="flex items-center gap-3 border-l border-border pl-3 sm:pl-4 lg:pl-6">
 
                     <div className="hidden md:block text-right">
 

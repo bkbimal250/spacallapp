@@ -17,10 +17,12 @@ class DeviceFilter(BaseDateFilter):
     is_active = filters.BooleanFilter()
     is_blocked = filters.BooleanFilter()
     is_online = filters.BooleanFilter(method='filter_is_online')
+    has_android_id = filters.BooleanFilter(method='filter_has_android_id')
+    compliance_status = filters.CharFilter(field_name='compliance_state__status')
 
     class Meta:
         model = Device
-        fields = ['branch', 'is_registered', 'is_active', 'is_blocked', 'is_online']
+        fields = ['branch', 'is_registered', 'is_active', 'is_blocked', 'is_online', 'has_android_id', 'compliance_status']
         date_field = 'created_at'
 
     def filter_search(self, queryset, name, value):
@@ -49,3 +51,8 @@ class DeviceFilter(BaseDateFilter):
         if value:
             return queryset.filter(last_heartbeat__gte=threshold)
         return queryset.exclude(last_heartbeat__gte=threshold)
+
+    def filter_has_android_id(self, queryset, name, value):
+        if value:
+            return queryset.exclude(android_id__isnull=True).exclude(android_id="")
+        return queryset.filter(Q(android_id__isnull=True) | Q(android_id=""))

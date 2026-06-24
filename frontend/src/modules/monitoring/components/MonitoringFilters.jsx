@@ -9,6 +9,7 @@ const statusOptions = [
     { value: '', label: 'All devices' },
     { value: 'online', label: 'Online' },
     { value: 'offline', label: 'Offline' },
+    { value: 'app_uninstall_suspected', label: 'Possible app uninstall' },
     { value: 'registered', label: 'Registered' },
     { value: 'pending', label: 'Pending registration' },
     { value: 'blocked', label: 'Blocked' },

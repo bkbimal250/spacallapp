@@ -9,6 +9,8 @@ class CallLogSerializer(serializers.ModelSerializer):
     branch_code = serializers.ReadOnlyField(source='branch.code')
     device_uid = serializers.ReadOnlyField(source='device.device_id')
     phone_name = serializers.ReadOnlyField(source='device.phone_name')
+    sim_1_number = serializers.ReadOnlyField(source='device.sim_1_number')
+    sim_2_number = serializers.ReadOnlyField(source='device.sim_2_number')
     contact_name = serializers.ReadOnlyField(source='contact.name')
     
     # Optimized relation access (requires select_related('lead'))
@@ -21,7 +23,7 @@ class CallLogSerializer(serializers.ModelSerializer):
         model = CallLog
         fields = [
             'id', 'branch', 'branch_name', 'branch_code', 'device', 'device_uid', 
-            'phone_name', 'contact', 'contact_name', 'phone_number', 'call_type', 
+            'phone_name', 'sim_1_number', 'sim_2_number', 'contact', 'contact_name', 'phone_number', 'call_type',
             'duration', 'sim_slot', 'receiver_number', 'call_time', 
             'call_hash', 'lead_status', 'lead_id', 'created_at'
         ]
@@ -48,6 +50,8 @@ class CallLogListSerializer(serializers.ModelSerializer):
     lead_id = serializers.ReadOnlyField(source='lead.id')
     device_uid = serializers.ReadOnlyField(source='device.device_id')
     phone_name = serializers.ReadOnlyField(source='device.phone_name')
+    sim_1_number = serializers.ReadOnlyField(source='device.sim_1_number')
+    sim_2_number = serializers.ReadOnlyField(source='device.sim_2_number')
     followup_status = serializers.ReadOnlyField(source='followup_status.sla_status')
     is_followed_up = serializers.ReadOnlyField(source='followup_status.is_followed_up')
     
@@ -55,7 +59,8 @@ class CallLogListSerializer(serializers.ModelSerializer):
     class Meta:
         model = CallLog
         fields = [
-            'id', 'phone_number', 'contact_name', 'call_type', 'duration','device_uid', 'phone_name',
+            'id', 'phone_number', 'contact_name', 'call_type', 'duration', 'device_uid', 'phone_name',
+            'sim_slot', 'sim_1_number', 'sim_2_number',
             'call_time', 'created_at', 'branch_name', 'lead_status', 'lead_id', 'followup_status', 'is_followed_up'
         ]
 

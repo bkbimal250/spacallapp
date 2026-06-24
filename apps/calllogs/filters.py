@@ -12,6 +12,7 @@ class CallLogFilter(BaseDateFilter):
     is_unique = filters.BooleanFilter(method='filter_is_unique')
     branch = filters.CharFilter(method='filter_branch')
     device = filters.CharFilter(field_name='device__device_id')
+    sim_number = filters.CharFilter(method='filter_sim_number')
     call_type = filters.ChoiceFilter(choices=[
         ('incoming', 'Incoming'),
         ('outgoing', 'Outgoing'),
@@ -25,16 +26,30 @@ class CallLogFilter(BaseDateFilter):
 
     class Meta:
         model = CallLog
-        fields = ['branch', 'device', 'call_type', 'city', 'lead_status', 'sla_status', 'branch_group']
+        fields = ['branch', 'device', 'sim_number', 'call_type', 'city', 'lead_status', 'sla_status', 'branch_group']
         date_field = 'call_time'
 
     def filter_search(self, queryset, name, value):
         if value:
             return queryset.filter(
                 Q(phone_number__icontains=value) |
-                Q(contact__name__icontains=value)
+                Q(contact__name__icontains=value) |
+                Q(device__phone_name__icontains=value) |
+                Q(device__device_id__icontains=value) |
+                Q(device__sim_1_number__icontains=value) |
+                Q(device__sim_2_number__icontains=value)
             )
         return queryset
+
+    def filter_sim_number(self, queryset, name, value):
+        if not value:
+            return queryset
+
+        normalized = str(value).strip()
+        return queryset.filter(
+            Q(sim_slot=1, device__sim_1_number=normalized) |
+            Q(sim_slot=2, device__sim_2_number=normalized)
+        )
 
     def filter_branch(self, queryset, name, value):
         if not value:

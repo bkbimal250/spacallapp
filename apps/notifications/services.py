@@ -252,13 +252,32 @@ class NotificationService:
                 notif_log.save()
                 NotificationService._broadcast_notification(notif_log)
             
-            # Common FCM error codes for stale/invalid tokens
-            invalid_token_codes = ['registration-token-not-registered', 'invalid-registration-token']
-            if e.code in invalid_token_codes:
+            # Common FCM error codes/messages for stale or invalid tokens.
+            error_code = str(getattr(e, "code", "") or "").lower()
+            error_text = str(e).lower()
+            invalid_token_codes = {
+                "registration-token-not-registered",
+                "invalid-registration-token",
+                "unregistered",
+                "invalid-argument",
+            }
+            invalid_token_error = (
+                error_code in invalid_token_codes
+                or "registration token is not registered" in error_text
+                or "requested entity was not found" in error_text
+                or "not a valid fcm registration token" in error_text
+            )
+            if invalid_token_error:
                 logger.warning(
                     "Clearing invalid FCM token for recipient",
                     extra=NotificationService._recipient_context(recipient),
                 )
+                if is_device:
+                    try:
+                        from apps.monitoring.compliance import DeviceComplianceService
+                        DeviceComplianceService.mark_fcm_invalid(recipient, str(e))
+                    except Exception:
+                        logger.exception("Failed to mark device FCM token invalid")
                 recipient.fcm_token = None
                 recipient.save(update_fields=['fcm_token'])
             

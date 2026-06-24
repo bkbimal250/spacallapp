@@ -68,6 +68,7 @@ const DeviceHealth = () => {
         total_devices: 0,
         online_devices: 0,
         offline_alerts: 0,
+        uninstall_warning_alerts: 0,
         sim_change_alerts: 0,
         sync_failure_alerts: 0,
         battery_low_alerts: 0,
@@ -240,7 +241,7 @@ const DeviceHealth = () => {
     ), [alerts]);
 
     const eventVariant = (eventType) => {
-        if (eventType === 'offline' || eventType === 'sync_failure' || eventType === 'app_crash') return 'danger';
+        if (eventType === 'offline' || eventType === 'app_uninstall_suspected' || eventType === 'sync_failure' || eventType === 'app_crash') return 'danger';
         if (eventType === 'battery_low' || eventType === 'storage_full' || eventType === 'network_weak' || eventType === 'sim_change') return 'warning';
         return 'secondary';
     };
@@ -375,6 +376,7 @@ const DeviceHealth = () => {
 
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
                 <DashboardStatsCard title="Offline Alerts" value={stats.offline_alerts} isNegative={stats.offline_alerts > 0} className="border-danger/20" />
+                <DashboardStatsCard title="Possible Uninstalls" value={stats.uninstall_warning_alerts} isNegative={stats.uninstall_warning_alerts > 0} className="border-danger/20" />
                 <DashboardStatsCard title="Battery Alerts" value={stats.battery_low_alerts} isNegative={stats.battery_low_alerts > 0} className="border-warning/20" />
                 <DashboardStatsCard title="Network Alerts" value={stats.network_alerts} isNegative={stats.network_alerts > 0} className="border-warning/20" />
                 <DashboardStatsCard title="SIM Change Alerts" value={stats.sim_change_alerts} isNegative={stats.sim_change_alerts > 0} className="border-warning/20" />

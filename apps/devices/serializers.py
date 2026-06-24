@@ -17,14 +17,36 @@ class DeviceSerializer(serializers.ModelSerializer):
 
     status = serializers.SerializerMethodField()
     is_online = serializers.SerializerMethodField()
+    compliance_status = serializers.SerializerMethodField()
+    compliance_reason = serializers.SerializerMethodField()
+    compliance_followed_up_at = serializers.SerializerMethodField()
+    app_version = serializers.SerializerMethodField()
+    last_seen_at = serializers.DateTimeField(source="last_heartbeat", read_only=True)
 
     class Meta:
         model = Device
         fields = (
             "id", "branch", "branch_name", "phone_name", "device_id", "android_id", "registration_token", "sim_1_number", "sim_2_number",
-            "last_sync", "last_heartbeat", "is_registered", "is_active", "is_blocked",
-            "status", "is_online", "created_at", "branch_is_active"
+            "last_sync", "last_heartbeat", "last_seen_at", "is_registered", "is_active", "is_blocked",
+            "status", "is_online", "created_at", "branch_is_active",
+            "compliance_status", "compliance_reason", "compliance_followed_up_at", "app_version"
         )
+
+    def get_compliance_status(self, obj):
+        state = getattr(obj, "compliance_state", None)
+        return state.status if state else "OK"
+
+    def get_compliance_reason(self, obj):
+        state = getattr(obj, "compliance_state", None)
+        return state.reason if state else ""
+
+    def get_compliance_followed_up_at(self, obj):
+        state = getattr(obj, "compliance_state", None)
+        return state.followed_up_at if state else None
+
+    def get_app_version(self, obj):
+        health = getattr(obj, "health", None)
+        return health.app_version if health else None
 
     def to_representation(self, instance):
         ret = super().to_representation(instance)

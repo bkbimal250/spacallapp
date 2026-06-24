@@ -26,6 +26,15 @@ Represents physical spa/salon locations:
 - **Purpose**: Parent container for devices and call logs
 - **Inheritance**: BaseModel (UUIDs), TimeStampedModel (created_at/updated_at), SoftDeleteModel (safe deletion)
 
+**Location migration note**: `state`, `city`, and `area` are legacy text fields
+on the branch model and must remain in place during the normalized locations
+migration. The safe migration plan is documented in
+`LOCATIONS_APP_SAFE_PHASED_MIGRATION_PLAN.md`. New normalized branch mappings
+should use nullable FK fields such as `location_state`, `location_city`,
+`location_group`, and `location_area` so old text data is not deleted, renamed,
+or overwritten until the audit passes and a separate final removal task is
+approved.
+
 ### 2. Devices Model (`apps/devices/`)
 Represents Android smartphone units assigned to branches:
 - **Key Fields**: 
