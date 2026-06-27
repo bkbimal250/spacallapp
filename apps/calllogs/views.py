@@ -23,6 +23,8 @@ Android Sync Flow:
     5. Device's last_sync timestamp is updated.
 """
 
+from datetime import datetime, timedelta, timezone as datetime_timezone
+
 from django.http import HttpResponse
 from django.utils import timezone
 from django.db.models import Count, Q, Sum, Avg
@@ -53,6 +55,7 @@ from apps.devices.services import DeviceService
 
 
 logger = logging.getLogger(__name__)
+FUTURE_CALL_TIME_TOLERANCE = timedelta(minutes=10)
 
 
 def _remote_ip(request):
@@ -130,6 +133,34 @@ def _safe_errors(errors):
     return str(errors)
 
 
+def _device_call_time(item):
+    call_time_ms = item.get("call_time_ms")
+    if call_time_ms is not None:
+        return datetime.fromtimestamp(int(call_time_ms) / 1000, tz=datetime_timezone.utc)
+
+    call_time = item.get("call_time")
+    if call_time and timezone.is_naive(call_time):
+        return timezone.make_aware(call_time, datetime_timezone.utc)
+    return call_time
+
+
+def _server_safe_call_time(item, server_now):
+    reported_call_time = _device_call_time(item)
+    if reported_call_time and reported_call_time > server_now + FUTURE_CALL_TIME_TOLERANCE:
+        return {
+            "call_time": server_now,
+            "device_reported_call_time": reported_call_time,
+            "is_time_invalid": True,
+            "invalid_time_reason": "future_call_time",
+        }
+    return {
+        "call_time": reported_call_time,
+        "device_reported_call_time": reported_call_time,
+        "is_time_invalid": False,
+        "invalid_time_reason": "",
+    }
+
+
 class DeviceSyncView(views.APIView):
     """
     Android device batch sync endpoint.
@@ -184,7 +215,8 @@ class DeviceSyncView(views.APIView):
                 "call_type": serializers.ChoiceField(choices=["incoming", "outgoing", "missed", "rejected"]),
                 "duration": serializers.IntegerField(help_text="Duration in seconds"),
                 "sim_slot": serializers.IntegerField(help_text="Android slot: 0 or 1"),
-                "call_time": serializers.DateTimeField(),
+                "call_time": serializers.DateTimeField(required=False),
+                "call_time_ms": serializers.IntegerField(required=False, help_text="Raw Android CallLog.Calls.DATE epoch milliseconds"),
                 "call_hash": serializers.CharField(help_text="Unique hash of the call record"),
             }
         ),
@@ -292,6 +324,8 @@ class DeviceSyncView(views.APIView):
 
         # ── Step 2: Build CallLog objects for bulk insert ──
         logs_to_create = []
+        server_now = timezone.now()
+        invalid_time_count = 0
         for item in payloads:
             # Normalize sim_slot: Android uses 0-indexed (0, 1) → we use 1-indexed (1, 2)
             raw_slot = item.get("sim_slot", 1)
@@ -306,6 +340,9 @@ class DeviceSyncView(views.APIView):
             import re
             clean_pn = re.sub(r'\D', '', phone_num or '')
             log_last_10 = clean_pn[-10:] if len(clean_pn) >= 10 else clean_pn
+            time_values = _server_safe_call_time(item, server_now)
+            if time_values["is_time_invalid"]:
+                invalid_time_count += 1
 
             logs_to_create.append(
                 CallLog(
@@ -317,7 +354,10 @@ class DeviceSyncView(views.APIView):
                     call_type=item.get("call_type"),
                     duration=item.get("duration", 0),
                     sim_slot=normalized_slot,
-                    call_time=item.get("call_time"),
+                    call_time=time_values["call_time"],
+                    device_reported_call_time=time_values["device_reported_call_time"],
+                    is_time_invalid=time_values["is_time_invalid"],
+                    invalid_time_reason=time_values["invalid_time_reason"],
                     call_hash=item.get("call_hash"),
                 )
             )
@@ -388,12 +428,14 @@ class DeviceSyncView(views.APIView):
                 "payload_count": len(payloads),
                 "synced_count": len(logs_to_create),
                 "leads_created": len(leads_to_create),
+                "invalid_time_count": invalid_time_count,
             },
         )
         return response.Response({
             "status": "success",
             "synced_count": len(logs_to_create),
             "leads_created": len(leads_to_create),
+            "invalid_time_count": invalid_time_count,
         }, status=status.HTTP_201_CREATED)
 
 

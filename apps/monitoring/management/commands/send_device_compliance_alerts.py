@@ -33,6 +33,7 @@ class Command(BaseCommand):
             DeviceComplianceService.MISSING_ANDROID_ID,
             DeviceComplianceService.MISSING_FCM_TOKEN,
             DeviceComplianceService.HEARTBEAT_MISSING,
+            DeviceComplianceService.DEVICE_TIME_WRONG,
             DeviceComplianceService.SUSPECTED_UNINSTALLED,
             DeviceComplianceService.AUTH_BROKEN,
         }

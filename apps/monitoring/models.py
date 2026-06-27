@@ -21,6 +21,7 @@ class DeviceHealth(TimeStampedModel):
     device_model = models.CharField(max_length=255, blank=True, null=True)
     manufacturer = models.CharField(max_length=120, blank=True, null=True)
     device_reported_at = models.DateTimeField(null=True, blank=True)
+    device_time_skew_seconds = models.IntegerField(null=True, blank=True)
 
     sim_1_number = models.CharField(max_length=20, blank=True, null=True)
     sim_2_number = models.CharField(max_length=20, blank=True, null=True)
@@ -70,6 +71,7 @@ class DeviceComplianceState(TimeStampedModel):
         ("HEARTBEAT_MISSING", "Heartbeat Missing"),
         ("SUSPECTED_UNINSTALLED", "Suspected Uninstalled"),
         ("AUTH_BROKEN", "Auth Broken"),
+        ("DEVICE_TIME_WRONG", "Device Time Wrong"),
     )
 
     device = models.OneToOneField(
@@ -80,6 +82,7 @@ class DeviceComplianceState(TimeStampedModel):
     status = models.CharField(max_length=40, choices=STATUS_CHOICES, default="OK", db_index=True)
     reason = models.TextField(blank=True)
     fcm_invalid = models.BooleanField(default=False, db_index=True)
+    device_time_wrong = models.BooleanField(default=False, db_index=True)
     last_phone_notification_at = models.DateTimeField(null=True, blank=True)
     last_admin_alert_at = models.DateTimeField(null=True, blank=True)
     last_admin_email_at = models.DateTimeField(null=True, blank=True)

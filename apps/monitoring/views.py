@@ -69,6 +69,8 @@ class DeviceHeartbeatView(views.APIView):
                 "manufacturer": serializers.CharField(required=False),
                 "device_id": serializers.CharField(required=False),
                 "timestamp": serializers.CharField(required=False),
+                "device_current_time_ms": serializers.IntegerField(required=False),
+                "timezone": serializers.CharField(required=False),
                 "permission_denied": serializers.BooleanField(required=False),
                 "permission_name": serializers.CharField(required=False),
                 "app_crash": serializers.BooleanField(required=False),
@@ -172,6 +174,20 @@ class DeviceHeartbeatView(views.APIView):
             reported_at = parse_datetime(str(health_data["timestamp"]))
             if reported_at:
                 health.device_reported_at = reported_at if timezone.is_aware(reported_at) else timezone.make_aware(reported_at)
+        device_time_wrong = None
+        device_time_skew_seconds = None
+        if "device_current_time_ms" in health_data:
+            try:
+                device_time_ms = int(health_data["device_current_time_ms"])
+                server_time_ms = int(now.timestamp() * 1000)
+                device_time_skew_seconds = int((device_time_ms - server_time_ms) / 1000)
+                health.device_time_skew_seconds = device_time_skew_seconds
+                device_time_wrong = abs(device_time_skew_seconds) > 5 * 60
+            except (TypeError, ValueError):
+                logger.warning(
+                    "Heartbeat ignored invalid device_current_time_ms",
+                    extra={"device_id": device.device_id, "value": health_data.get("device_current_time_ms")},
+                )
         if "storage_used_mb" in health_data:
             storage_used = float(health_data["storage_used_mb"])
             health.storage_used_mb = storage_used
@@ -217,6 +233,10 @@ class DeviceHeartbeatView(views.APIView):
             from .compliance import DeviceComplianceService
             if fcm_token:
                 DeviceComplianceService.mark_fcm_valid(device)
+            if device_time_wrong is True:
+                DeviceComplianceService.mark_device_time_wrong(device, device_time_skew_seconds)
+            elif device_time_wrong is False:
+                DeviceComplianceService.mark_device_time_ok(device)
             DeviceComplianceService.check_device(device)
         except Exception:
             logger.exception("Failed to update device compliance after heartbeat")

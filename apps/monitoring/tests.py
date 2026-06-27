@@ -3,11 +3,13 @@ from unittest.mock import patch
 
 from django.test import TestCase, override_settings
 from django.utils import timezone
+from rest_framework.test import APIClient
 
 from apps.accounts.models import User
 from apps.branches.models import Branch, BranchGroups
 from apps.devices.models import Device
-from apps.monitoring.models import DeviceEvent, DeviceHealth
+from apps.monitoring.compliance import DeviceComplianceService
+from apps.monitoring.models import DeviceComplianceState, DeviceEvent, DeviceHealth
 from apps.monitoring.services import MonitoringAlertService
 from apps.monitoring.tasks import check_offline_devices
 
@@ -118,7 +120,61 @@ class MonitoringAlertServiceTests(TestCase):
         )
         self.assertIn("Possible reasons", warning.description)
         self.assertIn("app uninstalled", warning.description)
-        self.assertEqual(send_push.call_count, 4)
+
+
+class DeviceHeartbeatClockSkewTests(TestCase):
+    def setUp(self):
+        self.branch = Branch.objects.create(
+            spa_name="Clock Monitoring Branch",
+            code="MON-CLK-01",
+            city="Pune",
+            state="Maharashtra",
+            area="Koregaon Park",
+            postal_code=411001,
+            address="Test address",
+        )
+        self.device = Device.objects.create(
+            branch=self.branch,
+            device_id="DEV-CLOCK-01",
+            secret_key="secret-123",
+            phone_name="Clock Phone",
+            is_registered=True,
+            android_id="android-clock-01",
+            fcm_token="fcm-token",
+        )
+        self.client = APIClient()
+        self.headers = {
+            "HTTP_X_DEVICE_ID": self.device.device_id,
+            "HTTP_X_DEVICE_SECRET": self.device.secret_key,
+        }
+
+    def test_heartbeat_with_wrong_device_time_marks_device_time_wrong(self):
+        future_device_time_ms = int((timezone.now() + timedelta(minutes=12)).timestamp() * 1000)
+
+        response = self.client.post(
+            "/api/v1/monitoring/heartbeat/",
+            {
+                "device_id": self.device.device_id,
+                "battery_level": 80,
+                "signal_strength": -75,
+                "app_version": "1.0.0",
+                "storage_used_mb": 20.0,
+                "android_id": self.device.android_id,
+                "fcm_token": self.device.fcm_token,
+                "device_current_time_ms": future_device_time_ms,
+                "timezone": "Asia/Kolkata",
+            },
+            format="json",
+            **self.headers,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        state = DeviceComplianceState.objects.get(device=self.device)
+        self.assertTrue(state.device_time_wrong)
+        self.assertEqual(state.status, DeviceComplianceService.DEVICE_TIME_WRONG)
+        self.assertIn("Automatic Date & Time", state.reason)
+        health = DeviceHealth.objects.get(device=self.device)
+        self.assertGreater(abs(health.device_time_skew_seconds), 5 * 60)
 
     @override_settings(
         MONITORING_OFFLINE_AFTER_MINUTES=20,

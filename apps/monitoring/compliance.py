@@ -50,6 +50,7 @@ class DeviceComplianceService:
     HEARTBEAT_MISSING = "HEARTBEAT_MISSING"
     SUSPECTED_UNINSTALLED = "SUSPECTED_UNINSTALLED"
     AUTH_BROKEN = "AUTH_BROKEN"
+    DEVICE_TIME_WRONG = "DEVICE_TIME_WRONG"
 
     @staticmethod
     def state_for(device):
@@ -81,6 +82,9 @@ class DeviceComplianceService:
         elif not device.fcm_token:
             status = DeviceComplianceService.MISSING_FCM_TOKEN
             reason = "Device FCM token is missing or invalid."
+        elif state.device_time_wrong:
+            status = DeviceComplianceService.DEVICE_TIME_WRONG
+            reason = "Device clock is different from server time. Ask branch/user to enable Automatic Date & Time and Automatic Time Zone."
         elif not device.last_heartbeat:
             status = DeviceComplianceService.HEARTBEAT_MISSING
             reason = "Device has never sent a heartbeat."
@@ -134,6 +138,28 @@ class DeviceComplianceService:
             changed = True
         if changed:
             state.save(update_fields=["fcm_invalid", "status", "reason", "updated_at"])
+        return state
+
+    @staticmethod
+    def mark_device_time_wrong(device, skew_seconds):
+        state = DeviceComplianceService.state_for(device)
+        reason = (
+            "Device clock is different from server time. Ask branch/user to enable "
+            "Automatic Date & Time and Automatic Time Zone."
+        )
+        state.device_time_wrong = True
+        state.status = DeviceComplianceService.DEVICE_TIME_WRONG
+        state.reason = reason
+        state.save(update_fields=["device_time_wrong", "status", "reason", "updated_at"])
+        DeviceComplianceService.create_crm_alert(device, state.status, f"{reason} Clock skew: {skew_seconds} seconds.")
+        return state
+
+    @staticmethod
+    def mark_device_time_ok(device):
+        state = DeviceComplianceService.state_for(device)
+        if state.device_time_wrong:
+            state.device_time_wrong = False
+            state.save(update_fields=["device_time_wrong", "updated_at"])
         return state
 
     @staticmethod

@@ -239,6 +239,7 @@ const DeviceFilter = ({ onFilter, initialFilters = {} }) => {
                             <option value="MISSING_FCM_TOKEN">Missing FCM Token</option>
                             <option value="OUTDATED_APP">Outdated App</option>
                             <option value="HEARTBEAT_MISSING">Heartbeat Missing</option>
+                            <option value="DEVICE_TIME_WRONG">Device Time Wrong</option>
                             <option value="SUSPECTED_UNINSTALLED">Suspected Uninstalled</option>
                             <option value="AUTH_BROKEN">Auth Broken</option>
                         </select>

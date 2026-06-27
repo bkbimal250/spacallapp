@@ -24,7 +24,8 @@ import {
     ExternalLink,
     X,
     MapPin,
-    Filter
+    Filter,
+    AlertTriangle
 } from 'lucide-react';
 import { contactApi } from '../../contacts/api';
 import ContactForm from '../../contacts/components/ContactForm';
@@ -343,7 +344,18 @@ const CallLogList = () => {
             {
                 header: "Call Time",
                 sortKey: "call_time",
-                render: (row) => formatDate(row.call_time, 'MMM dd, yyyy HH:mm:ss')
+                render: (row) => row.is_time_invalid ? (
+                    <div
+                        className="flex min-w-[160px] flex-col gap-1 rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-amber-800"
+                        title={row.call_time_warning || "This phone sent a future call time. Please check phone date/time settings."}
+                    >
+                        <span className="flex items-center gap-1 text-xs font-semibold">
+                            <AlertTriangle size={13} />
+                            {row.call_time_label || "Invalid device time"}
+                        </span>
+                        <span className="text-[11px]">Device clock issue</span>
+                    </div>
+                ) : formatDate(row.call_time, 'MMM dd, yyyy HH:mm:ss')
             },
             {
                 header: "Created Time",

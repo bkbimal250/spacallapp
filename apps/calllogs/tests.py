@@ -1,7 +1,8 @@
 from django.test import TestCase
 from django.utils import timezone
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone as datetime_timezone
 from unittest.mock import patch
+from rest_framework.test import APIClient
 from apps.branches.models import Branch, BranchGroups
 from apps.devices.models import Device
 from apps.calllogs.models import CallLog, MissedCallFollowUp
@@ -9,6 +10,85 @@ from apps.calllogs.filters import CallLogFilter
 from apps.calllogs.serializers import CallLogListSerializer
 from apps.calllogs.services import FollowUpService
 from apps.calllogs.tasks import send_due_missed_call_reminders, send_missed_call_reminder
+
+
+class CallLogTimeValidationTests(TestCase):
+    def setUp(self):
+        self.branch = Branch.objects.create(
+            spa_name="Clock Test Branch",
+            code="CLK-01",
+            city="Pune",
+            state="Maharashtra",
+            postal_code=411001,
+            address="Test address",
+        )
+        self.device = Device.objects.create(
+            branch=self.branch,
+            device_id="CLK-DEVICE-01",
+            secret_key="secret-123",
+            is_registered=True,
+            android_id="android-clock-ok",
+            fcm_token="fcm-token",
+        )
+        self.client = APIClient()
+        self.headers = {
+            "HTTP_X_DEVICE_ID": self.device.device_id,
+            "HTTP_X_DEVICE_SECRET": self.device.secret_key,
+        }
+
+    def test_sync_accepts_current_call_time_ms(self):
+        call_time = timezone.now() - timedelta(minutes=2)
+        call_time_ms = int(call_time.timestamp() * 1000)
+
+        response = self.client.post(
+            "/api/v1/calllogs/sync/",
+            [{
+                "phone_number": "9876543210",
+                "call_type": "incoming",
+                "duration": 30,
+                "sim_slot": 0,
+                "call_time_ms": call_time_ms,
+                "call_hash": "current-ms-hash",
+            }],
+            format="json",
+            **self.headers,
+        )
+
+        self.assertEqual(response.status_code, 201)
+        log = CallLog.objects.get(call_hash="current-ms-hash")
+        expected = datetime.fromtimestamp(call_time_ms / 1000, tz=datetime_timezone.utc)
+        self.assertFalse(log.is_time_invalid)
+        self.assertEqual(log.invalid_time_reason, "")
+        self.assertLess(abs((log.call_time - expected).total_seconds()), 1)
+
+    def test_sync_flags_future_call_time_and_serializer_hides_future_label(self):
+        future_call_time = timezone.now() + timedelta(days=180)
+        future_call_time_ms = int(future_call_time.timestamp() * 1000)
+
+        response = self.client.post(
+            "/api/v1/calllogs/sync/",
+            [{
+                "phone_number": "9876543211",
+                "call_type": "incoming",
+                "duration": 45,
+                "sim_slot": 0,
+                "call_time_ms": future_call_time_ms,
+                "call_hash": "future-ms-hash",
+            }],
+            format="json",
+            **self.headers,
+        )
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.data["invalid_time_count"], 1)
+        log = CallLog.objects.get(call_hash="future-ms-hash")
+        self.assertTrue(log.is_time_invalid)
+        self.assertEqual(log.invalid_time_reason, "future_call_time")
+        self.assertLessEqual(log.call_time, timezone.now() + timedelta(minutes=10))
+
+        data = CallLogListSerializer(log).data
+        self.assertEqual(data["call_time_label"], "Invalid device time")
+        self.assertIn("future call time", data["call_time_warning"])
 
 class MissedCallFollowUpTests(TestCase):
     def setUp(self):

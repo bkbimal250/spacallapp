@@ -91,6 +91,13 @@ class CallLog(BaseModel, TimeStampedModel):
     call_time = models.DateTimeField(
         help_text="Exact date and time of the call."
     )
+    device_reported_call_time = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Original device-reported call time when the server had to use a safe timestamp."
+    )
+    is_time_invalid = models.BooleanField(default=False, db_index=True)
+    invalid_time_reason = models.CharField(max_length=64, blank=True, default="")
 
     # Unique hash to prevent duplicate submissions from the Android app
     # SHA-256 or MD5 of combination: phone_number + call_time + call_type + device_id
