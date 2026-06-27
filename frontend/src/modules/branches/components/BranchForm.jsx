@@ -6,7 +6,7 @@ import SearchableSelect from '../../../shared/components/SearchableSelect';
 import { branchesAPI } from '../api';
 import { locationsAPI } from '../../locations/api';
 
-const BranchForm = ({ isOpen, onClose, onSubmit, initialData }) => {
+const BranchForm = ({ isOpen, onClose, onSubmit, initialData, saving = false }) => {
 
     const [formData, setFormData] = useState({
         spa_name: '',
@@ -363,10 +363,11 @@ const BranchForm = ({ isOpen, onClose, onSubmit, initialData }) => {
                         variant="secondary"
                         onClick={onClose}
                         type="button"
+                        disabled={saving}
                     >
                         Cancel
                     </Button>
-                    <Button type="submit">
+                    <Button type="submit" loading={saving}>
                         {initialData ? 'Update' : 'Create'}
                     </Button>
                 </div>

@@ -1,10 +1,20 @@
 import React from 'react';
 import { useSelector } from 'react-redux';
-import { Users, Info } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Users, Info, History } from 'lucide-react';
+import { ROUTES } from '../../../routes/routeConfig';
 
 const LiveUsersList = () => {
+    const navigate = useNavigate();
     const onlineUsersPayload = useSelector((state) => state.notifications.onlineUsers);
     const onlineUsers = Array.isArray(onlineUsersPayload) ? onlineUsersPayload : [];
+
+    const openLoginHistory = (user) => {
+        if (!user?.id) return;
+        const params = new URLSearchParams({ user: user.id });
+        if (user.full_name) params.set('name', user.full_name);
+        navigate(`${ROUTES.USERS_LOGIN_HISTORY}?${params.toString()}`);
+    };
 
     return (
         <div className="bg-bg-secondary rounded-xl shadow-md border border-bg-tertiary p-6 overflow-hidden">
@@ -30,7 +40,13 @@ const LiveUsersList = () => {
             >
                 {onlineUsers.length > 0 ? (
                     onlineUsers.map((user) => (
-                        <div key={user.id} className="group p-3 hover:bg-bg-tertiary transition-all duration-200 rounded-lg border border-transparent hover:border-bg-quaternary">
+                        <button
+                            key={user.id}
+                            type="button"
+                            onClick={() => openLoginHistory(user)}
+                            className="group w-full p-3 text-left hover:bg-bg-tertiary transition-all duration-200 rounded-lg border border-transparent hover:border-bg-quaternary focus:outline-none focus:ring-2 focus:ring-primary/30"
+                            title={`View login history for ${user.full_name || 'this user'}`}
+                        >
                             <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-3">
                                     <div className="w-9 h-9 flex items-center justify-center font-bold text-sm rounded-lg bg-primary/10 text-primary border border-primary/20 group-hover:scale-110 transition-transform duration-200">
@@ -52,9 +68,13 @@ const LiveUsersList = () => {
                                     <span className="text-[11px] font-semibold text-text-tertiary bg-bg-quaternary py-0.5 px-2 rounded-md">
                                         {user.last_login_at ? new Date(user.last_login_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Just now'}
                                     </span>
+                                    <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-primary opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <History size={11} />
+                                        History
+                                    </span>
                                 </div>
                             </div>
-                        </div>
+                        </button>
                     ))
                 ) : (
                     <div className="flex flex-col items-center justify-center py-12 px-4 bg-bg-tertiary/30 rounded-xl border border-dashed border-bg-quaternary">

@@ -245,7 +245,7 @@ const DashboardHome = () => {
                         <select
                             value={quickDate}
                             onChange={(e) => updateFilters({ quick_date: e.target.value })}
-                            className="w-full bg-slate-50/50 border border-border text-text-primary rounded-xl px-4 py-2.5 text-sm font-medium focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none shadow-sm hover:border-primary/50 transition-all cursor-pointer appearance-none"
+                            className="w-full  bg-success/5 border border-border text-text-primary rounded-xl px-4 py-2.5 text-sm font-medium focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none shadow-sm hover:border-primary/50 transition-all cursor-pointer appearance-none"
                         >
                             <option value="">All Time</option>
                             <option value="today">Today</option>
@@ -259,7 +259,7 @@ const DashboardHome = () => {
                         <select
                             value={leadSource}
                             onChange={(e) => updateFilters({ lead_source: e.target.value })}
-                            className="w-full bg-slate-50/50 border border-border text-text-primary rounded-xl px-4 py-2.5 text-sm font-medium focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none shadow-sm hover:border-primary/50 transition-all cursor-pointer appearance-none"
+                            className="w-full  bg-success/5 border border-border text-text-primary rounded-xl px-4 py-2.5 text-sm font-medium focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none shadow-sm hover:border-primary/50 transition-all cursor-pointer appearance-none"
                         >
                             <option value="all">All Leads</option>
                             <option value="new">New Leads</option>

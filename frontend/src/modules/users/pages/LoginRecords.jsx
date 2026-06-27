@@ -1,15 +1,20 @@
 import React, { useEffect, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { usersAPI } from '../api';
 import Table from '../../../shared/components/Table';
 import Badge from '../../../shared/components/Badge';
 import { formatDate } from '../../../shared/utils/formatDate';
 import { PageSpinner } from '../../../shared/components/loaders';
 import Pagination from '../../../shared/components/Pagination';
+import Button from '../../../shared/components/Button';
+import { ArrowLeft } from 'lucide-react';
+import { ROUTES } from '../../../routes/routeConfig';
 
 const LoginRecords = () => {
+    const navigate = useNavigate();
     const [searchParams] = useSearchParams();
     const userId = searchParams.get('user');
+    const userName = searchParams.get('name');
     
     const [records, setRecords] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -41,6 +46,10 @@ const LoginRecords = () => {
     useEffect(() => {
         fetchHistory();
     }, [userId, page]);
+
+    useEffect(() => {
+        setPage(1);
+    }, [userId]);
 
     const columns = [
         {
@@ -97,7 +106,26 @@ const LoginRecords = () => {
     return (
         <div className="space-y-6">
             <div className="flex justify-between items-center">
-                <h1 className="text-2xl font-semibold text-text-primary">Login Records</h1>
+                <div>
+                    <h1 className="text-2xl font-semibold text-text-primary">
+                        {userId ? 'User Login History' : 'Login Records'}
+                    </h1>
+                    {userId && (
+                        <p className="mt-1 text-sm text-text-secondary">
+                            Showing history for {userName || 'selected user'}
+                        </p>
+                    )}
+                </div>
+                {userId && (
+                    <Button
+                        variant="secondary"
+                        onClick={() => navigate(ROUTES.USERS_LOGIN_HISTORY)}
+                        className="flex items-center gap-2"
+                    >
+                        <ArrowLeft size={16} />
+                        All Login Records
+                    </Button>
+                )}
             </div>
             
             <div className="bg-card border border-border rounded-lg overflow-hidden flex flex-col min-h-[500px]">

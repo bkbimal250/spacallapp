@@ -102,6 +102,13 @@ const Navbar = ({ sidebarCollapsed = false, onToggleSidebar, onOpenMobileSidebar
         }
     };
 
+    const handleNotificationToggle = async () => {
+        if (!showNotifications) {
+            await fetchNotifications();
+        }
+        setShowNotifications((prev) => !prev);
+    };
+
     return (
         <header className="z-30 flex h-16 shrink-0 items-center justify-between border-b border-border bg-sidebar px-3 sm:px-4 lg:px-6">
 
@@ -149,8 +156,10 @@ const Navbar = ({ sidebarCollapsed = false, onToggleSidebar, onOpenMobileSidebar
                 <div className="relative" ref={notificationRef}>
 
                     <button
-                        onClick={() => setShowNotifications(!showNotifications)}
+                        onClick={handleNotificationToggle}
                         className="relative p-2 rounded-lg hover:bg-card transition"
+                        aria-label="Notifications"
+                        title="Notifications"
                     >
 
                         <Bell size={20} className="text-text-secondary" />

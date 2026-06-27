@@ -57,6 +57,7 @@ const BranchView = () => {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const [isEditOpen, setIsEditOpen] = useState(false);
+    const [saving, setSaving] = useState(false);
 
     const fetchBranch = useCallback(async () => {
         setLoading(true);
@@ -91,9 +92,17 @@ const BranchView = () => {
     }, [fetchBranch]);
 
     const handleUpdate = async (data) => {
-        await branchesAPI.updateBranch(branch.id, data);
-        setIsEditOpen(false);
-        fetchBranch();
+        setSaving(true);
+        try {
+            const response = await branchesAPI.updateBranch(branch.id, data);
+            setBranch(prev => ({ ...prev, ...response.data }));
+            setIsEditOpen(false);
+        } catch (err) {
+            console.error('Failed to update branch details', err);
+            window.alert('Failed to update branch.');
+        } finally {
+            setSaving(false);
+        }
     };
 
     const locationLine = useMemo(() => {
@@ -271,6 +280,7 @@ const BranchView = () => {
                 onClose={() => setIsEditOpen(false)}
                 onSubmit={handleUpdate}
                 initialData={branch}
+                saving={saving}
             />
         </div>
     );

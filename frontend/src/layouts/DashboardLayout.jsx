@@ -34,7 +34,7 @@ const DashboardLayout = () => {
 
                 <main className={`min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden bg-background ${isBotBuilder ? 'p-3 sm:p-4' : 'p-3 sm:p-4 lg:p-6'}`}>
 
-                    <div className={isBotBuilder ? 'min-w-0 w-full' : 'min-w-0 w-full max-w-7xl mx-auto'}>
+                    <div className={isBotBuilder ? 'min-w-0 w-full' : 'min-w-0 w-full max-w-[95rem] mx-auto'}>
                         <Outlet />
                     </div>
 

@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo, useCallback } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { branchesAPI } from '../api';
 import Table from '../../../shared/components/Table';
@@ -8,7 +8,7 @@ import GroupForm from '../components/GroupForm';
 import BranchFilter from '../components/BranchFilter';
 import BranchStats from '../components/BranchStats';
 import Pagination from '../../../shared/components/Pagination';
-import BranchTabs from '../components/BranchTabs';
+import { addItemToList, removeItemFromList, updateItemInList } from '../../../shared/utils/listState';
 
 import {
     AlertTriangle,
@@ -36,6 +36,8 @@ const BranchList = () => {
     const [page, setPage] = useState(1);
     const [totalCount, setTotalCount] = useState(0);
     const [stats, setStats] = useState({ total: 0, active: 0, inactive: 0 });
+    const [rowAction, setRowAction] = useState({});
+    const [saving, setSaving] = useState(false);
 
     const pageSize = 100;
 
@@ -107,6 +109,61 @@ const BranchList = () => {
         setIsModalOpen(true);
     };
 
+    const setActionLoading = (id, action, value) => {
+        setRowAction(prev => ({ ...prev, [`${action}:${id}`]: value }));
+    };
+
+    const isActionLoading = (id, action) => Boolean(rowAction[`${action}:${id}`]);
+
+    const branchMatchesFilters = (branch) => {
+        if (!branch) return false;
+        if (filters.group && branch.branch_group !== filters.group) return false;
+        if (filters.status !== undefined && filters.status !== '' && String(Boolean(branch.is_active)) !== String(filters.status)) return false;
+        if (filters.city && !String(branch.city || branch.location_city_name || '').toLowerCase().includes(String(filters.city).toLowerCase())) return false;
+        if (filters.state && !String(branch.state || branch.location_state_name || '').toLowerCase().includes(String(filters.state).toLowerCase())) return false;
+        if (filters.area && !String(branch.area || branch.location_area_name || '').toLowerCase().includes(String(filters.area).toLowerCase())) return false;
+        if (filters.search) {
+            const haystack = [
+                branch.spa_name,
+                branch.code,
+                branch.city,
+                branch.area,
+                branch.state,
+                branch.address,
+                branch.phone,
+                branch.branch_group_name,
+            ].filter(Boolean).join(' ').toLowerCase();
+            if (!haystack.includes(String(filters.search).toLowerCase())) return false;
+        }
+        return true;
+    };
+
+    const adjustStatsForCreate = (branch) => {
+        setStats(prev => ({
+            total: prev.total + 1,
+            active: prev.active + (branch.is_active ? 1 : 0),
+            inactive: prev.inactive + (branch.is_active ? 0 : 1),
+        }));
+    };
+
+    const adjustStatsForDelete = (branch) => {
+        if (!branch) return;
+        setStats(prev => ({
+            total: Math.max(0, prev.total - 1),
+            active: Math.max(0, prev.active - (branch?.is_active ? 1 : 0)),
+            inactive: Math.max(0, prev.inactive - (branch?.is_active ? 0 : 1)),
+        }));
+    };
+
+    const adjustStatsForUpdate = (before, after) => {
+        if (!before || !after || Boolean(before.is_active) === Boolean(after.is_active)) return;
+        setStats(prev => ({
+            ...prev,
+            active: Math.max(0, prev.active + (after.is_active ? 1 : -1)),
+            inactive: Math.max(0, prev.inactive + (after.is_active ? -1 : 1)),
+        }));
+    };
+
     const handleEdit = async (branch) => {
         try {
             const response = await branchesAPI.getBranch(branch.id);
@@ -122,15 +179,25 @@ const BranchList = () => {
 
         if (window.confirm("Are you sure you want to delete this branch?")) {
 
+            const deletedBranch = branches.find(branch => branch.id === id);
+            setActionLoading(id, 'delete', true);
             try {
 
                 await branchesAPI.deleteBranch(id);
-                fetchBranches(filters, page);
-                fetchStats();
+                setBranches(prev => removeItemFromList(prev, id));
+                setTotalCount(prev => Math.max(0, prev - 1));
+                adjustStatsForDelete(deletedBranch);
+                setEditingBranch(prev => prev?.id === id ? null : prev);
+                if (branches.length === 1 && page > 1) {
+                    setPage(prev => Math.max(1, prev - 1));
+                }
 
             } catch (error) {
 
                 console.error("Failed to delete branch", error);
+                window.alert("Failed to delete branch.");
+            } finally {
+                setActionLoading(id, 'delete', false);
 
             }
 
@@ -139,18 +206,31 @@ const BranchList = () => {
     };
 
     const handleSubmit = async (data) => {
+        setSaving(true);
         try {
             if (editingBranch) {
-                await branchesAPI.updateBranch(editingBranch.id, data);
+                const response = await branchesAPI.updateBranch(editingBranch.id, data);
+                const updatedBranch = response.data;
+                setBranches(prev => updateItemInList(prev, updatedBranch));
+                setEditingBranch(prev => prev?.id === editingBranch.id ? { ...prev, ...updatedBranch } : prev);
+                adjustStatsForUpdate(editingBranch, updatedBranch);
             } else {
-                await branchesAPI.createBranch(data);
+                const response = await branchesAPI.createBranch(data);
+                if (branchMatchesFilters(response.data)) {
+                    setBranches(prev => addItemToList(prev, response.data));
+                    setTotalCount(prev => prev + 1);
+                } else {
+                    window.alert("Created successfully. It may not appear because current filters are active.");
+                }
+                adjustStatsForCreate(response.data);
             }
 
             setIsModalOpen(false);
-            fetchBranches(filters, page);
-            fetchStats();
         } catch (error) {
             console.error("Failed to save branch", error);
+            window.alert("Failed to save branch.");
+        } finally {
+            setSaving(false);
         }
     };
 
@@ -158,10 +238,9 @@ const BranchList = () => {
         try {
             await branchesAPI.createGroup(data);
             setIsGroupModalOpen(false);
-            // Re-fetch branches as groups might be updated/added
-            fetchBranches(filters, page);
         } catch (error) {
             console.error("Failed to save branch group", error);
+            window.alert("Failed to save branch group.");
         }
     };
 
@@ -196,7 +275,7 @@ const BranchList = () => {
         );
     };
 
-    const columns = useMemo(() => [
+    const columns = [
 
         { header: 'Spa Name', accessor: 'spa_name' },
         { header: 'Branch Code', accessor: 'code' },
@@ -296,6 +375,7 @@ const BranchList = () => {
                     {/* Edit */}
                     <button
                         onClick={() => handleEdit(row)}
+                        disabled={isActionLoading(row.id, 'delete')}
                         className="p-1 rounded-md text-warning hover:bg-warning/10"
                         title="Edit"
                     >
@@ -305,7 +385,8 @@ const BranchList = () => {
                     {/* Delete */}
                     <button
                         onClick={() => handleDelete(row.id)}
-                        className="p-1 rounded-md text-danger hover:bg-danger/10"
+                        disabled={isActionLoading(row.id, 'delete')}
+                        className="p-1 rounded-md text-danger hover:bg-danger/10 disabled:opacity-50"
                         title="Delete"
                     >
                         <Trash2 size={16} />
@@ -315,7 +396,7 @@ const BranchList = () => {
             )
         }
 
-    ], [navigate]);
+    ];
 
     return (
         <div className="space-y-6">
@@ -400,6 +481,7 @@ const BranchList = () => {
                 onClose={() => setIsModalOpen(false)}
                 onSubmit={handleSubmit}
                 initialData={editingBranch}
+                saving={saving}
             />
 
             {/* GROUP FORM MODAL */}

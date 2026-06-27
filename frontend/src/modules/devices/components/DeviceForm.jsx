@@ -5,7 +5,7 @@ import Modal from '../../../shared/components/Modal';
 import { branchesAPI } from '../../branches/api';
 import SearchableSelect from '../../../shared/components/SearchableSelect';
 
-const DeviceForm = ({ isOpen, onClose, onSubmit, initialData }) => {
+const DeviceForm = ({ isOpen, onClose, onSubmit, initialData, saving = false }) => {
 
     const [branches, setBranches] = useState([]);
 
@@ -247,11 +247,12 @@ const DeviceForm = ({ isOpen, onClose, onSubmit, initialData }) => {
                         variant="secondary"
                         onClick={onClose}
                         type="button"
+                        disabled={saving}
                     >
                         Cancel
                     </Button>
 
-                    <Button type="submit">
+                    <Button type="submit" loading={saving}>
 
                         {initialData ? 'Update' : 'Register'}
 

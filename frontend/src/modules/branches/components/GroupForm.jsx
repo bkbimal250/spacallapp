@@ -3,7 +3,7 @@ import Input from '../../../shared/components/Input';
 import Button from '../../../shared/components/Button';
 import Modal from '../../../shared/components/Modal';
 
-const GroupForm = ({ isOpen, onClose, onSubmit, initialData }) => {
+const GroupForm = ({ isOpen, onClose, onSubmit, initialData, saving = false }) => {
     const [formData, setFormData] = useState({
         name: '',
         is_active: true,
@@ -74,10 +74,11 @@ const GroupForm = ({ isOpen, onClose, onSubmit, initialData }) => {
                         variant="secondary"
                         onClick={onClose}
                         type="button"
+                        disabled={saving}
                     >
                         Cancel
                     </Button>
-                    <Button type="submit">
+                    <Button type="submit" loading={saving}>
                         {initialData ? 'Update' : 'Create'}
                     </Button>
                 </div>

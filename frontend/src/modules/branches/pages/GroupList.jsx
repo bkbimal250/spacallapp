@@ -7,6 +7,7 @@ import BranchAssignmentModal from '../components/BranchAssignmentModal';
 import ViewGroupModal from '../components/ViewGroupModal';
 import BranchGroupStats from '../components/BranchGroupStats';
 import BranchGroupListFilter from '../components/BranchGroupListFilter';
+import { addItemToList, removeItemFromList, updateItemInList } from '../../../shared/utils/listState';
 import {
     Edit,
     Trash2,
@@ -29,6 +30,8 @@ const GroupList = () => {
     const [viewingGroup, setViewingGroup] = useState(null);
     const [assigningGroup, setAssigningGroup] = useState(null);
     const [filters, setFilters] = useState({});
+    const [rowAction, setRowAction] = useState({});
+    const [saving, setSaving] = useState(false);
 
     const fetchGroups = useCallback(async (currentFilters = filters) => {
         setLoading(true);
@@ -74,6 +77,19 @@ const GroupList = () => {
         setIsModalOpen(true);
     };
 
+    const setActionLoading = (id, action, value) => {
+        setRowAction(prev => ({ ...prev, [`${action}:${id}`]: value }));
+    };
+
+    const isActionLoading = (id, action) => Boolean(rowAction[`${action}:${id}`]);
+
+    const groupMatchesFilters = (group) => {
+        if (!group) return false;
+        if (filters.status && String(Boolean(group.is_active)) !== String(filters.status)) return false;
+        if (filters.search && !String(group.name || '').toLowerCase().includes(String(filters.search).toLowerCase())) return false;
+        return true;
+    };
+
     const handleEdit = (group) => {
         setEditingGroup(group);
         setIsModalOpen(true);
@@ -91,30 +107,90 @@ const GroupList = () => {
 
     const handleDelete = async (id) => {
         if (window.confirm("Are you sure you want to delete this group? Branches in this group will be unassigned.")) {
+            setActionLoading(id, 'delete', true);
             try {
                 await branchesAPI.deleteGroup(id);
-                fetchGroups();
+                setGroups(prev => removeItemFromList(prev, id));
+                setBranches(prev => prev.map(branch =>
+                    branch.branch_group === id
+                        ? { ...branch, branch_group: null, branch_group_name: null }
+                        : branch
+                ));
+                setEditingGroup(prev => prev?.id === id ? null : prev);
+                setViewingGroup(prev => prev?.id === id ? null : prev);
+                setAssigningGroup(prev => prev?.id === id ? null : prev);
             } catch (error) {
                 console.error("Failed to delete group", error);
+                window.alert("Failed to delete branch group.");
+            } finally {
+                setActionLoading(id, 'delete', false);
             }
         }
     };
 
     const handleSubmit = async (data) => {
+        setSaving(true);
         try {
             if (editingGroup) {
-                await branchesAPI.updateGroup(editingGroup.id, data);
+                const response = await branchesAPI.updateGroup(editingGroup.id, data);
+                const updated = response.data;
+                setGroups(prev => updateItemInList(prev, updated));
+                setBranches(prev => prev.map(branch =>
+                    branch.branch_group === updated.id
+                        ? { ...branch, branch_group_name: updated.name }
+                        : branch
+                ));
+                setEditingGroup(prev => prev?.id === updated.id ? { ...prev, ...updated } : prev);
+                setViewingGroup(prev => prev?.id === updated.id ? { ...prev, ...updated } : prev);
+                setAssigningGroup(prev => prev?.id === updated.id ? { ...prev, ...updated } : prev);
             } else {
-                await branchesAPI.createGroup(data);
+                const response = await branchesAPI.createGroup(data);
+                const created = { branch_count: 0, ...response.data };
+                if (groupMatchesFilters(created)) {
+                    setGroups(prev => addItemToList(prev, created));
+                } else {
+                    window.alert("Created successfully. It may not appear because current filters are active.");
+                }
             }
             setIsModalOpen(false);
-            fetchGroups();
         } catch (error) {
             console.error("Failed to save branch group", error);
+            window.alert("Failed to save branch group.");
+        } finally {
+            setSaving(false);
         }
     };
 
-    const columns = useMemo(() => [
+    const handleAssignBranches = (selectedIds) => {
+        if (!assigningGroup) return;
+        const selectedSet = new Set(selectedIds);
+        const updatedGroup = {
+            ...assigningGroup,
+            branch_count: selectedIds.length,
+        };
+        setGroups(prev => updateItemInList(prev, updatedGroup));
+        setBranches(prev => prev.map(branch => {
+            if (selectedSet.has(branch.id)) {
+                return {
+                    ...branch,
+                    branch_group: assigningGroup.id,
+                    branch_group_name: assigningGroup.name,
+                };
+            }
+            if (branch.branch_group === assigningGroup.id) {
+                return {
+                    ...branch,
+                    branch_group: null,
+                    branch_group_name: null,
+                };
+            }
+            return branch;
+        }));
+        setViewingGroup(prev => prev?.id === assigningGroup.id ? { ...prev, ...updatedGroup } : prev);
+        setAssigningGroup(prev => prev?.id === assigningGroup.id ? { ...prev, ...updatedGroup } : prev);
+    };
+
+    const columns = [
         {
             header: 'Group Name',
             render: (row) => (
@@ -170,14 +246,16 @@ const GroupList = () => {
                     </button>
                     <button
                         onClick={() => handleEdit(row)}
-                        className="p-1 rounded-md text-warning hover:bg-warning/10"
+                        disabled={isActionLoading(row.id, 'delete')}
+                        className="p-1 rounded-md text-warning hover:bg-warning/10 disabled:opacity-50"
                         title="Edit"
                     >
                         <Edit size={16} />
                     </button>
                     <button
                         onClick={() => handleDelete(row.id)}
-                        className="p-1 rounded-md text-danger hover:bg-danger/10"
+                        disabled={isActionLoading(row.id, 'delete')}
+                        className="p-1 rounded-md text-danger hover:bg-danger/10 disabled:opacity-50"
                         title="Delete"
                     >
                         <Trash2 size={16} />
@@ -185,7 +263,7 @@ const GroupList = () => {
                 </div>
             )
         }
-    ], []);
+    ];
 
     return (
         <div className="space-y-6">
@@ -224,13 +302,14 @@ const GroupList = () => {
                 onClose={() => setIsModalOpen(false)}
                 onSubmit={handleSubmit}
                 initialData={editingGroup}
+                saving={saving}
             />
 
             <BranchAssignmentModal
                 isOpen={isAssignModalOpen}
                 onClose={() => setIsAssignModalOpen(false)}
                 group={assigningGroup}
-                onAssign={fetchGroups}
+                onAssign={handleAssignBranches}
             />
 
             <ViewGroupModal

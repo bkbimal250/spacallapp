@@ -44,7 +44,7 @@ const BranchAssignmentModal = ({ isOpen, onClose, group, onAssign }) => {
         setLoading(true);
         try {
             await branchesAPI.assignBranches(group.id, selectedIds);
-            onAssign();
+            onAssign(selectedIds);
             onClose();
         } catch (error) {
             console.error("Failed to assign branches", error);
