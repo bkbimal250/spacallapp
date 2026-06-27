@@ -12,12 +12,34 @@ from .services import MonitoringAlertService
 
 
 DOWNLOAD_URL = "https://mastercall.in/download"
-UPDATE_TITLE = "App Update Required"
+UPDATE_TITLE = "⚠️ App Update Required"
 UPDATE_BODY = (
     "Your MasterCall app registration is incomplete. Please update/reinstall "
-    "the app to continue receiving leads and notifications.\n\n"
-    f"Download: {DOWNLOAD_URL}"
+    "the app to continue receiving leads and notifications.\n"
+    f"Link: {DOWNLOAD_URL}"
 )
+
+
+def _version_parts(value):
+    parts = []
+    for part in str(value or "").split("."):
+        number = ""
+        for char in part:
+            if char.isdigit():
+                number += char
+            else:
+                break
+        parts.append(int(number or 0))
+    return tuple(parts)
+
+
+def _is_version_below(app_version, min_version):
+    current = _version_parts(app_version)
+    required = _version_parts(min_version)
+    length = max(len(current), len(required))
+    current += (0,) * (length - len(current))
+    required += (0,) * (length - len(required))
+    return current < required
 
 
 class DeviceComplianceService:
@@ -53,7 +75,10 @@ class DeviceComplianceService:
         elif not device.android_id:
             status = DeviceComplianceService.MISSING_ANDROID_ID
             reason = "Device is registered but Android ID is missing."
-        elif state.fcm_invalid or not device.fcm_token:
+        elif state.fcm_invalid:
+            status = DeviceComplianceService.SUSPECTED_UNINSTALLED
+            reason = "FCM token is invalid; app may be uninstalled or registration may be broken."
+        elif not device.fcm_token:
             status = DeviceComplianceService.MISSING_FCM_TOKEN
             reason = "Device FCM token is missing or invalid."
         elif not device.last_heartbeat:
@@ -76,7 +101,7 @@ class DeviceComplianceService:
             else:
                 min_version = getattr(settings, "MASTERCALL_MIN_ANDROID_APP_VERSION", "")
                 app_version = getattr(health, "app_version", None)
-                if min_version and app_version and app_version < min_version:
+                if min_version and app_version and _is_version_below(app_version, min_version):
                     status = DeviceComplianceService.OUTDATED_APP
                     reason = f"App version {app_version} is older than required {min_version}."
 
@@ -99,17 +124,16 @@ class DeviceComplianceService:
     @staticmethod
     def mark_fcm_valid(device):
         state = DeviceComplianceService.state_for(device)
+        changed = False
         if state.fcm_invalid:
             state.fcm_invalid = False
-            if state.status in (
-                DeviceComplianceService.MISSING_FCM_TOKEN,
-                DeviceComplianceService.SUSPECTED_UNINSTALLED,
-            ):
-                state.status = DeviceComplianceService.OK
-                state.reason = "FCM token refreshed by device."
-                state.save(update_fields=["fcm_invalid", "status", "reason", "updated_at"])
-            else:
-                state.save(update_fields=["fcm_invalid", "updated_at"])
+            changed = True
+        if state.status == DeviceComplianceService.MISSING_FCM_TOKEN:
+            state.status = DeviceComplianceService.OK
+            state.reason = "FCM token refreshed by device."
+            changed = True
+        if changed:
+            state.save(update_fields=["fcm_invalid", "status", "reason", "updated_at"])
         return state
 
     @staticmethod

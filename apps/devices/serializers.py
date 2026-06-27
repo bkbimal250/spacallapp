@@ -21,6 +21,9 @@ class DeviceSerializer(serializers.ModelSerializer):
     compliance_reason = serializers.SerializerMethodField()
     compliance_followed_up_at = serializers.SerializerMethodField()
     app_version = serializers.SerializerMethodField()
+    device_model = serializers.SerializerMethodField()
+    manufacturer = serializers.SerializerMethodField()
+    fcm_present = serializers.SerializerMethodField()
     last_seen_at = serializers.DateTimeField(source="last_heartbeat", read_only=True)
 
     class Meta:
@@ -29,7 +32,8 @@ class DeviceSerializer(serializers.ModelSerializer):
             "id", "branch", "branch_name", "phone_name", "device_id", "android_id", "registration_token", "sim_1_number", "sim_2_number",
             "last_sync", "last_heartbeat", "last_seen_at", "is_registered", "is_active", "is_blocked",
             "status", "is_online", "created_at", "branch_is_active",
-            "compliance_status", "compliance_reason", "compliance_followed_up_at", "app_version"
+            "compliance_status", "compliance_reason", "compliance_followed_up_at",
+            "app_version", "device_model", "manufacturer", "fcm_present"
         )
 
     def get_compliance_status(self, obj):
@@ -47,6 +51,17 @@ class DeviceSerializer(serializers.ModelSerializer):
     def get_app_version(self, obj):
         health = getattr(obj, "health", None)
         return health.app_version if health else None
+
+    def get_device_model(self, obj):
+        health = getattr(obj, "health", None)
+        return health.device_model if health else None
+
+    def get_manufacturer(self, obj):
+        health = getattr(obj, "health", None)
+        return health.manufacturer if health else None
+
+    def get_fcm_present(self, obj):
+        return bool(obj.fcm_token)
 
     def to_representation(self, instance):
         ret = super().to_representation(instance)

@@ -94,7 +94,7 @@ class GenerateExportView(views.APIView):
                 worksheet = workbook.active
                 worksheet.title = "Call Logs"
                 
-                headers = ['Type', 'Number', 'Duration (s)', 'SIM Slot', 'Branch Group', 'Branch', 'Device ID', 'Time']
+                headers = ['Type', 'Number', 'Duration (s)', 'SIM Slot', 'Branch Group', 'Branch', 'Time']
                 header_font = Font(bold=True)
                 for col_num, header_title in enumerate(headers, 1):
                     cell = worksheet.cell(row=1, column=col_num)
@@ -108,9 +108,8 @@ class GenerateExportView(views.APIView):
                     worksheet.cell(row=row_num, column=4).value = log.sim_slot
                     worksheet.cell(row=row_num, column=5).value = log.branch.branch_group.name if log.branch and log.branch.branch_group else "N/A"
                     worksheet.cell(row=row_num, column=6).value = log.branch.spa_name if log.branch else "N/A"
-                    worksheet.cell(row=row_num, column=7).value = log.device.device_id if log.device else "N/A"
                     if log.call_time:
-                        worksheet.cell(row=row_num, column=8).value = log.call_time.strftime("%Y-%m-%d %H:%M:%S")
+                        worksheet.cell(row=row_num, column=7).value = log.call_time.strftime("%Y-%m-%d %H:%M:%S")
                 
                 # We could save this to a file or storage, but for "direct" we can store in memory 
                 # or just mark as completed. Since we need a later download, let's actually 
@@ -184,7 +183,7 @@ class DownloadExportView(views.APIView):
             worksheet = workbook.active
             worksheet.title = "Call Logs"
             
-            headers = ['Type', 'Number', 'Duration (s)', 'SIM Slot', 'Branch Group', 'Branch', 'Device ID', 'Time']
+            headers = ['Type', 'Number', 'Duration (s)', 'SIM Slot', 'Branch Group', 'Branch', 'Time']
             for col_num, header_title in enumerate(headers, 1):
                 worksheet.cell(row=1, column=col_num).value = header_title
             
@@ -195,9 +194,8 @@ class DownloadExportView(views.APIView):
                 worksheet.cell(row=row_num, column=4).value = log.sim_slot
                 worksheet.cell(row=row_num, column=5).value = log.branch.branch_group.name if log.branch and log.branch.branch_group else "N/A"
                 worksheet.cell(row=row_num, column=6).value = log.branch.spa_name if log.branch else "N/A"
-                worksheet.cell(row=row_num, column=7).value = log.device.device_id if log.device else "N/A"
                 if log.call_time:
-                    worksheet.cell(row=row_num, column=8).value = log.call_time.strftime("%Y-%m-%d %H:%M:%S")
+                    worksheet.cell(row=row_num, column=7).value = log.call_time.strftime("%Y-%m-%d %H:%M:%S")
 
             output = io.BytesIO()
             workbook.save(output)

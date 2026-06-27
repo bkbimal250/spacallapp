@@ -219,7 +219,23 @@ const DeviceList = () => {
                         <div className="text-[10px] text-text-muted">App {row.app_version}</div>
                     )}
                     <div className="text-[10px] text-text-muted">
+                        FCM {row.fcm_present ? 'Yes' : 'No'}
+                    </div>
+                    <div className="text-[10px] text-text-muted">
                         Last seen {formatDate(row.last_seen_at || row.last_heartbeat, 'MMM dd, HH:mm')}
+                    </div>
+                </div>
+            )
+        },
+        {
+            header: 'App / Phone',
+            render: (row) => (
+                <div className="space-y-1 min-w-[140px]">
+                    <div className="text-xs font-semibold text-text-primary">
+                        {row.app_version ? `App ${row.app_version}` : 'App —'}
+                    </div>
+                    <div className="text-[11px] text-text-secondary">
+                        {[row.manufacturer, row.device_model].filter(Boolean).join(' ') || 'Model —'}
                     </div>
                 </div>
             )

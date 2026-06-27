@@ -682,7 +682,7 @@ class CallLogViewSet(viewsets.ModelViewSet):
         # Column headers
         headers = [
             "Type", "Number", "Duration (s)", "SIM Slot",
-            "Receiver Number", "Branch Group", "Branch", "Device ID", "Time"
+            "Receiver Number", "Branch Group", "Branch", "Time"
         ]
         header_font = Font(bold=True)
         for col_num, header_title in enumerate(headers, 1):
@@ -707,8 +707,7 @@ class CallLogViewSet(viewsets.ModelViewSet):
             worksheet.cell(row=row_num, column=5).value = receiver
             worksheet.cell(row=row_num, column=6).value = log.branch.branch_group.name if log.branch and log.branch.branch_group else "N/A"
             worksheet.cell(row=row_num, column=7).value = log.branch.spa_name if log.branch else "N/A"
-            worksheet.cell(row=row_num, column=8).value = log.device.device_id if log.device else "N/A"
-            worksheet.cell(row=row_num, column=9).value = (
+            worksheet.cell(row=row_num, column=8).value = (
                 log.call_time.strftime("%Y-%m-%d %H:%M:%S") if log.call_time else "N/A"
             )
 

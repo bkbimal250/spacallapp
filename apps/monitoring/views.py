@@ -12,6 +12,7 @@ from datetime import timedelta
 import logging
 from django.conf import settings
 from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 from rest_framework import viewsets, permissions, views, response, status
 from rest_framework.decorators import action
 from drf_spectacular.utils import extend_schema, OpenApiParameter, inline_serializer
@@ -65,6 +66,9 @@ class DeviceHeartbeatView(views.APIView):
                 "android_id": serializers.CharField(required=False),
                 "fcm_token": serializers.CharField(required=False),
                 "device_model": serializers.CharField(required=False),
+                "manufacturer": serializers.CharField(required=False),
+                "device_id": serializers.CharField(required=False),
+                "timestamp": serializers.CharField(required=False),
                 "permission_denied": serializers.BooleanField(required=False),
                 "permission_name": serializers.CharField(required=False),
                 "app_crash": serializers.BooleanField(required=False),
@@ -85,11 +89,19 @@ class DeviceHeartbeatView(views.APIView):
         was_offline = not device.is_online
         device.last_heartbeat = now
         update_fields = ["last_heartbeat"]
-        if health_data.get("android_id") and not device.android_id:
-            device.android_id = health_data["android_id"]
-            update_fields.append("android_id")
-        if health_data.get("fcm_token"):
-            device.fcm_token = health_data["fcm_token"]
+        android_id = (health_data.get("android_id") or "").strip()
+        fcm_token = (health_data.get("fcm_token") or "").strip()
+        if android_id and device.android_id != android_id:
+            if Device.objects.filter(android_id=android_id).exclude(pk=device.pk).exists():
+                logger.warning(
+                    "Heartbeat android_id ignored because it belongs to another device",
+                    extra={"device_id": device.device_id, "android_id": android_id},
+                )
+            else:
+                device.android_id = android_id
+                update_fields.append("android_id")
+        if fcm_token and device.fcm_token != fcm_token:
+            device.fcm_token = fcm_token
             update_fields.append("fcm_token")
         device.save(update_fields=update_fields)
 
@@ -153,7 +165,13 @@ class DeviceHeartbeatView(views.APIView):
         if "app_version" in health_data:
             health.app_version = health_data["app_version"]
         if "device_model" in health_data:
-            health.app_version = health.app_version
+            health.device_model = health_data["device_model"]
+        if "manufacturer" in health_data:
+            health.manufacturer = health_data["manufacturer"]
+        if "timestamp" in health_data:
+            reported_at = parse_datetime(str(health_data["timestamp"]))
+            if reported_at:
+                health.device_reported_at = reported_at if timezone.is_aware(reported_at) else timezone.make_aware(reported_at)
         if "storage_used_mb" in health_data:
             storage_used = float(health_data["storage_used_mb"])
             health.storage_used_mb = storage_used
@@ -197,7 +215,7 @@ class DeviceHeartbeatView(views.APIView):
 
         try:
             from .compliance import DeviceComplianceService
-            if health_data.get("fcm_token"):
+            if fcm_token:
                 DeviceComplianceService.mark_fcm_valid(device)
             DeviceComplianceService.check_device(device)
         except Exception:

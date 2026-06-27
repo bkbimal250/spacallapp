@@ -609,6 +609,7 @@ class UpdateFCMTokenView(APIView):
                 try:
                     from apps.monitoring.compliance import DeviceComplianceService
                     DeviceComplianceService.mark_fcm_valid(locked_device)
+                    DeviceComplianceService.check_device(locked_device)
                 except Exception:
                     logger.exception("Failed to clear device FCM compliance flag")
         except Device.DoesNotExist:

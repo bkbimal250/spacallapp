@@ -18,6 +18,9 @@ class DeviceHealth(TimeStampedModel):
     signal_strength = models.IntegerField(null=True, blank=True) # dBm
     storage_used_mb = models.FloatField(default=0.0)
     app_version = models.CharField(max_length=20, default="1.0.0")
+    device_model = models.CharField(max_length=255, blank=True, null=True)
+    manufacturer = models.CharField(max_length=120, blank=True, null=True)
+    device_reported_at = models.DateTimeField(null=True, blank=True)
 
     sim_1_number = models.CharField(max_length=20, blank=True, null=True)
     sim_2_number = models.CharField(max_length=20, blank=True, null=True)
