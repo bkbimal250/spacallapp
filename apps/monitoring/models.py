@@ -27,6 +27,8 @@ class DeviceHealth(TimeStampedModel):
     sim_2_number = models.CharField(max_length=20, blank=True, null=True)
 
     sync_failures = models.IntegerField(default=0)
+    pending_call_count = models.IntegerField(default=0)
+    last_sync_error = models.TextField(blank=True, default="")
     
     # Notification flags to avoid duplicates
     notified_2h = models.BooleanField(default=False)

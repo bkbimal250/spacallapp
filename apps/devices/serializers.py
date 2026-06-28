@@ -24,6 +24,8 @@ class DeviceSerializer(serializers.ModelSerializer):
     device_model = serializers.SerializerMethodField()
     manufacturer = serializers.SerializerMethodField()
     fcm_present = serializers.SerializerMethodField()
+    pending_call_count = serializers.SerializerMethodField()
+    last_sync_error = serializers.SerializerMethodField()
     last_seen_at = serializers.DateTimeField(source="last_heartbeat", read_only=True)
 
     class Meta:
@@ -33,7 +35,8 @@ class DeviceSerializer(serializers.ModelSerializer):
             "last_sync", "last_heartbeat", "last_seen_at", "is_registered", "is_active", "is_blocked",
             "status", "is_online", "created_at", "branch_is_active",
             "compliance_status", "compliance_reason", "compliance_followed_up_at",
-            "app_version", "device_model", "manufacturer", "fcm_present"
+            "app_version", "device_model", "manufacturer", "fcm_present",
+            "pending_call_count", "last_sync_error",
         )
 
     def get_compliance_status(self, obj):
@@ -63,6 +66,14 @@ class DeviceSerializer(serializers.ModelSerializer):
     def get_fcm_present(self, obj):
         return bool(obj.fcm_token)
 
+    def get_pending_call_count(self, obj):
+        health = getattr(obj, "health", None)
+        return health.pending_call_count if health else 0
+
+    def get_last_sync_error(self, obj):
+        health = getattr(obj, "health", None)
+        return health.last_sync_error if health else ""
+
     def to_representation(self, instance):
         ret = super().to_representation(instance)
         # Ensure branch_name is never None if we want a default string
@@ -85,6 +96,11 @@ class ClaimRegistrationSerializer(serializers.Serializer):
 
 class RestoreRegistrationSerializer(serializers.Serializer):
     android_id = serializers.CharField(max_length=255, required=True, allow_blank=False, trim_whitespace=True)
+    old_device_id = serializers.CharField(max_length=255, required=False, allow_blank=True, trim_whitespace=True)
+    fcm_token = serializers.CharField(required=False, allow_blank=True, trim_whitespace=True)
+    app_version = serializers.CharField(max_length=40, required=False, allow_blank=True, trim_whitespace=True)
+    device_model = serializers.CharField(max_length=255, required=False, allow_blank=True, trim_whitespace=True)
+    manufacturer = serializers.CharField(max_length=120, required=False, allow_blank=True, trim_whitespace=True)
 
     def validate_android_id(self, value):
         normalized = value.strip()

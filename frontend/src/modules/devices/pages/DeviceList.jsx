@@ -313,9 +313,17 @@ const DeviceList = () => {
                     <div className="text-[10px] text-text-muted">
                         FCM {row.fcm_present ? 'Yes' : 'No'}
                     </div>
+                    <div className={`text-[10px] ${row.pending_call_count > 0 ? 'text-warning font-semibold' : 'text-text-muted'}`}>
+                        Pending sync {row.pending_call_count || 0}
+                    </div>
                     <div className="text-[10px] text-text-muted">
                         Last seen {formatDate(row.last_seen_at || row.last_heartbeat, 'MMM dd, HH:mm')}
                     </div>
+                    {row.last_sync_error && (
+                        <div className="max-w-[220px] truncate text-[10px] text-danger" title={row.last_sync_error}>
+                            {row.last_sync_error}
+                        </div>
+                    )}
                 </div>
             )
         },

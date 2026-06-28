@@ -84,6 +84,15 @@ def _registration_payload(device):
     }
 
 
+def _coded_error(message, code, request, extra=None):
+    return {
+        "error": message,
+        "code": code,
+        "request_id": _request_context(request)["request_id"],
+        **(extra or {}),
+    }
+
+
 def _safe_errors(errors):
     if isinstance(errors, list):
         return [_safe_errors(item) for item in errors]
@@ -314,7 +323,11 @@ class ClaimRegistrationView(APIView):
                         extra={"android_id": android_id, **_request_context(request)},
                     )
                     return Response(
-                        {"error": "This Android device is already registered. Use restore-registration."},
+                        _coded_error(
+                            "This Android device is already registered. Use restore-registration.",
+                            "registration_required",
+                            request,
+                        ),
                         status=status.HTTP_409_CONFLICT,
                     )
 
@@ -338,7 +351,7 @@ class ClaimRegistrationView(APIView):
                 extra={"token_present": bool(token), **_request_context(request)},
             )
             return Response(
-                {"error": "Invalid or already used registration token."},
+                _coded_error("Invalid or already used registration token.", "registration_required", request),
                 status=status.HTTP_404_NOT_FOUND,
             )
         except IntegrityError:
@@ -347,7 +360,7 @@ class ClaimRegistrationView(APIView):
                 extra={"android_id": android_id, **_request_context(request)},
             )
             return Response(
-                {"error": "Registration could not be completed. Please retry."},
+                _coded_error("Registration could not be completed. Please retry.", "registration_required", request),
                 status=status.HTTP_409_CONFLICT,
             )
 
@@ -415,19 +428,88 @@ class RestoreRegistrationView(APIView):
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
         android_id = serializer.validated_data["android_id"]
+        old_device_id = serializer.validated_data.get("old_device_id") or ""
+        fcm_token = serializer.validated_data.get("fcm_token") or ""
+        app_version = serializer.validated_data.get("app_version") or ""
+        device_model = serializer.validated_data.get("device_model") or ""
+        manufacturer = serializer.validated_data.get("manufacturer") or ""
 
         try:
-            device = Device.objects.select_related("branch").get(
-                android_id=android_id,
-                is_registered=True,
-            )
+            with transaction.atomic():
+                device = Device.objects.select_for_update().select_related("branch").get(
+                    android_id=android_id,
+                    is_registered=True,
+                )
+
+                if not device.is_active or device.is_blocked:
+                    logger.warning(
+                        "Device restore rejected: device inactive or blocked",
+                        extra={
+                            "device_id": device.device_id,
+                            "android_id": android_id,
+                            "is_active": device.is_active,
+                            "is_blocked": device.is_blocked,
+                            **_request_context(request),
+                        },
+                    )
+                    return Response(
+                        _coded_error("Device is not allowed to restore registration.", "inactive_device", request),
+                        status=status.HTTP_403_FORBIDDEN,
+                    )
+
+                if old_device_id and device.device_id and old_device_id != device.device_id:
+                    logger.info(
+                        "Device restore replacing stale local device_id",
+                        extra={
+                            "old_device_id": old_device_id,
+                            "device_id": device.device_id,
+                            "android_id": android_id,
+                            **_request_context(request),
+                        },
+                    )
+
+                if not device.device_id:
+                    device.device_id = f"SPA-{secrets.token_hex(3).upper()}-{secrets.token_hex(3).upper()}"
+                    while Device.objects.filter(device_id=device.device_id).exclude(pk=device.pk).exists():
+                        device.device_id = f"SPA-{secrets.token_hex(3).upper()}-{secrets.token_hex(3).upper()}"
+                if not device.secret_key:
+                    device.secret_key = secrets.token_hex(32)
+
+                update_fields = ["device_id", "secret_key", "updated_at"]
+                if fcm_token and device.fcm_token != fcm_token:
+                    device.fcm_token = fcm_token
+                    update_fields.append("fcm_token")
+                device.save(update_fields=update_fields)
+
+                if app_version or device_model or manufacturer:
+                    from apps.monitoring.models import DeviceHealth
+                    health_defaults = {}
+                    if app_version:
+                        health_defaults["app_version"] = app_version[:40]
+                    if device_model:
+                        health_defaults["device_model"] = device_model[:255]
+                    if manufacturer:
+                        health_defaults["manufacturer"] = manufacturer[:120]
+                    if health_defaults:
+                        DeviceHealth.objects.update_or_create(device=device, defaults=health_defaults)
+                if fcm_token:
+                    try:
+                        from apps.monitoring.compliance import DeviceComplianceService
+                        DeviceComplianceService.mark_fcm_valid(device)
+                        DeviceComplianceService.check_device(device)
+                    except Exception:
+                        logger.exception("Failed to clear device compliance after restore")
         except Device.DoesNotExist:
             logger.warning(
                 "Device restore failed: android_id not registered",
                 extra={"android_id": android_id, **_request_context(request)},
             )
             return Response(
-                {"error": "No registered device found for this android_id."},
+                _coded_error(
+                    "This phone is not registered in CRM. Please contact admin or register again.",
+                    "android_id_not_registered",
+                    request,
+                ),
                 status=status.HTTP_404_NOT_FOUND,
             )
 
@@ -437,24 +519,12 @@ class RestoreRegistrationView(APIView):
                 extra={"device_pk": str(device.pk), "android_id": android_id, **_request_context(request)},
             )
             return Response(
-                {"error": "Device registration is incomplete. Please contact support."},
+                _coded_error(
+                    "This phone is not registered in CRM. Please contact admin or register again.",
+                    "registration_required",
+                    request,
+                ),
                 status=status.HTTP_409_CONFLICT,
-            )
-
-        if not device.is_active or device.is_blocked:
-            logger.warning(
-                "Device restore rejected: device inactive or blocked",
-                extra={
-                    "device_id": device.device_id,
-                    "android_id": android_id,
-                    "is_active": device.is_active,
-                    "is_blocked": device.is_blocked,
-                    **_request_context(request),
-                },
-            )
-            return Response(
-                {"error": "Device is not allowed to restore registration."},
-                status=status.HTTP_403_FORBIDDEN,
             )
 
         logger.info(

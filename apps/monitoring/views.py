@@ -71,6 +71,8 @@ class DeviceHeartbeatView(views.APIView):
                 "timestamp": serializers.CharField(required=False),
                 "device_current_time_ms": serializers.IntegerField(required=False),
                 "timezone": serializers.CharField(required=False),
+                "pending_call_count": serializers.IntegerField(required=False),
+                "last_sync_error": serializers.CharField(required=False),
                 "permission_denied": serializers.BooleanField(required=False),
                 "permission_name": serializers.CharField(required=False),
                 "app_crash": serializers.BooleanField(required=False),
@@ -170,6 +172,16 @@ class DeviceHeartbeatView(views.APIView):
             health.device_model = health_data["device_model"]
         if "manufacturer" in health_data:
             health.manufacturer = health_data["manufacturer"]
+        if "pending_call_count" in health_data:
+            try:
+                health.pending_call_count = max(0, int(health_data["pending_call_count"]))
+            except (TypeError, ValueError):
+                logger.warning(
+                    "Heartbeat ignored invalid pending_call_count",
+                    extra={"device_id": device.device_id, "value": health_data.get("pending_call_count")},
+                )
+        if "last_sync_error" in health_data:
+            health.last_sync_error = str(health_data.get("last_sync_error") or "")[:1000]
         if "timestamp" in health_data:
             reported_at = parse_datetime(str(health_data["timestamp"]))
             if reported_at:

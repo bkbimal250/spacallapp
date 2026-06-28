@@ -97,35 +97,35 @@ class DeviceAuthentication(authentication.BaseAuthentication):
                 "Device auth failed: unknown device_id",
                 extra=context,
             )
-            raise _auth_failed("Invalid Device Credentials", "invalid_device_id", context)
+            raise _auth_failed("Invalid Device Credentials", "unknown_device_id", context)
 
         if not device.secret_key or not hmac.compare_digest(device.secret_key, secret_key):
             logger.warning(
                 "Device auth failed: invalid secret_key",
                 extra={**context, "has_stored_secret": bool(device.secret_key)},
             )
-            raise _auth_failed("Invalid Device Credentials", "invalid_secret_key", context)
+            raise _auth_failed("Invalid Device Credentials", "invalid_device_token", context)
 
         if not device.is_registered:
             logger.warning(
                 "Device auth failed: stale credentials for unregistered device",
                 extra={**context, "is_registered": device.is_registered},
             )
-            raise _auth_failed("Invalid Device Credentials", "stale_device_credentials", context)
+            raise _auth_failed("Invalid Device Credentials", "registration_required", context)
 
         if not device.is_active:
             logger.warning(
                 "Device auth failed: inactive device",
                 extra={**context, "is_active": device.is_active},
             )
-            raise _auth_failed("Device is inactive", "device_inactive", context)
+            raise _auth_failed("Device is inactive", "inactive_device", context)
 
         if device.is_blocked:
             logger.warning(
                 "Device auth failed: blocked device",
                 extra={**context, "is_blocked": device.is_blocked},
             )
-            raise _auth_failed("Device is blocked", "device_blocked", context)
+            raise _auth_failed("Device is blocked", "inactive_device", context)
 
         logger.debug("Device auth succeeded", extra=context)
         return (device, device)

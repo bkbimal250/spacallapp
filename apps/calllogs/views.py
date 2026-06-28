@@ -36,6 +36,7 @@ from rest_framework import serializers
 import openpyxl
 import logging
 import uuid
+import hashlib
 from openpyxl.styles import Font
 from django.db.models import Count, Q, Sum, Avg
 from django_filters.rest_framework import DjangoFilterBackend
@@ -159,6 +160,20 @@ def _server_safe_call_time(item, server_now):
         "is_time_invalid": False,
         "invalid_time_reason": "",
     }
+
+
+def _stable_call_hash(device, phone_number, call_time_ms, call_time, call_type, duration):
+    timestamp_key = call_time_ms
+    if timestamp_key is None and call_time:
+        timestamp_key = int(call_time.timestamp() * 1000)
+    source = "|".join([
+        str(device.device_id or device.id),
+        str(phone_number or ""),
+        str(timestamp_key or ""),
+        str(call_type or ""),
+        str(duration or 0),
+    ])
+    return hashlib.sha256(source.encode("utf-8")).hexdigest()
 
 
 class DeviceSyncView(views.APIView):
@@ -343,6 +358,14 @@ class DeviceSyncView(views.APIView):
             time_values = _server_safe_call_time(item, server_now)
             if time_values["is_time_invalid"]:
                 invalid_time_count += 1
+            stable_hash = _stable_call_hash(
+                device=device,
+                phone_number=phone_num,
+                call_time_ms=item.get("call_time_ms"),
+                call_time=time_values["device_reported_call_time"] or time_values["call_time"],
+                call_type=item.get("call_type"),
+                duration=item.get("duration", 0),
+            )
 
             logs_to_create.append(
                 CallLog(
@@ -358,7 +381,7 @@ class DeviceSyncView(views.APIView):
                     device_reported_call_time=time_values["device_reported_call_time"],
                     is_time_invalid=time_values["is_time_invalid"],
                     invalid_time_reason=time_values["invalid_time_reason"],
-                    call_hash=item.get("call_hash"),
+                    call_hash=stable_hash,
                 )
             )
 
