@@ -8,6 +8,7 @@ from apps.accounts.models import User
 from apps.branches.models import Branch
 from apps.devices.models import Device
 from apps.locations.models import Area, City, LocationGroup, LocationGroupArea, State
+from apps.locations.services.fuzzy_matcher import clear_location_candidate_cache
 
 from .models import (
     DoubleTickAreaAlias,
@@ -166,6 +167,18 @@ class DoubleTickBackendTests(APITestCase):
         city = City.objects.create(name="NAVI MUMBAI", state=state)
         LocationGroup.objects.create(name="Panvel To Seawoods", city=city)
         Area.objects.create(name="Belapur", city=city)
+        Area.objects.create(name="PANVEL", city=city)
+        palm_branch = Branch.objects.create(
+            spa_name="SPA PALM VISTA",
+            code="PALM-001",
+            state="Maharashtra",
+            city="NAVI MUMBAI",
+            area="PANVEL",
+            postal_code=410206,
+            address="Panvel",
+            is_active=True,
+        )
+        clear_location_candidate_cache()
 
         self.assertEqual(CRMLocationMatchEngine.classify_message("hi")["classification"], "greeting")
         self.assertEqual(CRMLocationMatchEngine.classify_message("job chahiye")["classification"], "job_inquiry")
@@ -180,6 +193,97 @@ class DoubleTickBackendTests(APITestCase):
         area_result = CRMLocationMatchEngine.classify_message("Belapur")
         self.assertEqual(area_result["classification"], "area")
         self.assertEqual(area_result["raw_area"], "Belapur")
+        branch_result = CRMLocationMatchEngine.classify_message("SPA PALM VISTA - PANVEL")
+        self.assertEqual(branch_result["classification"], "branch")
+        self.assertEqual(branch_result["raw_branch"], palm_branch.spa_name)
+        self.assertEqual(branch_result["raw_area"], "PANVEL")
+
+    def test_branch_prefix_text_uses_area_suffix_not_full_spa_text(self):
+        state = State.objects.create(name="Gujarat")
+        city = City.objects.create(name="Ahmedabad", state=state)
+        Area.objects.create(name="MANINAGAR", city=city)
+        Area.objects.create(name="GADA CIRCLE", city=city)
+        oceanic = Branch.objects.create(
+            spa_name="OCEANIC SPA",
+            code="OCN-001",
+            state="Gujarat",
+            city="Ahmedabad",
+            area="MANINAGAR",
+            postal_code=380008,
+            address="Maninagar",
+            is_active=True,
+        )
+        auric = Branch.objects.create(
+            spa_name="AURIC SPA",
+            code="AUR-001",
+            state="Gujarat",
+            city="Ahmedabad",
+            area="GADA CIRCLE",
+            postal_code=380008,
+            address="Gada Circle",
+            is_active=True,
+        )
+        clear_location_candidate_cache()
+
+        oceanic_result = CRMLocationMatchEngine.classify_message("OCEANIC SPA MANINAGAR")
+        self.assertEqual(oceanic_result["classification"], "branch")
+        self.assertEqual(oceanic_result["raw_branch"], oceanic.spa_name)
+        self.assertEqual(oceanic_result["raw_area"], "MANINAGAR")
+        self.assertNotEqual(oceanic_result["raw_area"], "OCEANIC SPA MANINAGAR")
+
+        auric_result = CRMLocationMatchEngine.classify_message("AURIC SPA GADA CIRCLE")
+        self.assertEqual(auric_result["classification"], "branch")
+        self.assertEqual(auric_result["raw_branch"], auric.spa_name)
+        self.assertEqual(auric_result["raw_area"], "GADA CIRCLE")
+        self.assertNotEqual(auric_result["raw_area"], "AURIC SPA GADA CIRCLE")
+
+    def test_doubletick_location_priority_prefers_branch_area_over_city_group_and_service(self):
+        state = State.objects.create(name="Maharashtra")
+        city = City.objects.create(name="NAVI MUMBAI", state=state)
+        Area.objects.create(name="PANVEL", city=city)
+        LocationGroup.objects.create(name="Panvel To Seawoods", city=city)
+        palm_branch = Branch.objects.create(
+            spa_name="SPA PALM VISTA",
+            code="PALM-002",
+            state="Maharashtra",
+            city="NAVI MUMBAI",
+            area="PANVEL",
+            postal_code=410206,
+            address="Panvel",
+            is_active=True,
+        )
+        clear_location_candidate_cache()
+
+        for index, text in enumerate([
+            "NAVI MUMBAI",
+            "Panvel To Seawoods",
+            "SPA PALM VISTA - PANVEL",
+            "Explore Services",
+        ], start=1):
+            response = self.client.post(
+                "/api/v1/doubletick/webhook/",
+                self.webhook_payload(message_id=f"priority-{index}", text=text, area=""),
+                format="json",
+                HTTP_X_DOUBLETICK_SECRET="test-secret",
+            )
+            self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+        conversation = DoubleTickConversation.objects.get(dt_conversation_id="chat-1")
+        lead = conversation.current_lead
+        lead.refresh_from_db()
+        conversation.refresh_from_db()
+
+        metadata = conversation.raw_payload.get("location_match", {})
+        self.assertEqual(conversation.raw_city.lower(), "navi mumbai")
+        self.assertEqual(metadata.get("raw_group"), "Panvel To Seawoods")
+        self.assertEqual(conversation.raw_area, "PANVEL")
+        self.assertEqual(conversation.matched_area.name, "PANVEL")
+        self.assertEqual(lead.raw_city.lower(), "navi mumbai")
+        self.assertEqual(lead.raw_area, "PANVEL")
+        self.assertEqual(lead.current_branch, palm_branch)
+        self.assertTrue(DoubleTickLeadVisibility.objects.filter(lead=lead, branch=palm_branch, is_visible=True).exists())
+        self.assertFalse(DoubleTickLeadVisibility.objects.filter(lead=lead, branch=self.branch, is_visible=True).exists())
+        self.assertEqual(conversation.raw_service, "Explore Services")
 
     def test_okay_updates_same_conversation(self):
         for message_id, text in [("m1", "Hello"), ("m2", "Okay")]:
@@ -510,6 +614,16 @@ class DoubleTickBackendTests(APITestCase):
         self.assertIn("DoubleTickLeadArea without locations.Area link", report)
         self.assertIn("Failed distribution audits", report)
 
+    def test_location_priority_audit_and_reprocess_commands_run_dry(self):
+        output = StringIO()
+        call_command("audit_doubletick_location_priority", "--dry-run", stdout=output)
+        self.assertIn("dry_run=True", output.getvalue())
+        self.assertIn("summary", output.getvalue())
+
+        output = StringIO()
+        call_command("reprocess_doubletick_location_priority", "--dry-run", stdout=output)
+        self.assertIn("dry_run=True", output.getvalue())
+
     def test_upsert_customer_returns_canonical_when_duplicates_exist(self):
         channel = DoubleTickChannel.objects.create(name="Main WABA", waba_number="918976822803")
         canonical = DoubleTickCustomer.objects.create(
@@ -791,6 +905,10 @@ class DoubleTickBackendTests(APITestCase):
         # First qualify it as lead
         lead = LeadQualificationService.ensure_conversation_lead(conversation, distribute=False)
         self.assertEqual(lead.status, DoubleTickLead.Status.QUALIFIED)
+        DoubleTickLeadAreaBranch.objects.get_or_create(
+            lead_area=conversation.matched_area,
+            branch=self.branch,
+        )
 
         response = self.client.post(
             f"/api/v1/doubletick/conversations/{conversation.id}/manual-correct/",

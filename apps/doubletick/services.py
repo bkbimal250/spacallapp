@@ -104,6 +104,18 @@ SERVICE_ACTION_WORDS = {
     "service",
     "services",
 }
+LOCATION_MATCH_PRIORITY = {
+    "branch": 100,
+    "area": 80,
+    "location_group": 60,
+    "city": 40,
+    "service_action": 10,
+    "service": 10,
+    "greeting": 0,
+    "job_inquiry": 0,
+    "unknown": 0,
+    "state": 0,
+}
 GENERIC_NON_LOCATION_PHRASES = {
     "hello",
     "hi",
@@ -150,6 +162,10 @@ def _contains_normalized(haystack, needle):
     haystack_norm = normalize_area_text(haystack)
     needle_norm = normalize_area_text(needle)
     return bool(haystack_norm and needle_norm and (needle_norm in haystack_norm or haystack_norm in needle_norm))
+
+
+def location_match_priority(classification):
+    return LOCATION_MATCH_PRIORITY.get(str(classification or "unknown"), 0)
 
 
 def _timestamp_from_payload(payload):
@@ -409,6 +425,7 @@ class CRMLocationMatchEngine:
             "raw_service": "",
             "matched_area": None,
             "current_branch": None,
+            "match_priority": 0,
             "should_request_location": False,
             "input": str(text or "").strip(),
         }
@@ -432,12 +449,185 @@ class CRMLocationMatchEngine:
         return bool(candidate_norm and normalized and candidate_norm == normalized)
 
     @staticmethod
-    def classify_message(text, raw_city="", channel=None):
+    def _split_branch_area_text(raw_text):
+        if " - " in raw_text or "-" in raw_text:
+            pieces = [part.strip() for part in re.split(r"\s+-\s+|-", raw_text, maxsplit=1) if part.strip()]
+            if len(pieces) == 2:
+                return pieces[0], pieces[1], None
+
+        normalized_text = normalize_area_text(raw_text)
+        if not normalized_text:
+            return raw_text, "", None
+
+        area_suffixes = getattr(CRMLocationMatchEngine, "_area_suffix_cache", None)
+        if area_suffixes is None:
+            try:
+                from apps.locations.models import Area, AreaAlias
+
+                area_suffixes = []
+                for area in Area.objects.filter(is_active=True, is_deleted=False).only("name"):
+                    area_name = str(area.name or "").strip()
+                    normalized_area = normalize_area_text(area_name)
+                    if normalized_area:
+                        area_suffixes.append((len(normalized_area), normalized_area, area_name))
+                for alias in AreaAlias.objects.filter(is_active=True, is_deleted=False).only("alias"):
+                    alias_name = str(alias.alias or "").strip()
+                    normalized_alias = normalize_area_text(alias_name)
+                    if normalized_alias:
+                        area_suffixes.append((len(normalized_alias), normalized_alias, alias_name))
+                CRMLocationMatchEngine._area_suffix_cache = sorted(area_suffixes, reverse=True)
+            except Exception:
+                area_suffixes = []
+
+        for _, normalized_area, area_name in area_suffixes:
+            if normalized_text.endswith(f" {normalized_area}"):
+                split_at = len(raw_text) - len(area_name)
+                branch_part = raw_text[:split_at].strip(" -")
+                if branch_part:
+                    return branch_part, area_name, None
+
+        matches = []
+        branch_prefixes = getattr(CRMLocationMatchEngine, "_branch_prefix_cache", None)
+        if branch_prefixes is None:
+            branch_prefixes = list(Branch.objects.filter(is_active=True, is_deleted=False).only("id", "spa_name"))
+            CRMLocationMatchEngine._branch_prefix_cache = branch_prefixes
+        for branch in branch_prefixes:
+            branch_name = str(branch.spa_name or "").strip()
+            normalized_branch = normalize_area_text(branch_name)
+            if not normalized_branch:
+                continue
+            if normalized_text == normalized_branch or normalized_text.startswith(f"{normalized_branch} "):
+                matches.append((len(normalized_branch), branch, branch_name))
+
+        if not matches:
+            return raw_text, "", None
+
+        _, branch, branch_name = sorted(matches, key=lambda item: item[0], reverse=True)[0]
+        suffix = re.sub(rf"^\s*{re.escape(branch_name)}\s*", "", raw_text, flags=re.IGNORECASE).strip(" -")
+        return branch_name, suffix, branch
+
+    @staticmethod
+    def _single_coverage_area_for_branch(branch):
+        try:
+            from django.contrib.contenttypes.models import ContentType
+            from apps.locations.models import BranchCoverageArea
+
+            branch_ct = ContentType.objects.get_for_model(Branch)
+            coverage = list(
+                BranchCoverageArea.objects.filter(
+                    content_type=branch_ct,
+                    object_id=str(branch.id),
+                    is_deleted=False,
+                    is_active=True,
+                ).select_related("area", "area__city").order_by("-is_primary", "priority", "area__name")[:2]
+            )
+            return coverage[0].area if len(coverage) == 1 else None
+        except Exception:
+            return None
+
+    @staticmethod
+    def _city_names():
+        try:
+            from apps.locations.models import City
+
+            return {
+                CRMLocationMatchEngine.normalize_text(name)
+                for name in City.objects.filter(is_deleted=False, is_active=True).values_list("name", flat=True)
+            }
+        except Exception:
+            return set()
+
+    @staticmethod
+    def _branch_coverage_areas(branch):
+        try:
+            from django.contrib.contenttypes.models import ContentType
+            from apps.locations.models import BranchCoverageArea
+
+            branch_ct = ContentType.objects.get_for_model(Branch)
+            return list(
+                BranchCoverageArea.objects.filter(
+                    content_type=branch_ct,
+                    object_id=str(branch.id),
+                    is_deleted=False,
+                    is_active=True,
+                ).select_related("area", "area__city", "location_group")
+            )
+        except Exception:
+            return []
+
+    @staticmethod
+    def _branch_matches_area(branch, location_area):
+        if not branch or not location_area:
+            return False
+        if branch.location_area_id and branch.location_area_id == location_area.id:
+            return True
+        if normalize_area_text(branch.area) == normalize_area_text(location_area.name):
+            return True
+        return any(coverage.area_id == location_area.id for coverage in CRMLocationMatchEngine._branch_coverage_areas(branch))
+
+    @staticmethod
+    def _branch_matches_city(branch, city_name):
+        if not branch or not city_name:
+            return True
+        normalized_city = CRMLocationMatchEngine.normalize_text(city_name)
+        if branch.location_city_id and getattr(branch.location_city, "normalized_name", "") == normalized_city:
+            return True
+        if CRMLocationMatchEngine.normalize_text(branch.city) == normalized_city:
+            return True
+        if branch.location_area_id and getattr(getattr(branch.location_area, "city", None), "normalized_name", "") == normalized_city:
+            return True
+        return any(
+            getattr(getattr(coverage.area, "city", None), "normalized_name", "") == normalized_city
+            for coverage in CRMLocationMatchEngine._branch_coverage_areas(branch)
+        )
+
+    @staticmethod
+    def _find_contextual_branch(branch_part, area_part="", raw_city=""):
+        normalized_branch_part = normalize_area_text(branch_part)
+        normalized_area_part = normalize_area_text(area_part)
+        if not normalized_branch_part:
+            return None
+
+        candidates = []
+        for branch in Branch.objects.filter(is_active=True, is_deleted=False).select_related("location_area", "location_area__city"):
+            branch_name = normalize_area_text(branch.spa_name)
+            if not branch_name:
+                continue
+            branch_name_matches = branch_name == normalized_branch_part or branch_name.startswith(f"{normalized_branch_part} ") or normalized_branch_part in branch_name
+            if not branch_name_matches:
+                continue
+            if raw_city and not CRMLocationMatchEngine._branch_matches_city(branch, raw_city):
+                continue
+            if normalized_area_part:
+                area_matches = (
+                    normalize_area_text(branch.area) == normalized_area_part
+                    or normalized_area_part in branch_name
+                    or (
+                        branch.location_area_id
+                        and normalize_area_text(branch.location_area.name) == normalized_area_part
+                    )
+                    or any(normalize_area_text(coverage.area.name) == normalized_area_part for coverage in CRMLocationMatchEngine._branch_coverage_areas(branch))
+                )
+                if not area_matches:
+                    continue
+            candidates.append(branch)
+
+        if len(candidates) == 1:
+            return candidates[0]
+        return None
+
+    @staticmethod
+    def classify_message(text, raw_city="", channel=None, allow_fuzzy=True):
         raw_text = str(text or "").strip()
         normalized = CRMLocationMatchEngine.normalize_text(raw_text)
         result = CRMLocationMatchEngine._base_result(raw_text)
         if not normalized:
-            result.update(classification="greeting", reason="empty_message", should_request_location=True)
+            result.update(
+                classification="greeting",
+                reason="empty_message",
+                match_priority=location_match_priority("greeting"),
+                should_request_location=True,
+            )
             return result
 
         normalized_greetings = {CRMLocationMatchEngine.normalize_text(item) for item in GREETING_WORDS}
@@ -445,23 +635,35 @@ class CRMLocationMatchEngine:
         normalized_services = {CRMLocationMatchEngine.normalize_text(item) for item in SERVICE_ACTION_WORDS}
 
         if normalized in normalized_jobs or any(word and word in normalized for word in normalized_jobs):
-            result.update(classification="job_inquiry", confidence=0.95, reason="job_inquiry_phrase")
+            result.update(
+                classification="job_inquiry",
+                confidence=0.95,
+                reason="job_inquiry_phrase",
+                match_priority=location_match_priority("job_inquiry"),
+            )
             return result
         if normalized in normalized_greetings:
-            result.update(classification="greeting", confidence=0.95, reason="greeting_or_general", should_request_location=True)
+            result.update(
+                classification="greeting",
+                confidence=0.95,
+                reason="greeting_or_general",
+                match_priority=location_match_priority("greeting"),
+                should_request_location=True,
+            )
             return result
         if normalized in normalized_services:
-            result.update(classification="service_action", confidence=0.9, reason="service_action_phrase", raw_service=raw_text)
+            result.update(
+                classification="service_action",
+                confidence=0.9,
+                reason="service_action_phrase",
+                raw_service=raw_text,
+                match_priority=location_match_priority("service_action"),
+            )
             return result
 
         # Branch labels often arrive as "SPA NAME - AREA". Match the branch and
         # then route through the real area part only.
-        branch_part = raw_text
-        area_part = ""
-        if " - " in raw_text or "-" in raw_text:
-            pieces = [part.strip() for part in re.split(r"\s+-\s+|-", raw_text, maxsplit=1) if part.strip()]
-            if len(pieces) == 2:
-                branch_part, area_part = pieces
+        branch_part, area_part, prefix_branch = CRMLocationMatchEngine._split_branch_area_text(raw_text)
 
         from apps.locations.services.fuzzy_matcher import (
             AUTO_APPLY_SCORE,
@@ -471,15 +673,31 @@ class CRMLocationMatchEngine:
         )
 
         branch_match = None
-        if area_part:
-            branch_match = fuzzy_match_branch(
-                branch_part,
-                context={"raw_city": raw_city, "channel_id": getattr(channel, "id", None)},
-            )
+        if prefix_branch:
+            branch_match = {
+                "candidate": {"id": prefix_branch.id, "name": prefix_branch.spa_name, "type": "branch"},
+                "score": 100.0,
+                "method": "branch_prefix",
+            }
+        elif area_part:
+            contextual_branch = CRMLocationMatchEngine._find_contextual_branch(branch_part, area_part, raw_city)
+            if contextual_branch:
+                branch_match = {
+                    "candidate": {"id": contextual_branch.id, "name": contextual_branch.spa_name, "type": "branch"},
+                    "score": 100.0,
+                    "method": "contextual_exact",
+                }
+            else:
+                branch_match = fuzzy_match_branch(
+                    branch_part,
+                    context={"channel_id": getattr(channel, "id", None)},
+                    allow_fuzzy=allow_fuzzy,
+                )
         else:
             branch_match = fuzzy_match_branch(
                 raw_text,
                 context={"raw_city": raw_city, "channel_id": getattr(channel, "id", None)},
+                allow_fuzzy=allow_fuzzy,
             )
             # A plain area name may resemble a branch name. Only an explicit
             # "BRANCH - AREA" label or a high-confidence branch match may
@@ -487,58 +705,127 @@ class CRMLocationMatchEngine:
             if branch_match and branch_match["score"] < AUTO_APPLY_SCORE:
                 branch_match = None
 
+        spa_style_text = "spa" in normalize_area_text(branch_part)
+
         if branch_match:
             candidate = branch_match['candidate']
             score = branch_match['score']
             method = branch_match['method']
             branch = Branch.objects.filter(id=candidate['id'], is_active=True, is_deleted=False).first()
             if branch:
-                branch_area_text = area_part or branch.area or branch.spa_name
-                area_match = fuzzy_match_location(
-                    branch_area_text,
-                    context={"raw_city": raw_city or branch.city, "channel_id": getattr(channel, "id", None)},
-                )
-                area_score = area_match["score"] if area_part and area_match else score
-                applied = score >= AUTO_APPLY_SCORE and area_score >= AUTO_APPLY_SCORE
                 lead_area = None
-                matched_area_name = branch_area_text
-                if applied:
-                    area_candidate = area_match["candidate"] if area_match else {}
-                    if area_candidate.get("type") in ["area", "area_alias"]:
-                        from apps.locations.models import Area
+                matched_area_name = ""
+                selected_city_name = raw_city or branch.city or ""
+                area_score = score
+                area_method = method
+                area_source = ""
 
-                        location_area = Area.objects.filter(
-                            id=area_candidate.get("area_id") or area_candidate.get("id"),
-                            is_active=True,
-                            is_deleted=False,
-                        ).first()
-                        if location_area:
-                            matched_area_name = location_area.name
-                            lead_area = CRMLocationMatchEngine.ensure_area_from_location_area(location_area)
-                    elif area_candidate.get("type") in ["doubletick_area", "doubletick_area_alias"]:
-                        lead_area = DoubleTickLeadArea.objects.filter(
-                            id=area_candidate.get("lead_area_id"),
-                            is_active=True,
-                            is_deleted=False,
-                        ).first()
-                        matched_area_name = area_candidate.get("area_name") or branch_area_text
-                    if not lead_area:
-                        lead_area = AreaMatchingService.ensure_area_from_branch(
-                            branch_area_text, raw_city or branch.city, branch, channel
+                if area_part:
+                    area_part_is_city = CRMLocationMatchEngine.normalize_text(area_part) in CRMLocationMatchEngine._city_names()
+                    if not area_part_is_city:
+                        area_match = fuzzy_match_location(
+                            area_part,
+                            context={"raw_city": selected_city_name, "channel_id": getattr(channel, "id", None)},
+                            allow_fuzzy=allow_fuzzy,
                         )
+                        if area_match and area_match["candidate"].get("type") not in ["area", "area_alias", "doubletick_area", "doubletick_area_alias"]:
+                            area_match = None
+                        area_score = area_match["score"] if area_match else 0
+                        area_method = area_match["method"] if area_match else "none"
+                        area_candidate = area_match["candidate"] if area_match else {}
+                        if area_candidate.get("type") in ["area", "area_alias"]:
+                            from apps.locations.models import Area
+
+                            location_area = Area.objects.filter(
+                                id=area_candidate.get("area_id") or area_candidate.get("id"),
+                                is_active=True,
+                                is_deleted=False,
+                            ).first()
+                            if location_area:
+                                matched_area_name = location_area.name
+                                lead_area = CRMLocationMatchEngine.ensure_area_from_location_area(location_area)
+                                selected_city_name = location_area.city.name if location_area.city else selected_city_name
+                                area_source = "explicit_area_text"
+                        elif area_candidate.get("type") in ["doubletick_area", "doubletick_area_alias"]:
+                            lead_area = DoubleTickLeadArea.objects.filter(
+                                id=area_candidate.get("lead_area_id"),
+                                is_active=True,
+                                is_deleted=False,
+                            ).first()
+                            if lead_area:
+                                matched_area_name = area_candidate.get("area_name") or lead_area.name
+                                selected_city_name = lead_area.city or selected_city_name
+                                area_source = "explicit_doubletick_area_text"
+
+                if not lead_area and branch.location_area_id:
+                    location_area = branch.location_area
+                    lead_area = CRMLocationMatchEngine.ensure_area_from_location_area(location_area)
+                    matched_area_name = location_area.name
+                    selected_city_name = location_area.city.name if location_area.city else selected_city_name
+                    area_score = score
+                    area_source = "branch_location_area"
+
+                if not lead_area:
+                    location_area = CRMLocationMatchEngine._single_coverage_area_for_branch(branch)
+                    if location_area:
+                        lead_area = CRMLocationMatchEngine.ensure_area_from_location_area(location_area)
+                        matched_area_name = location_area.name
+                        selected_city_name = location_area.city.name if location_area.city else selected_city_name
+                        area_score = score
+                        area_source = "single_branch_coverage_area"
+
+                if not lead_area and branch.area:
+                    normalized_branch_area = CRMLocationMatchEngine.normalize_text(branch.area)
+                    city_names = CRMLocationMatchEngine._city_names()
+                    if (
+                        normalized_branch_area
+                        and normalized_branch_area not in city_names
+                        and CRMLocationMatchEngine.normalize_text(branch.spa_name) not in normalized_branch_area
+                    ):
+                        lead_area = AreaMatchingService.find_area(branch.area, selected_city_name, channel, create_if_missing=True)
+                        if lead_area:
+                            matched_area_name = lead_area.name
+                            selected_city_name = lead_area.city or selected_city_name
+                            area_score = score
+                            area_source = "branch_area_text"
+
+                branch_area_consistent = True
+                consistency_reason = "accepted"
+                if not lead_area:
+                    branch_area_consistent = False
+                    consistency_reason = "branch_area_unresolved"
+                if lead_area and getattr(lead_area, "location_area", None):
+                    branch_area_consistent = CRMLocationMatchEngine._branch_matches_area(branch, lead_area.location_area)
+                    if not branch_area_consistent:
+                        consistency_reason = "branch_area_mismatch"
+                if selected_city_name and not CRMLocationMatchEngine._branch_matches_city(branch, selected_city_name):
+                    branch_area_consistent = False
+                    consistency_reason = "branch_city_mismatch"
+
+                applied = score >= AUTO_APPLY_SCORE and bool(lead_area) and branch_area_consistent
+                needs_manual_review = not applied
                 result.update(
                     classification="branch",
-                    confidence=min(score, area_score) / 100.0,
-                    reason=f"branch_{method}_match",
+                    confidence=min(score, area_score) / 100.0 if area_score else score / 100.0,
+                    reason=f"branch_{method}_match" if applied else consistency_reason,
                     branch=branch,
                     area=matched_area_name if applied else None,
                     raw_branch=branch.spa_name,
-                    raw_city=(raw_city or branch.city) if applied else "",
+                    raw_city=selected_city_name if applied else "",
                     raw_area=matched_area_name if applied else "",
                     matched_area=lead_area if applied else None,
-                    current_branch=branch if applied else None,
+                    current_branch=branch,
+                    match_priority=location_match_priority("branch"),
+                    needs_manual_review=needs_manual_review,
+                    needs_manual_area=needs_manual_review,
+                    area_source=area_source,
+                    area_method=area_method,
+                    detected_area_token=area_part,
+                    selected_branch_city=branch.city or "",
+                    selected_branch_area=branch.area or "",
+                    accepted=applied,
                     should_request_location=not applied,
-                    method=method
+                    method=method,
                 )
                 if SUGGESTION_SCORE <= min(score, area_score) < AUTO_APPLY_SCORE:
                     result['suggested_match'] = {
@@ -551,9 +838,65 @@ class CRMLocationMatchEngine:
                     }
                 return result
 
+        if area_part and spa_style_text:
+            area_only_match = fuzzy_match_location(
+                area_part,
+                context={"raw_city": raw_city, "channel_id": getattr(channel, "id", None)},
+                allow_fuzzy=allow_fuzzy,
+            )
+            if area_only_match and area_only_match["candidate"].get("type") in ["area", "area_alias", "doubletick_area", "doubletick_area_alias"]:
+                candidate = area_only_match["candidate"]
+                score = area_only_match["score"]
+                if candidate.get("type") in ["area", "area_alias"]:
+                    from apps.locations.models import Area
+
+                    location_area = Area.objects.filter(
+                        id=candidate.get("area_id") or candidate.get("id"),
+                        is_active=True,
+                        is_deleted=False,
+                    ).first()
+                    if location_area:
+                        lead_area = CRMLocationMatchEngine.ensure_area_from_location_area(location_area)
+                        result.update(
+                            classification="area",
+                            confidence=score / 100.0,
+                            reason="spa_text_area_suffix_without_safe_branch",
+                            city=location_area.city,
+                            area=location_area,
+                            raw_city=location_area.city.name if location_area.city else "",
+                            raw_area=location_area.name,
+                            matched_area=lead_area,
+                            match_priority=location_match_priority("area"),
+                            needs_manual_review=True,
+                            detected_area_token=area_part,
+                            method=area_only_match["method"],
+                        )
+                        return result
+                else:
+                    lead_area = DoubleTickLeadArea.objects.filter(
+                        id=candidate.get("lead_area_id"),
+                        is_active=True,
+                        is_deleted=False,
+                    ).first()
+                    if lead_area:
+                        result.update(
+                            classification="area",
+                            confidence=score / 100.0,
+                            reason="spa_text_area_suffix_without_safe_branch",
+                            raw_city=lead_area.city,
+                            raw_area=lead_area.name,
+                            matched_area=lead_area,
+                            match_priority=location_match_priority("area"),
+                            needs_manual_review=True,
+                            detected_area_token=area_part,
+                            method=area_only_match["method"],
+                        )
+                        return result
+
         loc_match = fuzzy_match_location(
-            raw_text,
+            area_part if area_part and spa_style_text else raw_text,
             context={"raw_city": raw_city, "channel_id": getattr(channel, "id", None)},
+            allow_fuzzy=allow_fuzzy,
         )
         if loc_match:
             candidate = loc_match['candidate']
@@ -568,6 +911,7 @@ class CRMLocationMatchEngine:
                     confidence=score / 100.0,
                     reason=f"state_{method}",
                     raw_city="",
+                    match_priority=location_match_priority("state" if applied else "unknown"),
                     method=method
                 )
                 if not applied:
@@ -589,6 +933,7 @@ class CRMLocationMatchEngine:
                     city=city,
                     raw_city=city.name if city and applied else "",
                     raw_area="",
+                    match_priority=location_match_priority("city" if applied else "unknown"),
                     should_request_location=True,
                     method=method
                 )
@@ -612,6 +957,7 @@ class CRMLocationMatchEngine:
                     raw_city=group.city.name if group and group.city and applied else "",
                     raw_group=group.name if group and applied else "",
                     raw_area="",
+                    match_priority=location_match_priority("location_group" if applied else "unknown"),
                     should_request_location=True,
                     method=method
                 )
@@ -641,6 +987,7 @@ class CRMLocationMatchEngine:
                         raw_city=area.city.name if area.city and applied else "",
                         raw_area=area.name if applied else "",
                         matched_area=lead_area if applied else None,
+                        match_priority=location_match_priority("area" if applied else "unknown"),
                         should_request_location=not applied,
                         method=method
                     )
@@ -668,6 +1015,7 @@ class CRMLocationMatchEngine:
                         raw_city=lead_area.city if applied else "",
                         raw_area=lead_area.name if applied else "",
                         matched_area=lead_area if applied else None,
+                        match_priority=location_match_priority("area" if applied else "unknown"),
                         should_request_location=not applied,
                         method=method,
                     )
@@ -678,7 +1026,13 @@ class CRMLocationMatchEngine:
                         }
                     return result
 
-        result.update(classification="unknown", confidence=0.1, reason="no_location_match", should_request_location=True)
+        result.update(
+            classification="unknown",
+            confidence=0.1,
+            reason="no_location_match",
+            match_priority=location_match_priority("unknown"),
+            should_request_location=True,
+        )
         return result
 
 
@@ -1032,18 +1386,23 @@ class AreaMatchingService:
         matches = []
         for branch in branches:
             score = 0
+            area_signal = False
             if normalized_area:
                 if normalize_area_text(branch.area) == normalized_area:
                     score += 100
+                    area_signal = True
                 elif _contains_normalized(branch.area, raw_area):
                     score += 80
+                    area_signal = True
                 elif _contains_normalized(branch.spa_name, raw_area):
                     score += 60
+                    area_signal = True
                 elif _contains_normalized(branch.address, raw_area):
                     score += 45
+                    area_signal = True
             if normalized_city and normalize_area_text(branch.city) == normalized_city:
                 score += 20
-            if score > 0:
+            if score > 0 and (area_signal or not normalized_area):
                 matches.append((score, branch))
 
         matches.sort(key=lambda item: (-item[0], item[1].spa_name or ""))
@@ -1104,23 +1463,69 @@ class AreaMatchingService:
         return lead_area
 
     @staticmethod
-    def apply_match_result(conversation, match_result):
+    def apply_match_result(conversation, match_result, force=False):
         metadata = dict(conversation.raw_payload or {})
+        classification = match_result.get("classification")
+        incoming_priority = match_result.get("match_priority")
+        if incoming_priority is None:
+            incoming_priority = location_match_priority(classification)
+
+        def serialize_match(result):
+            return {
+                key: (
+                    str(value.id) if hasattr(value, "id") else value
+                )
+                for key, value in result.items()
+                if key not in {"state", "city", "location_group", "area", "branch", "matched_area", "current_branch", "suggested_match"}
+            }
+
+        existing_match = metadata.get("location_match", {}) if isinstance(metadata.get("location_match"), dict) else {}
+        existing_priority = existing_match.get("match_priority")
+        if existing_priority is None:
+            existing_priority = location_match_priority(existing_match.get("classification"))
+            if conversation.area_confirmed and conversation.matched_area_id:
+                existing_priority = max(existing_priority, location_match_priority("area"))
+                if conversation.current_lead_id and getattr(conversation.current_lead, "current_branch_id", None):
+                    existing_priority = max(existing_priority, location_match_priority("branch"))
+            elif conversation.raw_area:
+                existing_priority = max(existing_priority, location_match_priority("area"))
+            elif existing_match.get("raw_group"):
+                existing_priority = max(existing_priority, location_match_priority("location_group"))
+            elif conversation.raw_city:
+                existing_priority = max(existing_priority, location_match_priority("city"))
+
+        incoming_metadata = serialize_match({**match_result, "match_priority": incoming_priority})
+        if not incoming_metadata.get("raw_group") and existing_match.get("raw_group"):
+            incoming_metadata["raw_group"] = existing_match["raw_group"]
+        if not force and incoming_priority < existing_priority:
+            metadata["latest_location_match"] = incoming_metadata
+            if classification == "service_action":
+                conversation.raw_service = match_result.get("raw_service") or conversation.raw_service
+            conversation.raw_payload = metadata
+            conversation.save(update_fields=["raw_service", "raw_payload", "updated_at"])
+            _activity(
+                conversation=conversation,
+                action=DoubleTickActivity.Action.PENDING_REASON_UPDATED,
+                new_status=conversation.status,
+                note=f"Ignored lower priority {classification} match.",
+                metadata={
+                    "incoming_priority": incoming_priority,
+                    "existing_priority": existing_priority,
+                    "classification": classification,
+                    "reason": match_result.get("reason", ""),
+                    "original_text": match_result.get("input") or "",
+                },
+            )
+            return conversation
+
         if "suggested_match" in match_result:
             metadata["suggested_match"] = match_result["suggested_match"]
         else:
             metadata.pop("suggested_match", None)
 
-        metadata["location_match"] = {
-            key: (
-                str(value.id) if hasattr(value, "id") else value
-            )
-            for key, value in match_result.items()
-            if key not in {"state", "city", "location_group", "area", "branch", "matched_area", "current_branch", "suggested_match"}
-        }
+        metadata["location_match"] = incoming_metadata
         conversation.raw_payload = metadata
 
-        classification = match_result.get("classification")
         if classification == "city":
             conversation.raw_city = match_result.get("raw_city") or ""
             conversation.raw_area = ""
@@ -1146,6 +1551,11 @@ class AreaMatchingService:
                 conversation.status = DoubleTickConversation.Status.QUALIFIED
                 conversation.pending_reason = ""
                 conversation.requires_manual_attention = False
+            elif classification == "branch" and match_result.get("current_branch"):
+                conversation.raw_city = match_result.get("raw_city") or conversation.raw_city
+                conversation.status = DoubleTickConversation.Status.MANUAL_ATTENTION
+                conversation.pending_reason = DoubleTickConversation.PendingReason.AMBIGUOUS_LOCATION
+                conversation.requires_manual_attention = True
             else:
                 conversation.raw_city = match_result.get("raw_city") or conversation.raw_city
                 conversation.raw_area = match_result.get("raw_area") or ""
@@ -1213,6 +1623,100 @@ class AreaMatchingService:
         )
         return conversation
 
+
+class DoubleTickLocationPriorityService:
+    """Rebuild the best location match from inbound customer messages only."""
+
+    @staticmethod
+    def inbound_customer_messages(conversation):
+        prefetched = getattr(conversation, "inbound_customer_message_list", None)
+        if prefetched is not None:
+            return prefetched
+        return conversation.messages.filter(
+            direction=DoubleTickMessage.Direction.INBOUND,
+            origin=DoubleTickMessage.Origin.CUSTOMER,
+        ).order_by("message_timestamp", "received_at", "created_at")
+
+    @staticmethod
+    def best_match_for_conversation(conversation, allow_fuzzy=True):
+        best = None
+        best_priority = -1
+        raw_city_context = conversation.raw_city or ""
+        matched_messages = []
+
+        for message in DoubleTickLocationPriorityService.inbound_customer_messages(conversation):
+            if not (message.text or "").strip():
+                continue
+            result = CRMLocationMatchEngine.classify_message(
+                message.text,
+                raw_city=raw_city_context,
+                channel=conversation.channel,
+                allow_fuzzy=allow_fuzzy,
+            )
+            priority = result.get("match_priority")
+            if priority is None:
+                priority = location_match_priority(result.get("classification"))
+                result["match_priority"] = priority
+            result["message_id"] = str(message.id)
+            result["message_timestamp"] = (
+                message.message_timestamp or message.received_at or message.created_at
+            ).isoformat() if (message.message_timestamp or message.received_at or message.created_at) else ""
+            matched_messages.append({
+                "message_id": str(message.id),
+                "text": message.text,
+                "classification": result.get("classification"),
+                "priority": priority,
+                "raw_city": result.get("raw_city") or "",
+                "raw_group": result.get("raw_group") or "",
+                "raw_area": result.get("raw_area") or "",
+                "raw_branch": result.get("raw_branch") or "",
+                "matched_area": str(result["matched_area"].id) if result.get("matched_area") else "",
+                "current_branch": str(result["current_branch"].id) if result.get("current_branch") else "",
+            })
+            if result.get("classification") in ["city", "location_group"] and result.get("raw_city"):
+                raw_city_context = result["raw_city"]
+            if priority >= best_priority:
+                best = result
+                best_priority = priority
+
+        if not best:
+            best = CRMLocationMatchEngine._base_result("")
+            best.update(classification="unknown", reason="no_inbound_customer_messages")
+        best["matched_messages"] = matched_messages
+        return best
+
+    @staticmethod
+    def current_route_snapshot(conversation):
+        lead = conversation.current_lead
+        return {
+            "raw_city": conversation.raw_city or "",
+            "raw_area": conversation.raw_area or "",
+            "matched_area_id": str(conversation.matched_area_id or ""),
+            "lead_id": str(lead.id) if lead else "",
+            "lead_raw_city": (lead.raw_city if lead else "") or "",
+            "lead_raw_area": (lead.raw_area if lead else "") or "",
+            "lead_matched_area_id": str(getattr(lead, "matched_area_id", "") or ""),
+            "lead_current_branch_id": str(getattr(lead, "current_branch_id", "") or ""),
+        }
+
+    @staticmethod
+    def apply_best_match(conversation, best_match, distribute=True):
+        before = DoubleTickLocationPriorityService.current_route_snapshot(conversation)
+        AreaMatchingService.apply_match_result(conversation, best_match, force=True)
+        lead = LeadQualificationService.ensure_conversation_lead(
+            conversation,
+            matched_area=conversation.matched_area,
+            distribute=bool(distribute and conversation.area_confirmed and conversation.matched_area_id),
+        )
+        if best_match.get("classification") == "branch" and best_match.get("current_branch"):
+            branch = best_match["current_branch"]
+            if lead.current_branch_id != branch.id or lead.assigned_branch_id != branch.id:
+                lead.current_branch = branch
+                lead.assigned_branch = branch
+                lead.save(update_fields=["current_branch", "assigned_branch", "updated_at"])
+        after = DoubleTickLocationPriorityService.current_route_snapshot(conversation)
+        return lead, before, after
+
     @staticmethod
     def match_conversation(conversation, raw_area=None, raw_city=None, save_alias=False):
         raw_area = raw_area if raw_area is not None else conversation.raw_area
@@ -1275,6 +1779,9 @@ class AreaMatchingService:
             },
         )
         return lead_area
+
+
+AreaMatchingService.match_conversation = staticmethod(DoubleTickLocationPriorityService.match_conversation)
 
 
 class DoubleTickConversationService:
@@ -1486,7 +1993,12 @@ class DoubleTickConversationService:
         conversation.last_customer_message_at = received_at
         conversation.customer_last_replied_at = received_at
         conversation.unread_count += 1
-        conversation.raw_payload = payload
+        existing_metadata = conversation.raw_payload if isinstance(conversation.raw_payload, dict) else {}
+        merged_payload = dict(payload)
+        for key in ["location_match", "suggested_match", "latest_location_match"]:
+            if key in existing_metadata and key not in merged_payload:
+                merged_payload[key] = existing_metadata[key]
+        conversation.raw_payload = merged_payload
 
         extracted_city = parsed.get("city")
         extracted_area = parsed.get("area")
@@ -1764,6 +2276,9 @@ class LeadDistributionService:
     def _get_or_create_visibility(**kwargs):
         existing = DoubleTickLeadVisibility.objects.filter(**kwargs).first()
         if existing:
+            if not existing.is_visible:
+                existing.is_visible = True
+                existing.save(update_fields=["is_visible", "updated_at"])
             return existing, False
         try:
             with transaction.atomic():
@@ -1885,6 +2400,11 @@ class LeadDistributionService:
             mappings = [mappings[start_index]]
 
         User = get_user_model()
+        target_branch_ids = [mapping.branch_id for mapping in mappings]
+        stale_visibility_count = DoubleTickLeadVisibility.objects.filter(
+            lead=lead,
+            is_visible=True,
+        ).exclude(branch_id__in=target_branch_ids).update(is_visible=False)
         notified_count = 0
         notification_failure_count = 0
         created_visibility_count = 0
@@ -1952,6 +2472,7 @@ class LeadDistributionService:
                 "mapped_branch_count": len(mappings),
                 "visibility_count": visibility_count,
                 "created_visibility_count": created_visibility_count,
+                "stale_visibility_count": stale_visibility_count,
                 "notified_count": notified_count,
                 "notification_failure_count": notification_failure_count,
                 "auto_created_mapping_count": len(auto_created_mappings),
@@ -1971,6 +2492,7 @@ class LeadDistributionService:
                 "mode": mode,
                 "round_robin_branch_id": branch_ids[0] if mode == DoubleTickLeadArea.DistributionMode.ROUND_ROBIN and branch_ids else "",
                 "auto_created_mapping_ids": [str(mapping.id) for mapping in auto_created_mappings],
+                "stale_visibility_count": stale_visibility_count,
                 "raw_city": lead.raw_city or lead.city,
                 "raw_area": lead.raw_area or lead.area,
             },
@@ -2426,7 +2948,7 @@ def create_or_update_lead_from_webhook(payload):
             return conversation.current_lead, webhook_log
 
         parsed_payload = parse_doubletick_payload(payload)
-        inbound_text = conversation.raw_area or parsed_payload.get("area") or message.text
+        inbound_text = message.text or parsed_payload.get("area") or ""
         match_result = CRMLocationMatchEngine.classify_message(
             inbound_text,
             raw_city=conversation.raw_city or parsed_payload.get("city", ""),

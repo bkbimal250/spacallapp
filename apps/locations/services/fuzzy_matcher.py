@@ -185,7 +185,7 @@ def _context_candidates(candidates, context):
     return filtered or candidates
 
 
-def _match(text, candidates, context=None):
+def _match(text, candidates, context=None, allow_fuzzy=True):
     normalized = normalize_location_name(text)
     if not normalized or len(normalized) < 3:
         return None
@@ -203,6 +203,9 @@ def _match(text, candidates, context=None):
         exact.sort(key=lambda item: priority.get(item["type"], 99))
         return {"candidate": exact[0], "score": 100.0, "method": "exact"}
 
+    if not allow_fuzzy:
+        return None
+
     choices = [item["text"] for item in candidates]
     if not choices:
         return None
@@ -213,10 +216,10 @@ def _match(text, candidates, context=None):
     return {"candidate": candidates[index], "score": float(score), "method": "fuzzy"}
 
 
-def fuzzy_match_location(text, context=None):
-    return _match(text, build_location_candidates(), context=context)
+def fuzzy_match_location(text, context=None, allow_fuzzy=True):
+    return _match(text, build_location_candidates(), context=context, allow_fuzzy=allow_fuzzy)
 
 
-def fuzzy_match_branch(text, context=None):
+def fuzzy_match_branch(text, context=None, allow_fuzzy=True):
     branches = [item for item in build_location_candidates() if item["type"] == "branch"]
-    return _match(text, branches, context=context)
+    return _match(text, branches, context=context, allow_fuzzy=allow_fuzzy)
