@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from drf_spectacular.utils import extend_schema_field
-from .models import Device
+from .models import Device, DeviceStorageReport
 
 
 class DeviceSerializer(serializers.ModelSerializer):
@@ -26,6 +26,9 @@ class DeviceSerializer(serializers.ModelSerializer):
     fcm_present = serializers.SerializerMethodField()
     pending_call_count = serializers.SerializerMethodField()
     last_sync_error = serializers.SerializerMethodField()
+    storage_status = serializers.SerializerMethodField()
+    total_app_storage_mb = serializers.SerializerMethodField()
+    last_storage_report_at = serializers.SerializerMethodField()
     last_seen_at = serializers.DateTimeField(source="last_heartbeat", read_only=True)
 
     class Meta:
@@ -37,6 +40,7 @@ class DeviceSerializer(serializers.ModelSerializer):
             "compliance_status", "compliance_reason", "compliance_followed_up_at",
             "app_version", "device_model", "manufacturer", "fcm_present",
             "pending_call_count", "last_sync_error",
+            "storage_status", "total_app_storage_mb", "last_storage_report_at",
         )
 
     def get_compliance_status(self, obj):
@@ -73,6 +77,32 @@ class DeviceSerializer(serializers.ModelSerializer):
     def get_last_sync_error(self, obj):
         health = getattr(obj, "health", None)
         return health.last_sync_error if health else ""
+
+    def _latest_storage(self, obj):
+        return obj.storage_reports.order_by("-reported_at").first()
+
+    def get_storage_status(self, obj):
+        report = self._latest_storage(obj)
+        return report.storage_status if report else "NORMAL"
+
+    def get_total_app_storage_mb(self, obj):
+        report = self._latest_storage(obj)
+        return report.total_app_storage_mb if report else 0
+
+    def get_last_storage_report_at(self, obj):
+        report = self._latest_storage(obj)
+        return report.reported_at if report else None
+
+
+class DeviceStorageReportSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = DeviceStorageReport
+        fields = (
+            "total_app_storage_mb", "db_size_mb", "cache_size_mb", "audio_size_mb",
+            "log_size_mb", "temp_size_mb", "other_size_mb", "unsynced_call_count",
+            "pending_sync_count", "failed_sync_count", "cleanup_deleted_records_count",
+            "cleanup_deleted_files_count", "cleanup_freed_mb", "last_cleanup_at",
+        )
 
     def to_representation(self, instance):
         ret = super().to_representation(instance)

@@ -43,11 +43,28 @@ from .models import Device
 from .serializers import (
     ClaimRegistrationSerializer,
     DeviceSerializer,
+    DeviceStorageReportSerializer,
     RestoreRegistrationSerializer,
 )
 
 
 logger = logging.getLogger(__name__)
+
+CLEANUP_CONFIG = {
+    "cleanup_enabled": True,
+    "delete_synced_call_logs_after_days": 15,
+    "delete_uploaded_audio_after_days": 7,
+    "delete_cache_after_days": 3,
+    "delete_temp_after_days": 2,
+    "delete_debug_logs_after_days": 7,
+    "failed_sync_retention_days": 30,
+    "warn_storage_mb": 1500,
+    "critical_storage_mb": 2000,
+    "max_cleanup_per_run_mb": 1000,
+    "run_cleanup_when_charging_only": False,
+    "run_cleanup_on_wifi_only": False,
+    "cleanup_requested": False,
+}
 
 
 def _request_context(request):
@@ -698,3 +715,52 @@ class UpdateFCMTokenView(APIView):
 
         logger.info("FCM token updated", extra={**context, **_token_diagnostics(token)})
         return Response({"status": "success", "message": "FCM token updated successfully"})
+
+
+class CleanupConfigView(APIView):
+    authentication_classes = [DeviceAuthentication]
+    permission_classes = [IsDevice]
+
+    def get(self, request, device_id):
+        if request.auth.device_id != device_id:
+            return Response({"error": "Device mismatch", "code": "invalid_device"}, status=status.HTTP_403_FORBIDDEN)
+        return Response(CLEANUP_CONFIG)
+
+
+class StorageReportView(APIView):
+    authentication_classes = [DeviceAuthentication]
+    permission_classes = [IsDevice]
+
+    def post(self, request, device_id):
+        device = request.auth
+        if device.device_id != device_id:
+            return Response({"error": "Device mismatch", "code": "invalid_device"}, status=status.HTTP_403_FORBIDDEN)
+
+        serializer = DeviceStorageReportSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        status_value = self._storage_status(data)
+        report = serializer.save(device=device, storage_status=status_value, raw_payload=request.data)
+
+        if status_value != "NORMAL":
+            try:
+                from apps.monitoring.services import MonitoringAlertService
+                MonitoringAlertService.raise_event(
+                    device=device,
+                    event_type="sync_failure",
+                    description=f"Device {device.device_id} app storage is {status_value.lower()}: {report.total_app_storage_mb:.0f} MB. Do not clear app data.",
+                )
+            except Exception:
+                logger.exception("Failed to raise storage alert")
+
+        return Response({"status": "success", "storage_status": status_value, "cleanup_config": CLEANUP_CONFIG})
+
+    def _storage_status(self, data):
+        total = data.get("total_app_storage_mb") or 0
+        if total >= CLEANUP_CONFIG["critical_storage_mb"]:
+            return "CRITICAL"
+        if total >= CLEANUP_CONFIG["warn_storage_mb"]:
+            return "WARNING"
+        if (data.get("unsynced_call_count") or 0) > 100 or (data.get("pending_sync_count") or 0) > 100:
+            return "WARNING"
+        return "NORMAL"

@@ -210,3 +210,35 @@ class Lastsynchistory(BaseModel):
 
     def __str__(self):
         return f"Last Sync for {self.device}: {self.last_sync_time}"
+
+
+class DeviceStorageReport(BaseModel):
+    STATUS_NORMAL = "NORMAL"
+    STATUS_WARNING = "WARNING"
+    STATUS_CRITICAL = "CRITICAL"
+
+    device = models.ForeignKey(Device, on_delete=models.CASCADE, related_name="storage_reports")
+    total_app_storage_mb = models.FloatField(default=0)
+    db_size_mb = models.FloatField(default=0)
+    cache_size_mb = models.FloatField(default=0)
+    audio_size_mb = models.FloatField(default=0)
+    log_size_mb = models.FloatField(default=0)
+    temp_size_mb = models.FloatField(default=0)
+    other_size_mb = models.FloatField(default=0)
+    unsynced_call_count = models.IntegerField(default=0)
+    pending_sync_count = models.IntegerField(default=0)
+    failed_sync_count = models.IntegerField(default=0)
+    cleanup_deleted_records_count = models.IntegerField(default=0)
+    cleanup_deleted_files_count = models.IntegerField(default=0)
+    cleanup_freed_mb = models.FloatField(default=0)
+    last_cleanup_at = models.DateTimeField(null=True, blank=True)
+    reported_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    storage_status = models.CharField(max_length=16, default=STATUS_NORMAL, db_index=True)
+    raw_payload = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        db_table = "device_storage_reports"
+        indexes = [
+            models.Index(fields=["device", "-reported_at"]),
+            models.Index(fields=["storage_status", "-reported_at"]),
+        ]
