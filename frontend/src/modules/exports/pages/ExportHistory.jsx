@@ -1,13 +1,100 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { exportsAPI } from '../api';
 import Table from '../../../shared/components/Table';
-import Button from '../../../shared/components/Button';
 import Badge from '../../../shared/components/Badge';
 import ExportButton from '../components/ExportButton';
-import { Download, FileText, Filter } from 'lucide-react';
+import { Calendar, Download, FileText, Filter } from 'lucide-react';
 import { formatDate } from '../../../shared/utils/formatDate';
 import { branchesAPI } from '../../branches/api';
 import SearchableSelect from '../../../shared/components/SearchableSelect';
+
+const toIndiaDate = (value) => {
+    if (!value) return '';
+    const [year, month, day] = value.split('-');
+    if (!year || !month || !day) return value;
+    return `${day}/${month}/${year}`;
+};
+
+const toApiDate = (value) => {
+    const match = value.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+    if (!match) return null;
+
+    const [, day, month, year] = match;
+    const parsed = new Date(Number(year), Number(month) - 1, Number(day));
+    const isValid =
+        parsed.getFullYear() === Number(year) &&
+        parsed.getMonth() === Number(month) - 1 &&
+        parsed.getDate() === Number(day);
+
+    return isValid ? `${year}-${month}-${day}` : null;
+};
+
+const IndiaDateInput = ({ label, value, onChange }) => {
+    const pickerRef = useRef(null);
+    const [displayValue, setDisplayValue] = useState(toIndiaDate(value));
+
+    useEffect(() => {
+        setDisplayValue(toIndiaDate(value));
+    }, [value]);
+
+    const openPicker = () => {
+        if (pickerRef.current?.showPicker) {
+            pickerRef.current.showPicker();
+        } else {
+            pickerRef.current?.click();
+        }
+    };
+
+    const handleTextChange = (event) => {
+        const nextValue = event.target.value
+            .replace(/[^\d/]/g, '')
+            .slice(0, 10);
+
+        setDisplayValue(nextValue);
+
+        if (!nextValue) {
+            onChange('');
+            return;
+        }
+
+        const apiDate = toApiDate(nextValue);
+        if (apiDate) onChange(apiDate);
+    };
+
+    return (
+        <div>
+            <label className="block text-xs font-semibold text-text-secondary mb-1 uppercase tracking-wide">{label}</label>
+            <div className="relative">
+                <input
+                    type="text"
+                    inputMode="numeric"
+                    placeholder="DD/MM/YYYY"
+                    className="w-full px-3 py-2 pr-10 border border-border rounded-lg bg-background text-text-primary placeholder:text-text-secondary focus:ring-primary focus:border-primary"
+                    value={displayValue}
+                    onChange={handleTextChange}
+                    onBlur={() => setDisplayValue(toIndiaDate(value))}
+                />
+                <button
+                    type="button"
+                    onClick={openPicker}
+                    className="absolute inset-y-0 right-2 flex items-center text-text-secondary hover:text-text-primary transition"
+                    aria-label={`Open ${label} calendar`}
+                >
+                    <Calendar size={18} />
+                </button>
+                <input
+                    ref={pickerRef}
+                    type="date"
+                    className="sr-only"
+                    value={value}
+                    onChange={(event) => onChange(event.target.value)}
+                    tabIndex={-1}
+                    aria-hidden="true"
+                />
+            </div>
+        </div>
+    );
+};
 
 const ExportHistory = () => {
 
@@ -22,6 +109,7 @@ const ExportHistory = () => {
     const [endDate, setEndDate] = useState('');
 
     const [generating, setGenerating] = useState(false);
+    const [downloadingId, setDownloadingId] = useState(null);
 
     const fetchExports = async () => {
         setLoading(true);
@@ -101,19 +189,30 @@ const ExportHistory = () => {
         }
     };
 
+    const getDownloadFilename = (response, fallback) => {
+        const disposition = response.headers?.['content-disposition'];
+        const match = disposition?.match(/filename="?([^";]+)"?/i);
+        return decodeURIComponent(match?.[1] || fallback || 'export.xlsx');
+    };
+
     const handleDownload = async (id, filename) => {
+        setDownloadingId(id);
+        let url;
         try {
             const response = await exportsAPI.downloadExport(id);
-            const url = window.URL.createObjectURL(new Blob([response.data]));
+            url = window.URL.createObjectURL(response.data);
             const link = document.createElement('a');
             link.href = url;
-            link.setAttribute('download', filename || 'export.xlsx');
+            link.setAttribute('download', getDownloadFilename(response, filename));
             document.body.appendChild(link);
             link.click();
             link.remove();
         } catch (error) {
             console.error("Failed to download export", error);
             alert("Download failed.");
+        } finally {
+            if (url) window.setTimeout(() => window.URL.revokeObjectURL(url), 1000);
+            setDownloadingId(null);
         }
     };
 
@@ -147,7 +246,7 @@ const ExportHistory = () => {
                         )}
                         {(f.start_date || f.end_date) && (
                             <div className="text-text-secondary italic">
-                                {f.start_date || '...'} to {f.end_date || '...'}
+                                {toIndiaDate(f.start_date) || '...'} to {toIndiaDate(f.end_date) || '...'}
                             </div>
                         )}
                     </div>
@@ -156,7 +255,7 @@ const ExportHistory = () => {
         },
         {
             header: 'Date',
-            render: (row) => formatDate(row.created_at)
+            render: (row) => formatDate(row.created_at, 'dd/MM/yyyy')
         },
         {
             header: 'Status',
@@ -180,10 +279,11 @@ const ExportHistory = () => {
                 row.status === 'completed' && (
                     <button
                         onClick={() => handleDownload(row.id, row.file_name)}
-                        className="flex items-center space-x-1 text-primary hover:text-primary/80 transition"
+                        disabled={downloadingId === row.id}
+                        className="flex items-center space-x-1 text-primary hover:text-primary/80 disabled:text-text-secondary disabled:cursor-wait transition"
                     >
                         <Download size={16} />
-                        <span>Download</span>
+                        <span>{downloadingId === row.id ? 'Downloading...' : 'Download'}</span>
                     </button>
                 )
             ),
@@ -219,24 +319,16 @@ const ExportHistory = () => {
                         onChange={setSelectedGroup}
                         disabled={!!selectedBranch}
                     />
-                    <div>
-                        <label className="block text-xs font-semibold text-text-secondary mb-1 uppercase tracking-wide">From Date</label>
-                        <input
-                            type="date"
-                            className="w-full px-3 py-2 border border-border rounded-lg bg-background text-text-primary focus:ring-primary focus:border-primary"
-                            value={startDate}
-                            onChange={(e) => setStartDate(e.target.value)}
-                        />
-                    </div>
-                    <div>
-                        <label className="block text-xs font-semibold text-text-secondary mb-1 uppercase tracking-wide">To Date</label>
-                        <input
-                            type="date"
-                            className="w-full px-3 py-2 border border-border rounded-lg bg-background text-text-primary focus:ring-primary focus:border-primary"
-                            value={endDate}
-                            onChange={(e) => setEndDate(e.target.value)}
-                        />
-                    </div>
+                    <IndiaDateInput
+                        label="From Date"
+                        value={startDate}
+                        onChange={setStartDate}
+                    />
+                    <IndiaDateInput
+                        label="To Date"
+                        value={endDate}
+                        onChange={setEndDate}
+                    />
                 </div>
 
                 {selectedBranch && selectedGroup && (

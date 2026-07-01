@@ -1,21 +1,149 @@
-from rest_framework import viewsets, permissions, views, response, status, serializers
-from drf_spectacular.utils import extend_schema, OpenApiParameter, inline_serializer, OpenApiResponse
+import ast
+import json
+from pathlib import Path
+
+import openpyxl
+from django.conf import settings
+from django.http import FileResponse
+from django.utils import timezone
+from drf_spectacular.utils import OpenApiResponse, extend_schema, inline_serializer
+from rest_framework import permissions, response, serializers, status, views, viewsets
+
+from apps.calllogs.models import CallLog
+from apps.common.utils import apply_branch_filter
 from .models import ExportJob
 from .serializers import ExportJobSerializer
-from apps.calllogs.models import CallLog
-from django.http import HttpResponse
-from django.utils import timezone
-import openpyxl
-from openpyxl.styles import Font
-import io
-from apps.common.utils import apply_branch_filter
+
+
+EXPORT_MEDIA_DIR = "exports"
+CALL_LOG_HEADERS = ['Type', 'Number', 'Duration (s)', 'SIM Slot', 'Branch Group', 'Branch', 'Time']
+
+
+def _export_dir() -> Path:
+    path = Path(settings.MEDIA_ROOT) / EXPORT_MEDIA_DIR
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def _media_url_for(filename: str) -> str:
+    return f"{settings.MEDIA_URL.rstrip('/')}/{EXPORT_MEDIA_DIR}/{filename}"
+
+
+def _path_from_file_url(file_url: str | None) -> Path | None:
+    if not file_url:
+        return None
+
+    media_prefix = settings.MEDIA_URL.rstrip('/') + '/'
+    if not file_url.startswith(media_prefix):
+        return None
+
+    relative_path = file_url[len(media_prefix):].lstrip('/').replace('/', '\\')
+    path = (Path(settings.MEDIA_ROOT) / relative_path).resolve()
+    export_root = _export_dir().resolve()
+    if export_root not in path.parents and path != export_root:
+        return None
+    return path
+
+
+def _json_filters(data) -> str:
+    return json.dumps({
+        'branch': data.get('branch') or None,
+        'group': data.get('group') or None,
+        'start_date': data.get('start_date') or None,
+        'end_date': data.get('end_date') or None,
+    })
+
+
+def _load_filters(job: ExportJob) -> dict:
+    if not job.error_message:
+        return {}
+    try:
+        return json.loads(job.error_message)
+    except (TypeError, ValueError, json.JSONDecodeError):
+        try:
+            return ast.literal_eval(job.error_message)
+        except (SyntaxError, ValueError):
+            return {}
+
+
+def _call_log_queryset(user, filters: dict):
+    queryset = (
+        CallLog.objects
+        .select_related('branch__branch_group')
+        .order_by('-call_time')
+    )
+    queryset = apply_branch_filter(queryset, "branch_id", user)
+
+    branch = filters.get('branch')
+    group = filters.get('group')
+    start_date = filters.get('start_date')
+    end_date = filters.get('end_date')
+
+    if branch:
+        queryset = queryset.filter(branch_id=branch)
+    elif group:
+        queryset = queryset.filter(branch__branch_group_id=group)
+    if start_date:
+        queryset = queryset.filter(call_time__date__gte=start_date)
+    if end_date:
+        queryset = queryset.filter(call_time__date__lte=end_date)
+
+    return queryset.values_list(
+        'call_type',
+        'phone_number',
+        'duration',
+        'sim_slot',
+        'branch__branch_group__name',
+        'branch__spa_name',
+        'call_time',
+    )
+
+
+def _write_call_logs_xlsx(user, filters: dict, file_path: Path) -> None:
+    workbook = openpyxl.Workbook(write_only=True)
+    worksheet = workbook.create_sheet(title="Call Logs")
+    worksheet.append(CALL_LOG_HEADERS)
+
+    for call_type, phone_number, duration, sim_slot, group_name, branch_name, call_time in _call_log_queryset(user, filters).iterator(chunk_size=2000):
+        worksheet.append([
+            call_type,
+            phone_number,
+            duration,
+            sim_slot,
+            group_name or "N/A",
+            branch_name or "N/A",
+            call_time.strftime("%d/%m/%Y %H:%M:%S") if call_time else "",
+        ])
+
+    workbook.save(file_path)
+
+
+def _build_export_file(job: ExportJob, user) -> ExportJob:
+    if job.export_type != 'call_logs':
+        raise ValueError(f"Unsupported export type: {job.export_type}")
+
+    filters = _load_filters(job)
+    timestamp = timezone.now().strftime('%Y%m%d_%H%M%S')
+    filename = job.file_name or f"call_logs_{job.id}_{timestamp}.xlsx"
+    if not filename.lower().endswith('.xlsx'):
+        filename = f"{filename}.xlsx"
+
+    file_path = _export_dir() / filename
+    _write_call_logs_xlsx(user, filters, file_path)
+
+    job.file_name = filename
+    job.file_url = _media_url_for(filename)
+    job.status = 'completed'
+    job.save(update_fields=['file_name', 'file_url', 'status', 'updated_at'])
+    return job
+
 
 class ExportViewSet(viewsets.ModelViewSet):
     serializer_class = ExportJobSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        queryset = ExportJob.objects.all().order_by('-created_at')
+        queryset = ExportJob.objects.select_related('user').all().order_by('-created_at')
         user = self.request.user
         if getattr(user, "role", None) in ["area_manager", "spa_manager"]:
             return queryset.filter(user=user)
@@ -32,6 +160,7 @@ class ExportViewSet(viewsets.ModelViewSet):
     @extend_schema(summary="Delete Export Job")
     def destroy(self, request, *args, **kwargs):
         return super().destroy(request, *args, **kwargs)
+
 
 class GenerateExportView(views.APIView):
     permission_classes = [permissions.IsAuthenticated]
@@ -53,85 +182,28 @@ class GenerateExportView(views.APIView):
     )
     def post(self, request):
         export_type = request.data.get('type', 'call_logs')
-        
-        # Create the job record
-        # Store filters in error_message or a JSON field (simplified for now by just using query parameters in re-generation)
         job = ExportJob.objects.create(
             user=request.user,
             export_type=export_type,
             status='processing',
-            # We use error_message as a temporary storage for filters as JSON string to avoid migration
-            error_message=str({
-                'branch': request.data.get('branch'),
-                'group': request.data.get('group'),
-                'start_date': request.data.get('start_date'),
-                'end_date': request.data.get('end_date'),
-            })
+            error_message=_json_filters(request.data),
         )
-        
+
         try:
-            if export_type == 'call_logs':
-                # Generate Excel synchronously for now as requested
-                queryset = CallLog.objects.all().select_related('branch', 'device').order_by('-call_time')
-                queryset = apply_branch_filter(queryset, "branch_id", request.user)
-                
-                # Apply filters
-                branch = request.data.get('branch')
-                group = request.data.get('group')
-                start_date = request.data.get('start_date')
-                end_date = request.data.get('end_date')
-                
-                if branch:
-                    queryset = queryset.filter(branch_id=branch)
-                elif group:
-                    queryset = queryset.filter(branch__branch_group_id=group)
-                if start_date:
-                    queryset = queryset.filter(call_time__date__gte=start_date)
-                if end_date:
-                    queryset = queryset.filter(call_time__date__lte=end_date)
-                
-                workbook = openpyxl.Workbook()
-                worksheet = workbook.active
-                worksheet.title = "Call Logs"
-                
-                headers = ['Type', 'Number', 'Duration (s)', 'SIM Slot', 'Branch Group', 'Branch', 'Time']
-                header_font = Font(bold=True)
-                for col_num, header_title in enumerate(headers, 1):
-                    cell = worksheet.cell(row=1, column=col_num)
-                    cell.value = header_title
-                    cell.font = header_font
-                
-                for row_num, log in enumerate(queryset, 2):
-                    worksheet.cell(row=row_num, column=1).value = log.call_type
-                    worksheet.cell(row=row_num, column=2).value = log.phone_number
-                    worksheet.cell(row=row_num, column=3).value = log.duration
-                    worksheet.cell(row=row_num, column=4).value = log.sim_slot
-                    worksheet.cell(row=row_num, column=5).value = log.branch.branch_group.name if log.branch and log.branch.branch_group else "N/A"
-                    worksheet.cell(row=row_num, column=6).value = log.branch.spa_name if log.branch else "N/A"
-                    if log.call_time:
-                        worksheet.cell(row=row_num, column=7).value = log.call_time.strftime("%Y-%m-%d %H:%M:%S")
-                
-                # We could save this to a file or storage, but for "direct" we can store in memory 
-                # or just mark as completed. Since we need a later download, let's actually 
-                # for now just mark all existing and new as completed and generate on the fly 
-                # in the download view to avoid complex storage setup if not needed.
-                
-                job.status = 'completed'
-                job.file_name = f"call_logs_{timezone.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
-                job.save()
-                
-                return response.Response(ExportJobSerializer(job).data, status=status.HTTP_201_CREATED)
-            else:
+            if export_type != 'call_logs':
                 job.status = 'failed'
                 job.error_message = f"Unsupported export type: {export_type}"
-                job.save()
+                job.save(update_fields=['status', 'error_message', 'updated_at'])
                 return response.Response({"error": "Unsupported type"}, status=status.HTTP_400_BAD_REQUEST)
-                
+
+            job = _build_export_file(job, request.user)
+            return response.Response(ExportJobSerializer(job).data, status=status.HTTP_201_CREATED)
         except Exception as e:
             job.status = 'failed'
             job.error_message = str(e)
-            job.save()
+            job.save(update_fields=['status', 'error_message', 'updated_at'])
             return response.Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
 
 class DownloadExportView(views.APIView):
     permission_classes = [permissions.IsAuthenticated]
@@ -152,62 +224,24 @@ class DownloadExportView(views.APIView):
             if getattr(request.user, "role", None) in ["area_manager", "spa_manager"]:
                 job_qs = job_qs.filter(user=request.user)
             job = job_qs.get(pk=pk)
+
             if job.status != 'completed':
                 return response.Response({"error": "Export not ready"}, status=status.HTTP_400_BAD_REQUEST)
-            
-            # Re-generate the file for download (simplified version to avoid storage issues)
-            queryset = CallLog.objects.all().select_related('branch', 'device').order_by('-call_time')
-            queryset = apply_branch_filter(queryset, "branch_id", request.user)
-            
-            # Re-apply filters from stored data
-            try:
-                import ast
-                filters = ast.literal_eval(job.error_message) if job.error_message else {}
-                branch = filters.get('branch')
-                group = filters.get('group')
-                start_date = filters.get('start_date')
-                end_date = filters.get('end_date')
-                
-                if branch:
-                    queryset = queryset.filter(branch_id=branch)
-                elif group:
-                    queryset = queryset.filter(branch__branch_group_id=group)
-                if start_date:
-                    queryset = queryset.filter(call_time__date__gte=start_date)
-                if end_date:
-                    queryset = queryset.filter(call_time__date__lte=end_date)
-            except:
-                pass # Fallback to no filters if parsing fails
-            
-            workbook = openpyxl.Workbook()
-            worksheet = workbook.active
-            worksheet.title = "Call Logs"
-            
-            headers = ['Type', 'Number', 'Duration (s)', 'SIM Slot', 'Branch Group', 'Branch', 'Time']
-            for col_num, header_title in enumerate(headers, 1):
-                worksheet.cell(row=1, column=col_num).value = header_title
-            
-            for row_num, log in enumerate(queryset, 2):
-                worksheet.cell(row=row_num, column=1).value = log.call_type
-                worksheet.cell(row=row_num, column=2).value = log.phone_number
-                worksheet.cell(row=row_num, column=3).value = log.duration
-                worksheet.cell(row=row_num, column=4).value = log.sim_slot
-                worksheet.cell(row=row_num, column=5).value = log.branch.branch_group.name if log.branch and log.branch.branch_group else "N/A"
-                worksheet.cell(row=row_num, column=6).value = log.branch.spa_name if log.branch else "N/A"
-                if log.call_time:
-                    worksheet.cell(row=row_num, column=7).value = log.call_time.strftime("%Y-%m-%d %H:%M:%S")
 
-            output = io.BytesIO()
-            workbook.save(output)
-            output.seek(0)
-            
-            file_response = HttpResponse(
-                output.read(),
-                content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            file_path = _path_from_file_url(job.file_url)
+            if file_path is None or not file_path.exists():
+                job = _build_export_file(job, request.user)
+                file_path = _path_from_file_url(job.file_url)
+
+            if file_path is None or not file_path.exists():
+                return response.Response({"error": "Export file not found"}, status=status.HTTP_404_NOT_FOUND)
+
+            return FileResponse(
+                open(file_path, 'rb'),
+                as_attachment=True,
+                filename=job.file_name or file_path.name,
+                content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             )
-            file_response['Content-Disposition'] = f'attachment; filename="{job.file_name or "export.xlsx"}"'
-            return file_response
-            
         except ExportJob.DoesNotExist:
             return response.Response({"error": "Export job not found"}, status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
