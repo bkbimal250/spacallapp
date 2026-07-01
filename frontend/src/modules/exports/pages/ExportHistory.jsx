@@ -195,6 +195,20 @@ const ExportHistory = () => {
         return decodeURIComponent(match?.[1] || fallback || 'export.xlsx');
     };
 
+    const getDownloadErrorMessage = async (error) => {
+        const data = error.response?.data;
+        if (data instanceof Blob) {
+            try {
+                const text = await data.text();
+                const parsed = JSON.parse(text);
+                return parsed.error || parsed.detail || "Download failed.";
+            } catch {
+                return "Download failed.";
+            }
+        }
+        return data?.error || data?.detail || "Download failed.";
+    };
+
     const handleDownload = async (id, filename) => {
         setDownloadingId(id);
         let url;
@@ -209,7 +223,7 @@ const ExportHistory = () => {
             link.remove();
         } catch (error) {
             console.error("Failed to download export", error);
-            alert("Download failed.");
+            alert(await getDownloadErrorMessage(error));
         } finally {
             if (url) window.setTimeout(() => window.URL.revokeObjectURL(url), 1000);
             setDownloadingId(null);

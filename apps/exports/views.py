@@ -1,6 +1,7 @@
 import ast
 import json
 from pathlib import Path
+from urllib.parse import unquote, urlparse
 
 import openpyxl
 from django.conf import settings
@@ -29,16 +30,26 @@ def _media_url_for(filename: str) -> str:
     return f"{settings.MEDIA_URL.rstrip('/')}/{EXPORT_MEDIA_DIR}/{filename}"
 
 
+def _safe_export_path(filename: str | None) -> Path | None:
+    if not filename:
+        return None
+    safe_name = Path(unquote(filename)).name
+    if not safe_name:
+        return None
+    return (_export_dir() / safe_name).resolve()
+
+
 def _path_from_file_url(file_url: str | None) -> Path | None:
     if not file_url:
         return None
 
-    media_prefix = settings.MEDIA_URL.rstrip('/') + '/'
-    if not file_url.startswith(media_prefix):
+    media_path = urlparse(file_url).path or file_url
+    media_prefix = urlparse(settings.MEDIA_URL).path.rstrip('/') + '/'
+    if not media_path.startswith(media_prefix):
         return None
 
-    relative_path = file_url[len(media_prefix):].lstrip('/').replace('/', '\\')
-    path = (Path(settings.MEDIA_ROOT) / relative_path).resolve()
+    relative_path = unquote(media_path[len(media_prefix):].lstrip('/')).replace('\\', '/')
+    path = (Path(settings.MEDIA_ROOT) / Path(*Path(relative_path).parts)).resolve()
     export_root = _export_dir().resolve()
     if export_root not in path.parents and path != export_root:
         return None
@@ -124,11 +135,13 @@ def _build_export_file(job: ExportJob, user) -> ExportJob:
 
     filters = _load_filters(job)
     timestamp = timezone.now().strftime('%Y%m%d_%H%M%S')
-    filename = job.file_name or f"call_logs_{job.id}_{timestamp}.xlsx"
+    filename = Path(job.file_name or f"call_logs_{job.id}_{timestamp}.xlsx").name
     if not filename.lower().endswith('.xlsx'):
         filename = f"{filename}.xlsx"
 
-    file_path = _export_dir() / filename
+    file_path = _safe_export_path(filename)
+    if file_path is None:
+        raise ValueError("Invalid export filename")
     _write_call_logs_xlsx(user, filters, file_path)
 
     job.file_name = filename
@@ -231,10 +244,10 @@ class DownloadExportView(views.APIView):
             file_path = _path_from_file_url(job.file_url)
             if file_path is None or not file_path.exists():
                 job = _build_export_file(job, request.user)
-                file_path = _path_from_file_url(job.file_url)
+                file_path = _path_from_file_url(job.file_url) or _safe_export_path(job.file_name)
 
             if file_path is None or not file_path.exists():
-                return response.Response({"error": "Export file not found"}, status=status.HTTP_404_NOT_FOUND)
+                return response.Response({"error": "Export file could not be generated"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
             return FileResponse(
                 open(file_path, 'rb'),
