@@ -3,7 +3,7 @@ import { exportsAPI } from '../api';
 import Table from '../../../shared/components/Table';
 import Badge from '../../../shared/components/Badge';
 import ExportButton from '../components/ExportButton';
-import { Calendar, Download, FileText, Filter } from 'lucide-react';
+import { Calendar, Download, FileText, Filter, Trash2 } from 'lucide-react';
 import { formatDate } from '../../../shared/utils/formatDate';
 import { branchesAPI } from '../../branches/api';
 import SearchableSelect from '../../../shared/components/SearchableSelect';
@@ -110,6 +110,7 @@ const ExportHistory = () => {
 
     const [generating, setGenerating] = useState(false);
     const [downloadingId, setDownloadingId] = useState(null);
+    const [deletingId, setDeletingId] = useState(null);
 
     const fetchExports = async () => {
         setLoading(true);
@@ -230,6 +231,21 @@ const ExportHistory = () => {
         }
     };
 
+    const handleDelete = async (id) => {
+        if (!window.confirm("Delete this export file and history record?")) return;
+
+        setDeletingId(id);
+        try {
+            await exportsAPI.deleteExport(id);
+            setExportsList((items) => items.filter((item) => item.id !== id));
+        } catch (error) {
+            console.error("Failed to delete export", error);
+            alert(error.response?.data?.error || error.response?.data?.detail || "Delete failed.");
+        } finally {
+            setDeletingId(null);
+        }
+    };
+
     const columns = [
         {
             header: 'Type',
@@ -290,7 +306,8 @@ const ExportHistory = () => {
         {
             header: 'Actions',
             render: (row) => (
-                row.status === 'completed' && (
+                <div className="flex items-center gap-3">
+                    {row.status === 'completed' && (
                     <button
                         onClick={() => handleDownload(row.id, row.file_name)}
                         disabled={downloadingId === row.id}
@@ -299,7 +316,16 @@ const ExportHistory = () => {
                         <Download size={16} />
                         <span>{downloadingId === row.id ? 'Downloading...' : 'Download'}</span>
                     </button>
-                )
+                    )}
+                    <button
+                        onClick={() => handleDelete(row.id)}
+                        disabled={deletingId === row.id}
+                        className="flex items-center space-x-1 text-red-500 hover:text-red-600 disabled:text-text-secondary disabled:cursor-wait transition"
+                    >
+                        <Trash2 size={16} />
+                        <span>{deletingId === row.id ? 'Deleting...' : 'Delete'}</span>
+                    </button>
+                </div>
             ),
         },
     ];

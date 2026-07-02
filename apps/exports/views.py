@@ -1,5 +1,6 @@
 import ast
 import json
+from datetime import date, datetime, time
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 
@@ -18,6 +19,7 @@ from .serializers import ExportJobSerializer
 
 EXPORT_MEDIA_DIR = "exports"
 CALL_LOG_HEADERS = ['Type', 'Number', 'Duration (s)', 'SIM Slot', 'Branch Group', 'Branch', 'Time']
+EXPORT_QUERY_CHUNK_SIZE = 10000
 
 
 def _export_dir() -> Path:
@@ -33,7 +35,7 @@ def _media_url_for(filename: str) -> str:
 def _safe_export_path(filename: str | None) -> Path | None:
     if not filename:
         return None
-    safe_name = Path(unquote(filename)).name
+    safe_name = Path(unquote(filename).replace("\\", "/")).name
     if not safe_name:
         return None
     return (_export_dir() / safe_name).resolve()
@@ -77,12 +79,34 @@ def _load_filters(job: ExportJob) -> dict:
             return {}
 
 
+def _delete_export_file(job: ExportJob) -> bool:
+    file_path = _path_from_file_url(job.file_url) or _safe_export_path(job.file_name)
+    if file_path and file_path.exists():
+        file_path.unlink()
+        return True
+    return False
+
+
+def _parse_filter_date(value, boundary: time):
+    if not value:
+        return None
+    if isinstance(value, datetime):
+        parsed = value
+    elif isinstance(value, date):
+        parsed = datetime.combine(value, boundary)
+    else:
+        try:
+            parsed = datetime.combine(date.fromisoformat(str(value)), boundary)
+        except ValueError:
+            return None
+
+    if timezone.is_naive(parsed):
+        return timezone.make_aware(parsed, timezone.get_current_timezone())
+    return parsed
+
+
 def _call_log_queryset(user, filters: dict):
-    queryset = (
-        CallLog.objects
-        .select_related('branch__branch_group')
-        .order_by('-call_time')
-    )
+    queryset = CallLog.objects.all().order_by()
     queryset = apply_branch_filter(queryset, "branch_id", user)
 
     branch = filters.get('branch')
@@ -94,10 +118,13 @@ def _call_log_queryset(user, filters: dict):
         queryset = queryset.filter(branch_id=branch)
     elif group:
         queryset = queryset.filter(branch__branch_group_id=group)
-    if start_date:
-        queryset = queryset.filter(call_time__date__gte=start_date)
-    if end_date:
-        queryset = queryset.filter(call_time__date__lte=end_date)
+
+    start_at = _parse_filter_date(start_date, time.min)
+    end_at = _parse_filter_date(end_date, time.max)
+    if start_at:
+        queryset = queryset.filter(call_time__gte=start_at)
+    if end_at:
+        queryset = queryset.filter(call_time__lte=end_at)
 
     return queryset.values_list(
         'call_type',
@@ -115,7 +142,7 @@ def _write_call_logs_xlsx(user, filters: dict, file_path: Path) -> None:
     worksheet = workbook.create_sheet(title="Call Logs")
     worksheet.append(CALL_LOG_HEADERS)
 
-    for call_type, phone_number, duration, sim_slot, group_name, branch_name, call_time in _call_log_queryset(user, filters).iterator(chunk_size=2000):
+    for call_type, phone_number, duration, sim_slot, group_name, branch_name, call_time in _call_log_queryset(user, filters).iterator(chunk_size=EXPORT_QUERY_CHUNK_SIZE):
         worksheet.append([
             call_type,
             phone_number,
@@ -172,7 +199,10 @@ class ExportViewSet(viewsets.ModelViewSet):
 
     @extend_schema(summary="Delete Export Job")
     def destroy(self, request, *args, **kwargs):
-        return super().destroy(request, *args, **kwargs)
+        instance = self.get_object()
+        _delete_export_file(instance)
+        instance.delete()
+        return response.Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class GenerateExportView(views.APIView):
@@ -259,3 +289,33 @@ class DownloadExportView(views.APIView):
             return response.Response({"error": "Export job not found"}, status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
             return response.Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class DeleteExportView(views.APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    @extend_schema(
+        summary="Delete Export Job",
+        description="Deletes an export job and its associated file.",
+        responses={
+            204: OpenApiResponse(description="Export job deleted successfully"),
+            404: OpenApiResponse(description="Export job not found"),
+        }
+    )
+    def delete(self, request, pk):
+        try:
+            job_qs = ExportJob.objects.all()
+            if getattr(request.user, "role", None) in ["area_manager", "spa_manager"]:
+                job_qs = job_qs.filter(user=request.user)
+            job = job_qs.get(pk=pk)
+
+            _delete_export_file(job)
+            job.delete()
+            return response.Response(status=status.HTTP_204_NO_CONTENT)
+        except ExportJob.DoesNotExist:
+            return response.Response({"error": "Export job not found"}, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            return response.Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
+
+        
