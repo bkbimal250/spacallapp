@@ -1,7 +1,6 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import Button from '../../../shared/components/Button';
-import SearchableSelect from '../../../shared/components/SearchableSelect';
-import { branchesAPI } from '../../branches/api';
+import BranchSearchSelect from './BranchSearchSelect';
 import WebsiteFormPreview from './WebsiteFormPreview';
 
 const defaults = {
@@ -24,54 +23,12 @@ const defaults = {
 const isColor = (value) => /^#[0-9A-Fa-f]{6}$/.test(value || '');
 
 const WebsiteFormForm = ({ initialData, onSubmit, saving = false, isEdit = false, submitError = '' }) => {
-    const [branches, setBranches] = useState([]);
-    const [branchesLoading, setBranchesLoading] = useState(true);
-    const [branchesError, setBranchesError] = useState('');
     const [form, setForm] = useState(defaults);
     const [errors, setErrors] = useState({});
 
     useEffect(() => {
-        setBranchesLoading(true);
-        setBranchesError('');
-        branchesAPI.getBranches({ all: true })
-            .then((res) => setBranches(res.data.results || res.data || []))
-            .catch(() => {
-                setBranches([]);
-                setBranchesError('Unable to load branches. Please refresh and try again.');
-            })
-            .finally(() => setBranchesLoading(false));
-    }, []);
-
-    useEffect(() => {
         setForm({ ...defaults, ...(initialData || {}) });
     }, [initialData]);
-
-    const branchOptions = useMemo(() => branches.map((branch) => {
-        const area = branch.location_area_name || branch.area || '';
-        const city = branch.location_city_name || branch.city || '';
-        const state = branch.location_state_name || branch.state || '';
-        const code = branch.code || '';
-        const description = [area, city, state, code].filter(Boolean).join(' | ');
-
-        return {
-            value: String(branch.id),
-            label: branch.spa_name || branch.name || code || 'Unnamed branch',
-            description,
-            searchText: [
-                branch.spa_name,
-                branch.name,
-                branch.code,
-                branch.area,
-                branch.city,
-                branch.state,
-                branch.location_area_name,
-                branch.location_city_name,
-                branch.location_state_name,
-                branch.location_group_name,
-                branch.address,
-            ].filter(Boolean).join(' '),
-        };
-    }), [branches]);
 
     const update = (key, value) => setForm((prev) => ({ ...prev, [key]: value }));
 
@@ -133,19 +90,13 @@ const WebsiteFormForm = ({ initialData, onSubmit, saving = false, isEdit = false
                 <div className="grid gap-4 md:grid-cols-2">
                     <div>
                         <label className="block text-sm font-medium text-text-primary">Branch/Spa</label>
-                        <SearchableSelect
+                        <BranchSearchSelect
                             className="mt-1"
-                            options={branchOptions}
                             value={form.branch || ''}
                             onChange={(value) => update('branch', value)}
-                            placeholder={branchesLoading ? 'Loading branches...' : 'Search spa, area, or city'}
-                            disabled={branchesLoading || Boolean(branchesError) || branchOptions.length === 0}
+                            placeholder="Search spa, area, or city"
                             allowEmpty={false}
                         />
-                        {branchesError && <p className="mt-1 text-xs text-danger">{branchesError}</p>}
-                        {!branchesLoading && !branchesError && branchOptions.length === 0 && (
-                            <p className="mt-1 text-xs text-warning">No branches found for your account.</p>
-                        )}
                         <FieldError name="branch" />
                     </div>
                     <label className="text-sm font-medium text-text-primary">Website Name
