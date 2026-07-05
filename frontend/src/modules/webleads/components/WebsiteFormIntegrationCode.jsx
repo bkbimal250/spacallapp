@@ -4,7 +4,7 @@ import CopyButton from './CopyButton';
 export const buildWidgetCode = (form = {}) => `<div id="mastercall-form"></div>
 
 <script
- src="https://api.mastercall.in/forms/widget.js"
+ src="https://apibackend.mastercall.in/forms/widget.js"
  data-key="${form.form_key || 'FORM_KEY'}"
  data-primary-color="${form.primary_color || '#BD9B5F'}"
  data-button-color="${form.button_color || '#25D366'}"
@@ -12,7 +12,7 @@ export const buildWidgetCode = (form = {}) => `<div id="mastercall-form"></div>
  data-theme="${form.theme || 'dark'}">
 </script>`;
 
-export const buildReactExample = (form = {}) => `await fetch("https://api.mastercall.in/api/v1/web-leads/submit/", {
+export const buildReactExample = (form = {}) => `await fetch("https://apibackend.mastercall.in/api/v1/web-leads/submit/", {
   method: "POST",
   headers: {
     "Content-Type": "application/json"
