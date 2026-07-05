@@ -87,6 +87,7 @@ INSTALLED_APPS = [
     "apps.doubletick",
     "apps.bots",
     "apps.locations",
+    "apps.webLead",
 ]
 
 

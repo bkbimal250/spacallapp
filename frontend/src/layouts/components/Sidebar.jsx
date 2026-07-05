@@ -22,6 +22,7 @@ import {
     MessageCircle,
     Workflow,
     MapPinned,
+    Globe2,
     X
 } from 'lucide-react';
 
@@ -53,6 +54,19 @@ const Sidebar = ({ collapsed = false, mobileOpen = false, onMobileClose }) => {
         { to: ROUTES.LOCATIONS, label: 'Locations', icon: MapPinned },
         { to: ROUTES.DOUBLETICK, label: 'DoubleTick', icon: MessageCircle },
         { to: ROUTES.BOTS, label: 'Bot Builder', icon: Workflow },
+        {
+            to: ROUTES.WEB_LEADS_DASHBOARD,
+            label: 'Website Leads',
+            icon: Globe2,
+            children: [
+                { to: ROUTES.WEB_LEADS_DASHBOARD, label: 'Dashboard' },
+                { to: ROUTES.WEB_LEADS_FORMS, label: 'Website Forms' },
+                { to: ROUTES.WEB_LEADS_LEADS, label: 'Website Leads' },
+                { to: ROUTES.WEB_LEADS_PENDING, label: 'Pending Leads' },
+                { to: ROUTES.WEB_LEADS_ANALYTICS, label: 'Analytics' },
+                { to: ROUTES.WEB_LEADS_INTEGRATION_HELP, label: 'Integration Help' },
+            ],
+        },
         { to: ROUTES.NOTIFICATIONS, label: 'Notifications', icon: Bell },
     ];
 
@@ -99,25 +113,44 @@ const Sidebar = ({ collapsed = false, mobileOpen = false, onMobileClose }) => {
                     const isActive = location.pathname === item.to || (item.to !== ROUTES.DASHBOARD && location.pathname.startsWith(item.to));
 
                     return (
-                        <Link
-                            key={item.to}
-                            to={item.to}
-                            onClick={onMobileClose}
-                            title={collapsed ? item.label : undefined}
-                            className={`flex items-center gap-3 rounded-lg px-4 py-2.5 transition-all ${collapsed ? 'lg:justify-center lg:px-2' : ''}
-                                
-                                ${isActive
-                                    ? "bg-primary/20 text-primary"
-                                    : "text-text-secondary hover:bg-card hover:text-text-primary"}
-                                
-                            `}
-                        >
-                            <item.icon size={18} className="shrink-0" />
+                        <div key={item.to}>
+                            <Link
+                                to={item.to}
+                                onClick={onMobileClose}
+                                title={collapsed ? item.label : undefined}
+                                className={`flex items-center gap-3 rounded-lg px-4 py-2.5 transition-all ${collapsed ? 'lg:justify-center lg:px-2' : ''}
+                                    
+                                    ${isActive
+                                        ? "bg-primary/20 text-primary"
+                                        : "text-text-secondary hover:bg-card hover:text-text-primary"}
+                                    
+                                `}
+                            >
+                                <item.icon size={18} className="shrink-0" />
 
-                            <span className={`whitespace-nowrap text-sm font-medium ${collapsed ? 'lg:hidden' : ''}`}>
-                                {item.label}
-                            </span>
-                        </Link>
+                                <span className={`whitespace-nowrap text-sm font-medium ${collapsed ? 'lg:hidden' : ''}`}>
+                                    {item.label}
+                                </span>
+                            </Link>
+                            {item.children && isActive && (
+                                <div className={`mt-1 space-y-1 pl-9 ${collapsed ? 'lg:hidden' : ''}`}>
+                                    {item.children.map((child) => (
+                                        <Link
+                                            key={child.to}
+                                            to={child.to}
+                                            onClick={onMobileClose}
+                                            className={`block rounded-lg px-3 py-2 text-xs font-medium transition ${
+                                                location.pathname === child.to
+                                                    ? 'bg-primary/10 text-primary'
+                                                    : 'text-text-muted hover:bg-card hover:text-text-primary'
+                                            }`}
+                                        >
+                                            {child.label}
+                                        </Link>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
                     );
                 })}
 

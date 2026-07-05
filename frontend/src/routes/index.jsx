@@ -49,6 +49,17 @@ const BotsSheetSyncLogs = lazy(() => import('../modules/bots/pages/SheetSyncLogs
 const BotsIntegrations = lazy(() => import('../modules/bots/pages/Integrations'));
 const BotsSimulator = lazy(() => import('../modules/bots/pages/Simulator'));
 const NotificationList = lazy(() => import('../modules/notifications/pages/NotificationList'));
+const WebLeadsDashboard = lazy(() => import('../modules/webleads/pages/WebLeadsDashboard'));
+const WebsiteFormsPage = lazy(() => import('../modules/webleads/pages/WebsiteFormsPage'));
+const WebsiteFormCreatePage = lazy(() => import('../modules/webleads/pages/WebsiteFormCreatePage'));
+const WebsiteFormDetailPage = lazy(() => import('../modules/webleads/pages/WebsiteFormDetailPage'));
+const WebsiteFormEditPage = lazy(() => import('../modules/webleads/pages/WebsiteFormEditPage'));
+const WebsiteLeadsPage = lazy(() => import('../modules/webleads/pages/WebsiteLeadsPage'));
+const WebsiteLeadDetailPage = lazy(() => import('../modules/webleads/pages/WebsiteLeadDetailPage'));
+const PendingWebsiteLeadsPage = lazy(() => import('../modules/webleads/pages/PendingWebsiteLeadsPage'));
+const WebLeadAnalyticsPage = lazy(() => import('../modules/webleads/pages/WebLeadAnalyticsPage'));
+const BranchWebsitePerformancePage = lazy(() => import('../modules/webleads/pages/BranchWebsitePerformancePage'));
+const IntegrationHelpPage = lazy(() => import('../modules/webleads/pages/IntegrationHelpPage'));
 
 
 
@@ -110,6 +121,18 @@ export const AppRoutes = () => {
                         <Route path={ROUTES.BOTS_INTEGRATIONS} element={<BotsIntegrations />} />
                         <Route path={ROUTES.BOTS_SIMULATOR} element={<BotsSimulator />} />
                         <Route path={ROUTES.NOTIFICATIONS} element={<NotificationList />} />
+                        <Route path="/web-leads" element={<Navigate to={ROUTES.WEB_LEADS_DASHBOARD} replace />} />
+                        <Route path={ROUTES.WEB_LEADS_DASHBOARD} element={<WebLeadsDashboard />} />
+                        <Route path={ROUTES.WEB_LEADS_FORMS} element={<WebsiteFormsPage />} />
+                        <Route path={ROUTES.WEB_LEADS_FORM_CREATE} element={<WebsiteFormCreatePage />} />
+                        <Route path={ROUTES.WEB_LEADS_FORM_DETAIL} element={<WebsiteFormDetailPage />} />
+                        <Route path={ROUTES.WEB_LEADS_FORM_EDIT} element={<WebsiteFormEditPage />} />
+                        <Route path={ROUTES.WEB_LEADS_LEADS} element={<WebsiteLeadsPage />} />
+                        <Route path={ROUTES.WEB_LEADS_LEAD_DETAIL} element={<WebsiteLeadDetailPage />} />
+                        <Route path={ROUTES.WEB_LEADS_PENDING} element={<PendingWebsiteLeadsPage />} />
+                        <Route path={ROUTES.WEB_LEADS_ANALYTICS} element={<WebLeadAnalyticsPage />} />
+                        <Route path={ROUTES.WEB_LEADS_BRANCH_PERFORMANCE} element={<BranchWebsitePerformancePage />} />
+                        <Route path={ROUTES.WEB_LEADS_INTEGRATION_HELP} element={<IntegrationHelpPage />} />
 
                         {/* Super Admin Only Routes */}
                         <Route element={<RoleRoute allowedRoles={['super_admin']} />}>

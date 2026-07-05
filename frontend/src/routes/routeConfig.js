@@ -41,6 +41,17 @@ export const ROUTES = {
     BOTS_INTEGRATIONS: '/bots/integrations',
     BOTS_SIMULATOR: '/bots/simulator',
     NOTIFICATIONS: '/notifications',
+    WEB_LEADS_DASHBOARD: '/web-leads/dashboard',
+    WEB_LEADS_FORMS: '/web-leads/forms',
+    WEB_LEADS_FORM_CREATE: '/web-leads/forms/create',
+    WEB_LEADS_FORM_DETAIL: '/web-leads/forms/:id',
+    WEB_LEADS_FORM_EDIT: '/web-leads/forms/:id/edit',
+    WEB_LEADS_LEADS: '/web-leads/leads',
+    WEB_LEADS_LEAD_DETAIL: '/web-leads/leads/:id',
+    WEB_LEADS_PENDING: '/web-leads/pending',
+    WEB_LEADS_ANALYTICS: '/web-leads/analytics',
+    WEB_LEADS_BRANCH_PERFORMANCE: '/web-leads/branches/:branchId/performance',
+    WEB_LEADS_INTEGRATION_HELP: '/web-leads/integration-help',
     
 };
 

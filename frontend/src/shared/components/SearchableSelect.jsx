@@ -8,7 +8,8 @@ const SearchableSelect = ({
     placeholder = "Select option...",
     label,
     className,
-    disabled = false
+    disabled = false,
+    allowEmpty = true,
 }) => {
 
     const [isOpen, setIsOpen] = useState(false);
@@ -18,7 +19,8 @@ const SearchableSelect = ({
     const wrapperRef = useRef(null);
     const inputRef = useRef(null);
 
-    const selectedOption = options.find(opt => opt.value === value);
+    const normalizedValue = value === null || value === undefined ? '' : String(value);
+    const selectedOption = options.find(opt => String(opt.value) === normalizedValue);
 
     useEffect(() => {
         function handleClickOutside(event) {
@@ -134,7 +136,7 @@ const SearchableSelect = ({
                 </span>
 
                 {/* CLEAR BUTTON */}
-                {value && !disabled && (
+                {normalizedValue && !disabled && (
                     <button
                         onClick={clearSelection}
                         className="absolute inset-y-0 right-8 flex items-center group"
@@ -174,12 +176,14 @@ const SearchableSelect = ({
                     <div className="max-h-60 overflow-y-auto">
 
                         {/* NONE OPTION */}
-                        <div
-                            className="cursor-pointer py-2.5 pl-4 pr-9 text-text-secondary hover:bg-background border-b border-border"
-                            onClick={() => handleSelect({ value: '', label: '' })}
-                        >
-                            None / All
-                        </div>
+                        {allowEmpty && (
+                            <div
+                                className="cursor-pointer py-2.5 pl-4 pr-9 text-text-secondary hover:bg-background border-b border-border"
+                                onClick={() => handleSelect({ value: '', label: '' })}
+                            >
+                                None / All
+                            </div>
+                        )}
 
                         {filteredOptions.length === 0 ? (
                             <div className="py-8 px-4 text-text-muted italic text-center text-sm">
@@ -190,7 +194,7 @@ const SearchableSelect = ({
                                 <div
                                     key={option.value}
                                     className={`cursor-pointer py-2.5 pl-4 pr-9 transition-all
-                                    ${value === option.value
+                                    ${normalizedValue === String(option.value)
                                             ? 'bg-primary text-white'
                                             : index === activeIndex
                                                 ? 'bg-primary/10'
@@ -203,7 +207,7 @@ const SearchableSelect = ({
                                     </span>
                                     {option.description && (
                                         <span className={`mt-0.5 block text-xs whitespace-normal break-words ${
-                                            value === option.value ? 'text-white/80' : 'text-text-secondary'
+                                            normalizedValue === String(option.value) ? 'text-white/80' : 'text-text-secondary'
                                         }`}>
                                             {highlightText(option.description)}
                                         </span>

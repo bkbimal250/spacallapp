@@ -20,6 +20,7 @@ from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
 from drf_spectacular.views import SpectacularAPIView, SpectacularRedocView, SpectacularSwaggerView
+from apps.webLead.views import WidgetScriptView
 
 urlpatterns = [
     path("admin/", admin.site.urls),
@@ -42,6 +43,8 @@ urlpatterns = [
     path("api/v1/doubletick/", include("apps.doubletick.urls")),
     path("api/v1/bots/", include("apps.bots.urls")),
     path("api/v1/locations/", include("apps.locations.urls")),
+    path("api/v1/web-leads/", include("apps.webLead.urls")),
+    path("forms/widget.js", WidgetScriptView.as_view(), name="web-lead-widget-js"),
 ]
 
 if settings.DEBUG:
