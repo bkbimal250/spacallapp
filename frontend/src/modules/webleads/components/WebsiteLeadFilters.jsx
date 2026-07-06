@@ -2,7 +2,9 @@ import React, { useEffect, useState } from 'react';
 import Button from '../../../shared/components/Button';
 import BranchSearchSelect from './BranchSearchSelect';
 
-const WebsiteLeadFilters = ({ onFilter, pendingOnly = false, initialFilters = {} }) => {
+const EMPTY_FILTERS = {};
+
+const WebsiteLeadFilters = ({ onFilter, pendingOnly = false, initialFilters = EMPTY_FILTERS }) => {
     const [filters, setFilters] = useState(initialFilters);
 
     useEffect(() => {

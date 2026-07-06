@@ -1,6 +1,9 @@
 from django.core.cache import cache
+from django.db.models import Count, IntegerField, OuterRef, Subquery
+from django.db.models.functions import Coalesce
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
+from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import filters, permissions, status, viewsets
 from rest_framework.response import Response
@@ -61,7 +64,32 @@ class WebsiteFormConfigurationViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         if getattr(self, "swagger_fake_view", False):
             return WebsiteFormConfiguration.objects.none()
+        today = timezone.localdate()
+        lead_counts = (
+            WebsiteLead.objects.filter(form_key=OuterRef("form_key"))
+            .order_by()
+            .values("form_key")
+            .annotate(total=Count("id"))
+            .values("total")
+        )
+        today_lead_counts = (
+            WebsiteLead.objects.filter(form_key=OuterRef("form_key"), created_at__date=today)
+            .order_by()
+            .values("form_key")
+            .annotate(total=Count("id"))
+            .values("total")
+        )
+        last_leads = (
+            WebsiteLead.objects.filter(form_key=OuterRef("form_key"))
+            .order_by("-created_at")
+            .values("created_at")
+        )
         qs = WebsiteFormConfiguration.objects.select_related("branch", "created_by").all()
+        qs = qs.annotate(
+            total_leads=Coalesce(Subquery(lead_counts[:1], output_field=IntegerField()), 0),
+            today_leads=Coalesce(Subquery(today_lead_counts[:1], output_field=IntegerField()), 0),
+            last_lead_at=Subquery(last_leads[:1]),
+        )
         return apply_branch_filter(qs, "branch_id", self.request.user, self.request.query_params.get("branch"))
 
     def perform_create(self, serializer):

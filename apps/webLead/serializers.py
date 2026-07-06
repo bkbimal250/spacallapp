@@ -23,6 +23,9 @@ from .validators import (
 class WebsiteFormConfigurationSerializer(serializers.ModelSerializer):
     branch_name = serializers.CharField(source="branch.spa_name", read_only=True)
     created_by_name = serializers.CharField(source="created_by.full_name", read_only=True)
+    today_leads = serializers.IntegerField(read_only=True)
+    total_leads = serializers.IntegerField(read_only=True)
+    last_lead_at = serializers.DateTimeField(read_only=True)
 
     class Meta:
         model = WebsiteFormConfiguration
@@ -46,6 +49,9 @@ class WebsiteFormConfigurationSerializer(serializers.ModelSerializer):
             "is_active",
             "created_by",
             "created_by_name",
+            "today_leads",
+            "total_leads",
+            "last_lead_at",
             "created_at",
             "updated_at",
         ]
