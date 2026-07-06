@@ -11,6 +11,7 @@ export const deleteWebsiteForm = (id) => axiosInstance.delete(`${base}/configura
 export const getWebsiteLeads = (params) => axiosInstance.get(`${base}/leads/`, { params });
 export const getWebsiteLead = (id) => axiosInstance.get(`${base}/leads/${id}/`);
 export const updateWebsiteLead = (id, payload) => axiosInstance.patch(`${base}/leads/${id}/`, payload);
+export const deleteWebsiteLead = (id) => axiosInstance.delete(`${base}/leads/${id}/`);
 export const assignWebsiteLead = (id, payload) => axiosInstance.post(`${base}/leads/${id}/assign/`, payload);
 
 export const getWebLeadOverviewAnalytics = (params) => axiosInstance.get(`${base}/analytics/overview/`, { params });
@@ -29,6 +30,7 @@ export const webLeadsAPI = {
     getWebsiteLeads,
     getWebsiteLead,
     updateWebsiteLead,
+    deleteWebsiteLead,
     assignWebsiteLead,
     getWebLeadOverviewAnalytics,
     getWebLeadBranchAnalytics,

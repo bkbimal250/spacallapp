@@ -1,5 +1,5 @@
 import React from 'react';
-import { ExternalLink, Eye } from 'lucide-react';
+import { ExternalLink, Eye, Trash2 } from 'lucide-react';
 import Table from '../../../shared/components/Table';
 import { formatDate } from '../../../shared/utils/formatDate';
 import CopyButton from './CopyButton';
@@ -9,7 +9,7 @@ import NotificationStatusBadge from './NotificationStatusBadge';
 
 const quickStatuses = ['contacted', 'converted', 'rejected'];
 
-const WebsiteLeadTable = ({ leads, onView, onStatus, onAssign, canAssign = false, pendingOnly = false }) => {
+const WebsiteLeadTable = ({ leads, onView, onStatus, onAssign, onDelete, canAssign = false, canDelete = false, pendingOnly = false }) => {
     const columns = [
         { header: 'Customer Name', render: (row) => <span className="font-semibold">{row.customer_name}</span> },
         { header: 'Phone', render: (row) => <div className="flex items-center gap-2"><span>{row.phone}</span><CopyButton value={row.phone} label="Phone" /></div> },
@@ -33,6 +33,7 @@ const WebsiteLeadTable = ({ leads, onView, onStatus, onAssign, canAssign = false
                         </button>
                     ))}
                     {canAssign && <button className="rounded border border-warning/30 px-2 py-1 text-xs font-semibold text-warning hover:bg-warning/10" onClick={() => onAssign(row)}>Assign</button>}
+                    {canDelete && <button className="rounded p-1.5 text-danger hover:bg-danger/10" onClick={() => onDelete(row)} title="Delete"><Trash2 size={16} /></button>}
                 </div>
             )
         },

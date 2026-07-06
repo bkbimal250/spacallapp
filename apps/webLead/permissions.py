@@ -45,3 +45,14 @@ class IsAdminOrSuperAdmin(BasePermission):
 
     def has_permission(self, request, view):
         return is_admin_user(request.user)
+
+
+class IsSuperAdmin(BasePermission):
+    message = "Only super admins can perform this action."
+
+    def has_permission(self, request, view):
+        return bool(
+            request.user
+            and request.user.is_authenticated
+            and getattr(request.user, "role", None) == "super_admin"
+        )

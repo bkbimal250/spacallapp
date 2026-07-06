@@ -19,7 +19,7 @@ from .models import (
     WebsiteLeadNotificationStatus,
     WebsiteLeadRoutingStatus,
 )
-from .permissions import IsAdminOrSuperAdmin, IsWebLeadConfigurationUser, IsWebLeadUser
+from .permissions import IsAdminOrSuperAdmin, IsSuperAdmin, IsWebLeadConfigurationUser, IsWebLeadUser
 from .serializers import (
     PublicWebsiteFormConfigSerializer,
     WebsiteFormConfigurationSerializer,
@@ -148,12 +148,17 @@ class WebsiteLeadSubmitView(PublicSubmitRateLimitMixin, APIView):
 
 class WebsiteLeadViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated, IsWebLeadUser]
-    http_method_names = ["get", "patch", "head", "options"]
+    http_method_names = ["get", "patch", "delete", "head", "options"]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_class = WebsiteLeadFilter
     search_fields = ["customer_name", "phone", "address", "website_name", "form_key"]
     ordering_fields = ["created_at", "updated_at", "status", "website_name"]
     ordering = ["-created_at"]
+
+    def get_permissions(self):
+        if self.action == "destroy":
+            return [permissions.IsAuthenticated(), IsSuperAdmin()]
+        return super().get_permissions()
 
     def get_serializer_class(self):
         if self.action == "list":

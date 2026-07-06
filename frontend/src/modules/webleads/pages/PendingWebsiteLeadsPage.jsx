@@ -1,16 +1,19 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Pagination from '../../../shared/components/Pagination';
+import { useAuth } from '../../../shared/hooks/useAuth';
 import LoadingState from '../components/LoadingState';
 import PendingLeadAssignModal from '../components/PendingLeadAssignModal';
 import WebsiteLeadFilters from '../components/WebsiteLeadFilters';
 import WebsiteLeadTable from '../components/WebsiteLeadTable';
-import { assignWebsiteLead, getWebsiteLeads, updateWebsiteLead } from '../api';
+import { assignWebsiteLead, deleteWebsiteLead, getWebsiteLeads, updateWebsiteLead } from '../api';
 
 const pageSize = 50;
 
 const PendingWebsiteLeadsPage = () => {
     const navigate = useNavigate();
+    const { user } = useAuth();
+    const canDelete = user?.role === 'super_admin';
     const [leads, setLeads] = useState([]);
     const [filters, setFilters] = useState({});
     const [page, setPage] = useState(1);
@@ -68,6 +71,18 @@ const PendingWebsiteLeadsPage = () => {
         }
     };
 
+    const remove = async (lead) => {
+        if (!window.confirm('Delete this website lead?')) return;
+        setError('');
+        try {
+            await deleteWebsiteLead(lead.id);
+            load();
+        } catch (err) {
+            console.error('Failed to delete pending website lead', err);
+            setError(err?.response?.data?.detail || 'Unable to delete this lead.');
+        }
+    };
+
     return (
         <div className="space-y-6">
             <h1 className="text-2xl font-semibold text-text-primary">Pending Website Leads</h1>
@@ -79,7 +94,7 @@ const PendingWebsiteLeadsPage = () => {
                 </div>
             )}
             <div className="rounded-xl border border-border bg-card">
-                {loading ? <LoadingState /> : <WebsiteLeadTable leads={leads} onView={(row) => navigate(`/web-leads/leads/${row.id}`)} onStatus={status} onAssign={setAssigning} canAssign pendingOnly />}
+                {loading ? <LoadingState /> : <WebsiteLeadTable leads={leads} onView={(row) => navigate(`/web-leads/leads/${row.id}`)} onStatus={status} onAssign={setAssigning} onDelete={remove} canAssign canDelete={canDelete} pendingOnly />}
                 {!loading && total > 0 && <Pagination currentPage={page} totalPages={Math.ceil(total / pageSize)} onPageChange={setPage} totalCount={total} pageSize={pageSize} />}
             </div>
             <PendingLeadAssignModal lead={assigning} isOpen={Boolean(assigning)} onClose={() => setAssigning(null)} onSubmit={assign} />

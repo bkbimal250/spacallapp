@@ -1,16 +1,18 @@
 import React, { useEffect, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import Button from '../../../shared/components/Button';
 import { useAuth } from '../../../shared/hooks/useAuth';
 import LoadingState from '../components/LoadingState';
 import PendingLeadAssignModal from '../components/PendingLeadAssignModal';
 import WebsiteLeadDetailDrawer from '../components/WebsiteLeadDetailDrawer';
-import { assignWebsiteLead, getWebsiteLead, updateWebsiteLead } from '../api';
+import { assignWebsiteLead, deleteWebsiteLead, getWebsiteLead, updateWebsiteLead } from '../api';
 
 const WebsiteLeadDetailPage = () => {
     const { id } = useParams();
+    const navigate = useNavigate();
     const { user } = useAuth();
     const canAssign = ['admin', 'super_admin'].includes(user?.role);
+    const canDelete = user?.role === 'super_admin';
     const [lead, setLead] = useState(null);
     const [assignOpen, setAssignOpen] = useState(false);
     const [savingAssign, setSavingAssign] = useState(false);
@@ -40,6 +42,12 @@ const WebsiteLeadDetailPage = () => {
         }
     };
 
+    const remove = async () => {
+        if (!window.confirm('Delete this website lead?')) return;
+        await deleteWebsiteLead(id);
+        navigate('/web-leads/leads');
+    };
+
     if (!lead) return <LoadingState label="Loading website lead..." />;
 
     return (
@@ -52,6 +60,7 @@ const WebsiteLeadDetailPage = () => {
                 <div className="flex flex-wrap gap-2">
                     {['contacted', 'converted', 'rejected'].map((item) => <Button key={item} variant="secondary" onClick={() => status(item)}>{item}</Button>)}
                     {canAssign && <Button onClick={() => setAssignOpen(true)}>Assign Branch</Button>}
+                    {canDelete && <Button variant="danger" onClick={remove}>Delete Lead</Button>}
                 </div>
             </div>
             <WebsiteLeadDetailDrawer lead={lead} embedded />
