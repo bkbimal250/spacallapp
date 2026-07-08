@@ -29,6 +29,15 @@ class DeviceHealth(TimeStampedModel):
     sync_failures = models.IntegerField(default=0)
     pending_call_count = models.IntegerField(default=0)
     last_sync_error = models.TextField(blank=True, default="")
+    network_type = models.CharField(max_length=32, blank=True, default="")
+    is_metered = models.BooleanField(default=False)
+    is_data_saver_on = models.BooleanField(default=False)
+    is_background_restricted = models.BooleanField(default=False)
+    is_battery_optimized = models.BooleanField(default=False)
+    is_vpn_active = models.BooleanField(default=False)
+    is_proxy_configured = models.BooleanField(default=False)
+    is_airplane_mode_on = models.BooleanField(default=False)
+    last_network_error = models.TextField(blank=True, default="")
     
     # Notification flags to avoid duplicates
     notified_2h = models.BooleanField(default=False)

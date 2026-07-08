@@ -73,6 +73,15 @@ class DeviceHeartbeatView(views.APIView):
                 "timezone": serializers.CharField(required=False),
                 "pending_call_count": serializers.IntegerField(required=False),
                 "last_sync_error": serializers.CharField(required=False),
+                "network_type": serializers.CharField(required=False),
+                "is_metered": serializers.BooleanField(required=False),
+                "is_data_saver_on": serializers.BooleanField(required=False),
+                "is_background_restricted": serializers.BooleanField(required=False),
+                "is_battery_optimized": serializers.BooleanField(required=False),
+                "is_vpn_active": serializers.BooleanField(required=False),
+                "is_proxy_configured": serializers.BooleanField(required=False),
+                "is_airplane_mode_on": serializers.BooleanField(required=False),
+                "last_network_error": serializers.CharField(required=False),
                 "permission_denied": serializers.BooleanField(required=False),
                 "permission_name": serializers.CharField(required=False),
                 "app_crash": serializers.BooleanField(required=False),
@@ -182,6 +191,21 @@ class DeviceHeartbeatView(views.APIView):
                 )
         if "last_sync_error" in health_data:
             health.last_sync_error = str(health_data.get("last_sync_error") or "")[:1000]
+        if "network_type" in health_data:
+            health.network_type = str(health_data.get("network_type") or "")[:32]
+        for field in [
+            "is_metered",
+            "is_data_saver_on",
+            "is_background_restricted",
+            "is_battery_optimized",
+            "is_vpn_active",
+            "is_proxy_configured",
+            "is_airplane_mode_on",
+        ]:
+            if field in health_data:
+                setattr(health, field, bool(health_data.get(field)))
+        if "last_network_error" in health_data:
+            health.last_network_error = str(health_data.get("last_network_error") or "")[:1000]
         if "timestamp" in health_data:
             reported_at = parse_datetime(str(health_data["timestamp"]))
             if reported_at:
@@ -227,6 +251,19 @@ class DeviceHeartbeatView(views.APIView):
                 event_type="app_crash",
                 description=crash_message,
                 dedupe_active=False,
+            )
+
+        if health.is_data_saver_on or health.is_background_restricted:
+            MonitoringAlertService.raise_event(
+                device=device,
+                event_type="sync_failure",
+                description="Network Restricted: background data or Data Saver is blocking sync.",
+            )
+        if health.is_battery_optimized:
+            MonitoringAlertService.raise_event(
+                device=device,
+                event_type="sync_failure",
+                description="Battery Restricted: unrestricted battery is not enabled for MasterCall.",
             )
 
         health.save()

@@ -26,6 +26,11 @@ class DeviceSerializer(serializers.ModelSerializer):
     fcm_present = serializers.SerializerMethodField()
     pending_call_count = serializers.SerializerMethodField()
     last_sync_error = serializers.SerializerMethodField()
+    network_type = serializers.SerializerMethodField()
+    network_restricted = serializers.SerializerMethodField()
+    battery_restricted = serializers.SerializerMethodField()
+    data_saver_on = serializers.SerializerMethodField()
+    last_network_error = serializers.SerializerMethodField()
     storage_status = serializers.SerializerMethodField()
     total_app_storage_mb = serializers.SerializerMethodField()
     last_storage_report_at = serializers.SerializerMethodField()
@@ -40,6 +45,8 @@ class DeviceSerializer(serializers.ModelSerializer):
             "compliance_status", "compliance_reason", "compliance_followed_up_at",
             "app_version", "device_model", "manufacturer", "fcm_present",
             "pending_call_count", "last_sync_error",
+            "network_type", "network_restricted", "battery_restricted",
+            "data_saver_on", "last_network_error",
             "storage_status", "total_app_storage_mb", "last_storage_report_at",
         )
 
@@ -77,6 +84,26 @@ class DeviceSerializer(serializers.ModelSerializer):
     def get_last_sync_error(self, obj):
         health = getattr(obj, "health", None)
         return health.last_sync_error if health else ""
+
+    def get_network_type(self, obj):
+        health = getattr(obj, "health", None)
+        return health.network_type if health else ""
+
+    def get_network_restricted(self, obj):
+        health = getattr(obj, "health", None)
+        return bool(health and (health.is_data_saver_on or health.is_background_restricted))
+
+    def get_battery_restricted(self, obj):
+        health = getattr(obj, "health", None)
+        return bool(health and health.is_battery_optimized)
+
+    def get_data_saver_on(self, obj):
+        health = getattr(obj, "health", None)
+        return bool(health and health.is_data_saver_on)
+
+    def get_last_network_error(self, obj):
+        health = getattr(obj, "health", None)
+        return health.last_network_error if health else ""
 
     def _latest_storage(self, obj):
         return obj.storage_reports.order_by("-reported_at").first()
