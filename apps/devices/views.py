@@ -496,7 +496,7 @@ class RestoreRegistrationView(APIView):
 
         try:
             with transaction.atomic():
-                device = Device.objects.select_for_update().select_related("branch").get(
+                device = Device.objects.select_for_update().get(
                     android_id=android_id,
                     is_registered=True,
                 )
