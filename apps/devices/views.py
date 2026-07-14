@@ -128,6 +128,17 @@ def _token_diagnostics(token):
     }
 
 
+def _restore_log_context(request, android_id="", old_device_id="", app_version="", device_model="", reason=""):
+    return {
+        "android_id": android_id,
+        "old_device_id": old_device_id,
+        "app_version": str(app_version or "")[:40],
+        "device_model": str(device_model or "")[:255],
+        "reason": reason,
+        **_request_context(request),
+    }
+
+
 class DeviceViewSet(viewsets.ModelViewSet):
     """
     CRUD for Device management.
@@ -398,6 +409,23 @@ class RestoreRegistrationView(APIView):
     """
     permission_classes = [permissions.AllowAny]
 
+    def handle_exception(self, exc):
+        if isinstance(exc, ParseError):
+            logger.warning(
+                "Device restore failed: malformed request payload",
+                extra=_restore_log_context(self.request, reason="invalid_request"),
+            )
+            return Response(
+                _coded_error(
+                    "Malformed JSON payload.",
+                    "invalid_request",
+                    self.request,
+                    {"details": str(exc.detail)},
+                ),
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return super().handle_exception(exc)
+
     @extend_schema(
         summary="Restore existing device registration",
         description="Returns existing credentials for a registered device identified by android_id. Never creates devices.",
@@ -440,14 +468,29 @@ class RestoreRegistrationView(APIView):
         if not serializer.is_valid():
             logger.warning(
                 "Device restore failed: invalid request payload",
-                extra=_request_context(request),
+                extra=_restore_log_context(
+                    request,
+                    android_id=request.data.get("android_id", "") if isinstance(request.data, dict) else "",
+                    old_device_id=request.data.get("old_device_id", "") if isinstance(request.data, dict) else "",
+                    app_version=request.data.get("app_version", "") if isinstance(request.data, dict) else "",
+                    device_model=request.data.get("device_model", "") if isinstance(request.data, dict) else "",
+                    reason="invalid_request",
+                ),
             )
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                _coded_error(
+                    "Invalid restore-registration request.",
+                    "invalid_request",
+                    request,
+                    {"details": _safe_errors(serializer.errors)},
+                ),
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         android_id = serializer.validated_data["android_id"]
         old_device_id = serializer.validated_data.get("old_device_id") or ""
         fcm_token = serializer.validated_data.get("fcm_token") or ""
-        app_version = serializer.validated_data.get("app_version") or ""
+        app_version = str(serializer.validated_data.get("app_version") or "")[:20]
         device_model = serializer.validated_data.get("device_model") or ""
         manufacturer = serializer.validated_data.get("manufacturer") or ""
 
@@ -463,14 +506,24 @@ class RestoreRegistrationView(APIView):
                         "Device restore rejected: device inactive or blocked",
                         extra={
                             "device_id": device.device_id,
-                            "android_id": android_id,
                             "is_active": device.is_active,
                             "is_blocked": device.is_blocked,
-                            **_request_context(request),
+                            **_restore_log_context(
+                                request,
+                                android_id=android_id,
+                                old_device_id=old_device_id,
+                                app_version=app_version,
+                                device_model=device_model,
+                                reason="device_not_allowed",
+                            ),
                         },
                     )
                     return Response(
-                        _coded_error("Device is not allowed to restore registration.", "inactive_device", request),
+                        _coded_error(
+                            "Device is not allowed to restore registration.",
+                            "device_not_allowed",
+                            request,
+                        ),
                         status=status.HTTP_403_FORBIDDEN,
                     )
 
@@ -480,8 +533,14 @@ class RestoreRegistrationView(APIView):
                         extra={
                             "old_device_id": old_device_id,
                             "device_id": device.device_id,
-                            "android_id": android_id,
-                            **_request_context(request),
+                            **_restore_log_context(
+                                request,
+                                android_id=android_id,
+                                old_device_id=old_device_id,
+                                app_version=app_version,
+                                device_model=device_model,
+                                reason="stale_device_id",
+                            ),
                         },
                     )
 
@@ -502,7 +561,7 @@ class RestoreRegistrationView(APIView):
                     from apps.monitoring.models import DeviceHealth
                     health_defaults = {}
                     if app_version:
-                        health_defaults["app_version"] = app_version[:40]
+                        health_defaults["app_version"] = app_version
                     if device_model:
                         health_defaults["device_model"] = device_model[:255]
                     if manufacturer:
@@ -516,10 +575,37 @@ class RestoreRegistrationView(APIView):
                         DeviceComplianceService.check_device(device)
                     except Exception:
                         logger.exception("Failed to clear device compliance after restore")
+        except IntegrityError:
+            logger.exception(
+                "Device restore failed: duplicate device state",
+                extra=_restore_log_context(
+                    request,
+                    android_id=android_id,
+                    old_device_id=old_device_id,
+                    app_version=app_version,
+                    device_model=device_model,
+                    reason="duplicate_device",
+                ),
+            )
+            return Response(
+                _coded_error(
+                    "Device restore could not be completed because of duplicate device data.",
+                    "duplicate_device",
+                    request,
+                ),
+                status=status.HTTP_409_CONFLICT,
+            )
         except Device.DoesNotExist:
             logger.warning(
                 "Device restore failed: android_id not registered",
-                extra={"android_id": android_id, **_request_context(request)},
+                extra=_restore_log_context(
+                    request,
+                    android_id=android_id,
+                    old_device_id=old_device_id,
+                    app_version=app_version,
+                    device_model=device_model,
+                    reason="android_id_not_registered",
+                ),
             )
             return Response(
                 _coded_error(
@@ -529,11 +615,41 @@ class RestoreRegistrationView(APIView):
                 ),
                 status=status.HTTP_404_NOT_FOUND,
             )
+        except Exception:
+            logger.exception(
+                "Device restore failed: unexpected error",
+                extra=_restore_log_context(
+                    request,
+                    android_id=android_id,
+                    old_device_id=old_device_id,
+                    app_version=app_version,
+                    device_model=device_model,
+                    reason="restore_registration_failed",
+                ),
+            )
+            return Response(
+                _coded_error(
+                    "Device restore failed. Please contact admin or register again.",
+                    "restore_registration_failed",
+                    request,
+                ),
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
 
         if not device.device_id or not device.secret_key:
             logger.error(
                 "Device restore failed: registered device missing credentials",
-                extra={"device_pk": str(device.pk), "android_id": android_id, **_request_context(request)},
+                extra={
+                    "device_pk": str(device.pk),
+                    **_restore_log_context(
+                        request,
+                        android_id=android_id,
+                        old_device_id=old_device_id,
+                        app_version=app_version,
+                        device_model=device_model,
+                        reason="registration_required",
+                    ),
+                },
             )
             return Response(
                 _coded_error(
@@ -546,7 +662,17 @@ class RestoreRegistrationView(APIView):
 
         logger.info(
             "Device restore succeeded",
-            extra={"device_id": device.device_id, "android_id": android_id, **_request_context(request)},
+            extra={
+                "device_id": device.device_id,
+                **_restore_log_context(
+                    request,
+                    android_id=android_id,
+                    old_device_id=old_device_id,
+                    app_version=app_version,
+                    device_model=device_model,
+                    reason="success",
+                ),
+            },
         )
         return Response(_registration_payload(device), status=status.HTTP_200_OK)
 
