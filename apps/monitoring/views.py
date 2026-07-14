@@ -11,6 +11,7 @@ Access Control:
 from datetime import timedelta
 import logging
 from django.conf import settings
+from django.db import IntegrityError
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from rest_framework import viewsets, permissions, views, response, status
@@ -104,19 +105,60 @@ class DeviceHeartbeatView(views.APIView):
         update_fields = ["last_heartbeat"]
         android_id = (health_data.get("android_id") or "").strip()
         fcm_token = (health_data.get("fcm_token") or "").strip()
-        if android_id and device.android_id != android_id:
-            if Device.objects.filter(android_id=android_id).exclude(pk=device.pk).exists():
+        if not android_id and not device.android_id:
+            logger.info(
+                "old_device_allowed_without_android_id",
+                extra={"device_id": device.device_id},
+            )
+        if android_id:
+            if not device.android_id:
+                conflict = Device.objects.filter(android_id=android_id).exclude(pk=device.pk).first()
+                if conflict:
+                    logger.warning(
+                        "android_id_backfill_skipped_conflict",
+                        extra={
+                            "device_id": device.device_id,
+                            "android_id": android_id,
+                            "conflict_device_id": conflict.device_id,
+                            "conflict_is_registered": conflict.is_registered,
+                            "conflict_is_active": conflict.is_active,
+                        },
+                    )
+                else:
+                    device.android_id = android_id
+                    update_fields.append("android_id")
+                    logger.info(
+                        "android_id_backfilled",
+                        extra={"device_id": device.device_id, "android_id": android_id},
+                    )
+            elif device.android_id != android_id:
                 logger.warning(
-                    "Heartbeat android_id ignored because it belongs to another device",
-                    extra={"device_id": device.device_id, "android_id": android_id},
+                    "android_id_backfill_skipped_conflict",
+                    extra={
+                        "device_id": device.device_id,
+                        "android_id": android_id,
+                        "existing_android_id": device.android_id,
+                    },
                 )
-            else:
-                device.android_id = android_id
-                update_fields.append("android_id")
         if fcm_token and device.fcm_token != fcm_token:
             device.fcm_token = fcm_token
             update_fields.append("fcm_token")
-        device.save(update_fields=update_fields)
+        try:
+            device.save(update_fields=update_fields)
+        except IntegrityError:
+            if "android_id" not in update_fields:
+                raise
+            logger.warning(
+                "android_id_backfill_skipped_conflict",
+                extra={
+                    "device_id": device.device_id,
+                    "android_id": android_id,
+                    "reason": "integrity_error",
+                },
+            )
+            update_fields = [field for field in update_fields if field != "android_id"]
+            device.android_id = Device.objects.only("android_id").get(pk=device.pk).android_id
+            device.save(update_fields=update_fields)
 
         # Update or create device health record
         health, _ = DeviceHealth.objects.get_or_create(device=device)
@@ -176,7 +218,7 @@ class DeviceHeartbeatView(views.APIView):
             elif signal >= settings.MONITORING_SIGNAL_RECOVERY_DBM:
                 MonitoringAlertService.resolve_events(device, ["network_weak"])
         if "app_version" in health_data:
-            health.app_version = health_data["app_version"]
+            health.app_version = str(health_data["app_version"] or "")[:20]
         if "device_model" in health_data:
             health.device_model = health_data["device_model"]
         if "manufacturer" in health_data:

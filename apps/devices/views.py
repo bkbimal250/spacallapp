@@ -26,6 +26,7 @@ import uuid
 import hashlib
 
 from django.db import IntegrityError, transaction
+from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import permissions, serializers, status, viewsets
@@ -345,15 +346,17 @@ class ClaimRegistrationView(APIView):
                 if android_id and Device.objects.filter(
                     android_id=android_id,
                     is_registered=True,
+                    is_active=True,
+                    is_blocked=False,
                 ).exclude(pk=device.pk).exists():
                     logger.warning(
-                        "Device claim rejected: android_id already registered",
+                        "pending_duplicate_prevented",
                         extra={"android_id": android_id, **_request_context(request)},
                     )
                     return Response(
                         _coded_error(
                             "This Android device is already registered. Use restore-registration.",
-                            "registration_required",
+                            "already_registered",
                             request,
                         ),
                         status=status.HTTP_409_CONFLICT,
@@ -496,6 +499,7 @@ class RestoreRegistrationView(APIView):
 
         try:
             with transaction.atomic():
+                now = timezone.now()
                 device = Device.objects.select_for_update().get(
                     android_id=android_id,
                     is_registered=True,
@@ -503,7 +507,7 @@ class RestoreRegistrationView(APIView):
 
                 if not device.is_active or device.is_blocked:
                     logger.warning(
-                        "Device restore rejected: device inactive or blocked",
+                        "restore_device_not_allowed",
                         extra={
                             "device_id": device.device_id,
                             "is_active": device.is_active,
@@ -551,7 +555,8 @@ class RestoreRegistrationView(APIView):
                 if not device.secret_key:
                     device.secret_key = secrets.token_hex(32)
 
-                update_fields = ["device_id", "secret_key", "updated_at"]
+                device.last_heartbeat = now
+                update_fields = ["device_id", "secret_key", "last_heartbeat", "updated_at"]
                 if fcm_token and device.fcm_token != fcm_token:
                     device.fcm_token = fcm_token
                     update_fields.append("fcm_token")
@@ -566,6 +571,8 @@ class RestoreRegistrationView(APIView):
                         health_defaults["device_model"] = device_model[:255]
                     if manufacturer:
                         health_defaults["manufacturer"] = manufacturer[:120]
+                    health_defaults["last_heartbeat"] = now
+                    health_defaults["is_online"] = True
                     if health_defaults:
                         DeviceHealth.objects.update_or_create(device=device, defaults=health_defaults)
                 if fcm_token:
@@ -597,7 +604,7 @@ class RestoreRegistrationView(APIView):
             )
         except Device.DoesNotExist:
             logger.warning(
-                "Device restore failed: android_id not registered",
+                "restore_android_id_not_registered",
                 extra=_restore_log_context(
                     request,
                     android_id=android_id,
@@ -661,7 +668,7 @@ class RestoreRegistrationView(APIView):
             )
 
         logger.info(
-            "Device restore succeeded",
+            "restore_auto_success",
             extra={
                 "device_id": device.device_id,
                 **_restore_log_context(
