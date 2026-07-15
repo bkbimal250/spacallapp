@@ -231,25 +231,73 @@ const DeviceList = () => {
         return Number.isNaN(time) ? null : time;
     };
 
+    const latestTime = (...values) => {
+        const times = values.map(parseTime).filter(Boolean);
+        return times.length ? Math.max(...times) : null;
+    };
+
     const isRecent = (value, minutes = 15) => {
         const time = parseTime(value);
         if (!time) return false;
         return Date.now() - time <= minutes * 60 * 1000;
     };
 
+    const minutesSince = (value) => {
+        const time = parseTime(value);
+        if (!time) return null;
+        return (Date.now() - time) / (60 * 1000);
+    };
+
     const isNetworkLikeError = (message = '') => (
-        /internet|network|timeout|timed out|dns|connection|unreachable|offline|ssl|proxy|vpn/i.test(String(message))
+        /internet|network|timeout|timed out|dns|resolve host|hostname|no address|connection|unreachable|offline|ssl|proxy|vpn/i.test(String(message))
+    );
+
+    const isDnsLikeError = (message = '') => (
+        /resolve host|hostname|no address|dns/i.test(String(message))
+    );
+
+    const isGenericTemporaryError = (message = '') => (
+        /something went wrong|please try again|please check your internet/i.test(String(message))
     );
 
     const getLastSeenAt = (row) => row.last_seen_at || row.last_heartbeat;
 
+    const getLastSuccessAt = (row) => latestTime(
+        row.last_success_at,
+        getLastSeenAt(row),
+        row.last_sync_at,
+        row.last_sync,
+        row.fcm_token_updated_at,
+        row.updated_at
+    );
+
+    const getLastErrorAt = (row) => latestTime(row.last_error_at, row.last_sync_error_at, row.last_network_error_at);
+
     const isDeviceHealthyNow = (row) => (
-        Boolean(row.is_online) || String(row.status || '').toLowerCase() === 'online' || isRecent(getLastSeenAt(row))
+        Boolean(row.is_online) ||
+        String(row.status || '').toLowerCase() === 'online' ||
+        isRecent(getLastSeenAt(row), 30) ||
+        isRecent(row.last_sync, 30)
     );
 
     const hasActiveRestriction = (row) => (
         Boolean(row.network_restricted || row.data_saver_on || row.battery_restricted)
     );
+
+    const isOldVersionMissingAndroidId = (row) => (
+        !row.android_id &&
+        String(row.app_version || '').startsWith('1.0') &&
+        row.compliance_status === 'MISSING_ANDROID_ID'
+    );
+
+    const shouldHideStaleError = (row, message) => {
+        if (!message) return true;
+        const lastSuccessAt = getLastSuccessAt(row);
+        const lastErrorAt = getLastErrorAt(row);
+        if (lastSuccessAt && lastErrorAt && lastSuccessAt > lastErrorAt) return true;
+        if (isDeviceHealthyNow(row) && (isNetworkLikeError(message) || isGenericTemporaryError(message))) return true;
+        return false;
+    };
 
     const getDeviceHealthMessage = (row) => {
         const onlineNow = isDeviceHealthyNow(row);
@@ -258,43 +306,113 @@ const DeviceList = () => {
         const networkError = String(row.last_network_error || '').trim();
         const syncError = String(row.last_sync_error || '').trim();
         const visibleError = networkError || syncError;
-        const recoveredFromNetworkIssue = visibleError && isNetworkLikeError(visibleError) && onlineNow && !activeRestriction;
+        const hasCurrentError = visibleError && !shouldHideStaleError(row, visibleError);
+        const offlineMinutes = minutesSince(getLastSeenAt(row));
+        const rawTitle = visibleError
+            ? `${visibleError}${getLastErrorAt(row) ? ` (${formatDate(getLastErrorAt(row), 'MMM dd, HH:mm')})` : ''}`
+            : '';
 
-        if (row.is_blocked || row.is_active === false) {
-            return null;
-        }
-
-        if (visibleError && !recoveredFromNetworkIssue) {
-            const stale = !isRecent(getLastSeenAt(row), 15);
-            const severity = activeRestriction || stale ? 'danger' : 'warning';
+        if (row.is_blocked || row.is_active === false || row.compliance_status === 'BLOCKED') {
             return {
-                severity,
-                text: activeRestriction ? 'Temporary network issue' : visibleError,
-                title: visibleError,
+                severity: 'danger',
+                text: 'Blocked or inactive device',
+                title: row.compliance_reason || 'Device is blocked or inactive.',
             };
         }
 
-        if (activeRestriction) {
+        if (!row.is_registered || row.registration_status === 'pending_registration' || row.registration_status === 'pending_claim_registration') {
             return {
                 severity: 'warning',
-                text: 'Temporary network issue',
-                title: 'Network restriction may delay sync.',
+                text: 'Pending registration',
+                title: 'Register this phone with admin token.',
+            };
+        }
+
+        if (
+            row.compliance_status === 'AUTH_BROKEN' ||
+            row.compliance_status === 'REGISTRATION_FAILED' ||
+            (hasCurrentError && /unknown_device_id|invalid_device_secret|invalid_device_token|registration_required/i.test(visibleError))
+        ) {
+            return {
+                severity: 'danger',
+                text: 'Device registration invalid - register again',
+                title: row.compliance_reason || rawTitle,
+            };
+        }
+
+        if (!onlineNow && offlineMinutes !== null && offlineMinutes > 24 * 60) {
+            return {
+                severity: 'danger',
+                text: 'Offline for long time',
+                title: `Last seen online at ${formatDate(getLastSeenAt(row), 'MMM dd, HH:mm')}`,
+            };
+        }
+
+        if (!onlineNow && offlineMinutes !== null && offlineMinutes > 60) {
+            return {
+                severity: 'danger',
+                text: 'Offline',
+                title: `Last seen online at ${formatDate(getLastSeenAt(row), 'MMM dd, HH:mm')}`,
+            };
+        }
+
+        if (!onlineNow && offlineMinutes !== null && offlineMinutes > 30) {
+            return {
+                severity: 'warning',
+                text: 'Recently offline',
+                title: `Last seen online at ${formatDate(getLastSeenAt(row), 'MMM dd, HH:mm')}`,
+            };
+        }
+
+        if (!row.fcm_present && row.is_registered) {
+            return {
+                severity: 'warning',
+                text: 'Push token missing - open app and allow notifications',
+                title: 'FCM token is missing.',
+            };
+        }
+
+        if (hasCurrentError && (activeRestriction || isNetworkLikeError(visibleError) || isGenericTemporaryError(visibleError))) {
+            return {
+                severity: activeRestriction ? 'warning' : 'warning',
+                text: isDnsLikeError(visibleError)
+                    ? 'Network/DNS issue on phone - will retry automatically'
+                    : 'Temporary network issue - will retry automatically',
+                title: rawTitle,
+            };
+        }
+
+        if (hasCurrentError) {
+            return {
+                severity: 'danger',
+                text: 'Repeated sync failure',
+                title: rawTitle,
             };
         }
 
         if (pendingCount > 0) {
             return {
-                severity: 'warning',
-                text: `Pending sync: ${pendingCount} - will sync automatically`,
+                severity: onlineNow ? 'warning' : 'warning',
+                text: onlineNow
+                    ? `Pending sync: ${pendingCount} - will sync automatically`
+                    : `Pending sync: ${pendingCount} - will retry when online`,
                 title: 'Pending sync will retry automatically.',
             };
         }
 
-        if (recoveredFromNetworkIssue) {
+        if (isOldVersionMissingAndroidId(row)) {
             return {
-                severity: 'muted',
-                text: 'Recovered',
-                title: visibleError,
+                severity: 'warning',
+                text: 'Old app version - update only if issue occurs',
+                title: 'Android ID is not available on this old app version.',
+            };
+        }
+
+        if (!row.android_id && row.compliance_status === 'MISSING_ANDROID_ID') {
+            return {
+                severity: 'warning',
+                text: 'Old app version - Android ID not available',
+                title: row.compliance_reason || 'Android ID is missing.',
             };
         }
 
@@ -302,15 +420,7 @@ const DeviceList = () => {
             return {
                 severity: 'success',
                 text: 'Online / OK',
-                title: `Last seen online at ${formatDate(getLastSeenAt(row), 'MMM dd, HH:mm')}`,
-            };
-        }
-
-        if (!isRecent(getLastSeenAt(row), 60)) {
-            return {
-                severity: 'danger',
-                text: 'Offline for long time',
-                title: `Last seen online at ${formatDate(getLastSeenAt(row), 'MMM dd, HH:mm')}`,
+                title: visibleError ? `Recovered from: ${visibleError}` : `Last seen online at ${formatDate(getLastSeenAt(row), 'MMM dd, HH:mm')}`,
             };
         }
 
