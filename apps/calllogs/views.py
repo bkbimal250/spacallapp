@@ -176,6 +176,31 @@ def _stable_call_hash(device, phone_number, call_time_ms, call_time, call_type, 
     return hashlib.sha256(source.encode("utf-8")).hexdigest()
 
 
+def _canonical_call_hash(device, phone_number, call_time_ms, call_time, call_type, duration, sim_slot):
+    import re
+    clean_phone = re.sub(r"\D", "", phone_number or "")
+    normalized_phone = clean_phone[-10:] if len(clean_phone) >= 10 else clean_phone
+    timestamp_key = call_time_ms
+    if timestamp_key is None and call_time:
+        timestamp_key = int(call_time.timestamp() * 1000)
+    source = "|".join([
+        str(device.device_id or device.id),
+        str(normalized_phone),
+        str(call_type or ""),
+        str(timestamp_key or ""),
+        str(duration or 0),
+        str(sim_slot or 1),
+    ])
+    return hashlib.sha256(source.encode("utf-8")).hexdigest()
+
+
+def _client_call_hash(device, client_call_id):
+    if not client_call_id:
+        return None
+    source = f"{device.device_id or device.id}|{client_call_id}"
+    return hashlib.sha256(source.encode("utf-8")).hexdigest()
+
+
 class DeviceSyncView(views.APIView):
     """
     Android device batch sync endpoint.
@@ -341,6 +366,9 @@ class DeviceSyncView(views.APIView):
         logs_to_create = []
         server_now = timezone.now()
         invalid_time_count = 0
+        prepared_items = []
+        sync_results = []
+        all_candidate_hashes = set()
         for item in payloads:
             # Normalize sim_slot: Android uses 0-indexed (0, 1) → we use 1-indexed (1, 2)
             raw_slot = item.get("sim_slot", 1)
@@ -358,7 +386,7 @@ class DeviceSyncView(views.APIView):
             time_values = _server_safe_call_time(item, server_now)
             if time_values["is_time_invalid"]:
                 invalid_time_count += 1
-            stable_hash = _stable_call_hash(
+            legacy_hash = _stable_call_hash(
                 device=device,
                 phone_number=phone_num,
                 call_time_ms=item.get("call_time_ms"),
@@ -366,51 +394,112 @@ class DeviceSyncView(views.APIView):
                 call_type=item.get("call_type"),
                 duration=item.get("duration", 0),
             )
+            canonical_hash = _canonical_call_hash(
+                device=device,
+                phone_number=phone_num,
+                call_time_ms=item.get("call_time_ms"),
+                call_time=time_values["device_reported_call_time"] or time_values["call_time"],
+                call_type=item.get("call_type"),
+                duration=item.get("duration", 0),
+                sim_slot=normalized_slot,
+            )
+            client_hash = _client_call_hash(device, item.get("client_call_id"))
+            submitted_hash = (item.get("call_hash") or "").strip() or None
+            candidate_hashes = [
+                value for value in [client_hash, submitted_hash, legacy_hash, canonical_hash]
+                if value
+            ]
+            all_candidate_hashes.update(candidate_hashes)
+            prepared_items.append({
+                "item": item,
+                "phone_num": phone_num,
+                "log_last_10": log_last_10,
+                "normalized_slot": normalized_slot,
+                "time_values": time_values,
+                "canonical_hash": canonical_hash,
+                "candidate_hashes": candidate_hashes,
+            })
+
+        existing_hashes = set(
+            CallLog.objects.filter(call_hash__in=all_candidate_hashes).values_list("call_hash", flat=True)
+        ) if all_candidate_hashes else set()
+
+        for prepared in prepared_items:
+            duplicate_hash = next(
+                (candidate for candidate in prepared["candidate_hashes"] if candidate in existing_hashes),
+                None,
+            )
+            final_hash = duplicate_hash or prepared["canonical_hash"]
+            if duplicate_hash:
+                sync_results.append({
+                    "call_hash": final_hash,
+                    "client_call_id": prepared["item"].get("client_call_id") or "",
+                    "status": "already_synced",
+                })
+                continue
 
             logs_to_create.append(
                 CallLog(
                     branch_id=device.branch_id,     # Inherited from device's assigned branch
                     device_id=device.id,            # The device that captured this call
-                    contact=contact_map.get(log_last_10),  # Auto-link if known contact
-                    phone_number=phone_num,
-                    phone_normalized=log_last_10,
-                    call_type=item.get("call_type"),
-                    duration=item.get("duration", 0),
-                    sim_slot=normalized_slot,
-                    call_time=time_values["call_time"],
-                    device_reported_call_time=time_values["device_reported_call_time"],
-                    is_time_invalid=time_values["is_time_invalid"],
-                    invalid_time_reason=time_values["invalid_time_reason"],
-                    call_hash=stable_hash,
+                    contact=contact_map.get(prepared["log_last_10"]),  # Auto-link if known contact
+                    phone_number=prepared["phone_num"],
+                    phone_normalized=prepared["log_last_10"],
+                    call_type=prepared["item"].get("call_type"),
+                    duration=prepared["item"].get("duration", 0),
+                    sim_slot=prepared["normalized_slot"],
+                    call_time=prepared["time_values"]["call_time"],
+                    device_reported_call_time=prepared["time_values"]["device_reported_call_time"],
+                    is_time_invalid=prepared["time_values"]["is_time_invalid"],
+                    invalid_time_reason=prepared["time_values"]["invalid_time_reason"],
+                    call_hash=final_hash,
                 )
             )
+            sync_results.append({
+                "call_hash": final_hash,
+                "client_call_id": prepared["item"].get("client_call_id") or "",
+                "status": "created",
+            })
 
         # ── Step 3: Bulk insert — ignore duplicates (by call_hash unique constraint) ──
         if logs_to_create:
             CallLog.objects.bulk_create(logs_to_create, ignore_conflicts=True)
+
+        submitted_hashes = [result["call_hash"] for result in sync_results]
+        stored_hashes = set(
+            CallLog.objects.filter(call_hash__in=submitted_hashes).values_list("call_hash", flat=True)
+        ) if submitted_hashes else set()
+        for result in sync_results:
+            if result["status"] == "created" and result["call_hash"] not in stored_hashes:
+                result["status"] = "already_synced"
+
+        created_hashes = [
+            result["call_hash"] for result in sync_results if result["status"] == "created"
+        ]
+        created_count = len(created_hashes)
+        duplicate_count = sum(1 for result in sync_results if result["status"] == "already_synced")
+        if created_hashes:
+            from .services import FollowUpService
+            inserted_logs = CallLog.objects.filter(call_hash__in=created_hashes)
+            FollowUpService.process_batch(inserted_logs)
             
             # ── New: Hook up FollowUpService to process missed calls ──
-            from .services import FollowUpService
-            inserted_logs = CallLog.objects.filter(call_hash__in=[log.call_hash for log in logs_to_create])
-            FollowUpService.process_batch(inserted_logs)
 
         # ── Step 4: Auto-create Leads for newly created call logs ──
         # We query the database to find which hashes actually got inserted.
         # This avoids creating duplicate leads for already-existing call logs.
         from apps.leadmanagement.models import LeadManagement
 
-        submitted_hashes = [log.call_hash for log in logs_to_create]
-
         # Find the real IDs of inserted call logs (only the ones that are new)
         existing_lead_calllog_ids = set(
             LeadManagement.objects.filter(
-                calllog__call_hash__in=submitted_hashes
+                calllog__call_hash__in=created_hashes
             ).values_list("calllog_id", flat=True)
         )
 
         # Fetch newly created call logs that don't yet have a lead
         new_logs = CallLog.objects.filter(
-            call_hash__in=submitted_hashes
+            call_hash__in=created_hashes
         ).exclude(
             id__in=existing_lead_calllog_ids
         ).values("id", "contact_id", "branch_id")
@@ -449,16 +538,20 @@ class DeviceSyncView(views.APIView):
             extra={
                 **log_context,
                 "payload_count": len(payloads),
-                "synced_count": len(logs_to_create),
+                "created_count": created_count,
+                "duplicate_count": duplicate_count,
                 "leads_created": len(leads_to_create),
                 "invalid_time_count": invalid_time_count,
             },
         )
         return response.Response({
             "status": "success",
-            "synced_count": len(logs_to_create),
+            "synced_count": len(sync_results),
+            "created_count": created_count,
+            "duplicate_skipped": duplicate_count,
             "leads_created": len(leads_to_create),
             "invalid_time_count": invalid_time_count,
+            "items": sync_results,
         }, status=status.HTTP_201_CREATED)
 
 

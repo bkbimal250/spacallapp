@@ -100,7 +100,8 @@ class CallLogSyncItemSerializer(serializers.Serializer):
     sim_slot = serializers.IntegerField(required=False, default=1)
     call_time = serializers.DateTimeField(required=False)
     call_time_ms = serializers.IntegerField(required=False, min_value=0)
-    call_hash = serializers.CharField(max_length=64)
+    call_hash = serializers.CharField(max_length=64, required=False, allow_blank=True)
+    client_call_id = serializers.CharField(max_length=128, required=False, allow_blank=True)
 
     def validate(self, attrs):
         if attrs.get("call_time_ms") is None and attrs.get("call_time") is None:
