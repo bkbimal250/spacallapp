@@ -63,7 +63,7 @@ const DeviceList = () => {
 
         const intervalId = setInterval(() => {
             fetchDevices(filters, page, true);
-        }, 10000);
+        }, 45000);
 
         return () => clearInterval(intervalId);
 
@@ -225,6 +225,105 @@ const DeviceList = () => {
         return 'bg-warning/10 text-warning border-warning/20';
     };
 
+    const parseTime = (value) => {
+        if (!value) return null;
+        const time = new Date(value).getTime();
+        return Number.isNaN(time) ? null : time;
+    };
+
+    const isRecent = (value, minutes = 15) => {
+        const time = parseTime(value);
+        if (!time) return false;
+        return Date.now() - time <= minutes * 60 * 1000;
+    };
+
+    const isNetworkLikeError = (message = '') => (
+        /internet|network|timeout|timed out|dns|connection|unreachable|offline|ssl|proxy|vpn/i.test(String(message))
+    );
+
+    const getLastSeenAt = (row) => row.last_seen_at || row.last_heartbeat;
+
+    const isDeviceHealthyNow = (row) => (
+        Boolean(row.is_online) || String(row.status || '').toLowerCase() === 'online' || isRecent(getLastSeenAt(row))
+    );
+
+    const hasActiveRestriction = (row) => (
+        Boolean(row.network_restricted || row.data_saver_on || row.battery_restricted)
+    );
+
+    const getDeviceHealthMessage = (row) => {
+        const onlineNow = isDeviceHealthyNow(row);
+        const activeRestriction = hasActiveRestriction(row);
+        const pendingCount = Number(row.pending_call_count || 0);
+        const networkError = String(row.last_network_error || '').trim();
+        const syncError = String(row.last_sync_error || '').trim();
+        const visibleError = networkError || syncError;
+        const recoveredFromNetworkIssue = visibleError && isNetworkLikeError(visibleError) && onlineNow && !activeRestriction;
+
+        if (row.is_blocked || row.is_active === false) {
+            return null;
+        }
+
+        if (visibleError && !recoveredFromNetworkIssue) {
+            const stale = !isRecent(getLastSeenAt(row), 15);
+            const severity = activeRestriction || stale ? 'danger' : 'warning';
+            return {
+                severity,
+                text: activeRestriction ? 'Temporary network issue' : visibleError,
+                title: visibleError,
+            };
+        }
+
+        if (activeRestriction) {
+            return {
+                severity: 'warning',
+                text: 'Temporary network issue',
+                title: 'Network restriction may delay sync.',
+            };
+        }
+
+        if (pendingCount > 0) {
+            return {
+                severity: 'warning',
+                text: `Pending sync: ${pendingCount} - will sync automatically`,
+                title: 'Pending sync will retry automatically.',
+            };
+        }
+
+        if (recoveredFromNetworkIssue) {
+            return {
+                severity: 'muted',
+                text: 'Recovered',
+                title: visibleError,
+            };
+        }
+
+        if (onlineNow) {
+            return {
+                severity: 'success',
+                text: 'Online / OK',
+                title: `Last seen online at ${formatDate(getLastSeenAt(row), 'MMM dd, HH:mm')}`,
+            };
+        }
+
+        if (!isRecent(getLastSeenAt(row), 60)) {
+            return {
+                severity: 'danger',
+                text: 'Offline for long time',
+                title: `Last seen online at ${formatDate(getLastSeenAt(row), 'MMM dd, HH:mm')}`,
+            };
+        }
+
+        return null;
+    };
+
+    const healthMessageClass = (severity) => {
+        if (severity === 'success') return 'text-success';
+        if (severity === 'warning') return 'text-warning font-semibold';
+        if (severity === 'danger') return 'text-danger font-semibold';
+        return 'text-text-muted';
+    };
+
 
     const handleSubmit = async (data) => {
 
@@ -313,15 +412,12 @@ const DeviceList = () => {
                     <div className="text-[10px] text-text-muted">
                         FCM {row.fcm_present ? 'Yes' : 'No'}
                     </div>
-                    <div className={`text-[10px] ${row.pending_call_count > 0 ? 'text-warning font-semibold' : 'text-text-muted'}`}>
-                        Pending sync {row.pending_call_count || 0}
-                    </div>
                     <div className="text-[10px] text-text-muted">
-                        Last seen {formatDate(row.last_seen_at || row.last_heartbeat, 'MMM dd, HH:mm')}
+                        Last seen online at {formatDate(getLastSeenAt(row), 'MMM dd, HH:mm')}
                     </div>
-                    {row.last_sync_error && (
-                        <div className="max-w-[220px] truncate text-[10px] text-danger" title={row.last_sync_error}>
-                            {row.last_sync_error}
+                    {getDeviceHealthMessage(row) && (
+                        <div className={`max-w-[240px] truncate text-[10px] ${healthMessageClass(getDeviceHealthMessage(row).severity)}`} title={getDeviceHealthMessage(row).title}>
+                            {getDeviceHealthMessage(row).text}
                         </div>
                     )}
                 </div>

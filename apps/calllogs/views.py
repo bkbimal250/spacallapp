@@ -529,7 +529,9 @@ class DeviceSyncView(views.APIView):
                 "last_sync": device.last_sync,
                 "notified_2h": False,
                 "notified_24h": False,
-                "is_online": True
+                "is_online": True,
+                "last_sync_error": "",
+                "last_network_error": "",
             }
         )
 

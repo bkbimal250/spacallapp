@@ -14,7 +14,7 @@ from django.conf import settings
 from django.db import IntegrityError
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
-from rest_framework import viewsets, permissions, views, response, status
+from rest_framework import viewsets, permissions, views, response, status, exceptions
 from rest_framework.decorators import action
 from drf_spectacular.utils import extend_schema, OpenApiParameter, inline_serializer
 from rest_framework import serializers
@@ -51,6 +51,59 @@ class DeviceHeartbeatView(views.APIView):
     """
     authentication_classes = [DeviceAuthentication]
     permission_classes = [IsDevice]
+
+    def handle_exception(self, exc):
+        if isinstance(exc, exceptions.AuthenticationFailed):
+            detail = exc.detail if isinstance(exc.detail, dict) else {"detail": str(exc.detail)}
+            return response.Response(
+                {
+                    "error": detail.get("error") or detail.get("detail") or "Invalid Device Credentials",
+                    "code": detail.get("code") or "device_auth_failed",
+                    "request_id": detail.get("request_id"),
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        if isinstance(exc, exceptions.PermissionDenied):
+            return response.Response(
+                {
+                    "error": "Device is not allowed.",
+                    "code": "device_not_allowed",
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        if isinstance(exc, (TypeError, ValueError)):
+            logger.warning(
+                "Heartbeat rejected: invalid payload",
+                extra={
+                    "device_id": getattr(getattr(self.request, "auth", None), "device_id", None),
+                    "path": getattr(self.request, "path", ""),
+                    "error": str(exc),
+                },
+            )
+            return response.Response(
+                {
+                    "error": "Invalid heartbeat payload.",
+                    "code": "invalid_payload",
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        logger.exception(
+            "Heartbeat endpoint failed",
+            extra={
+                "device_id": getattr(getattr(self.request, "auth", None), "device_id", None),
+                "path": getattr(self.request, "path", ""),
+            },
+        )
+        return response.Response(
+            {
+                "error": "Heartbeat failed.",
+                "code": "heartbeat_failed",
+            },
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
 
     @extend_schema(
         summary="Device Heartbeat",
@@ -248,6 +301,12 @@ class DeviceHeartbeatView(views.APIView):
                 setattr(health, field, bool(health_data.get(field)))
         if "last_network_error" in health_data:
             health.last_network_error = str(health_data.get("last_network_error") or "")[:1000]
+        if (
+            not health.is_data_saver_on
+            and not health.is_background_restricted
+            and not health_data.get("last_network_error")
+        ):
+            health.last_network_error = ""
         if "timestamp" in health_data:
             reported_at = parse_datetime(str(health_data["timestamp"]))
             if reported_at:

@@ -104,7 +104,7 @@ class DeviceAuthentication(authentication.BaseAuthentication):
                 "Device auth failed: invalid secret_key",
                 extra={**context, "has_stored_secret": bool(device.secret_key)},
             )
-            raise _auth_failed("Invalid Device Credentials", "invalid_device_token", context)
+            raise _auth_failed("Invalid Device Credentials", "invalid_device_secret", context)
 
         if not device.is_registered:
             logger.warning(
