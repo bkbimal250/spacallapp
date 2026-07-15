@@ -5,6 +5,7 @@ from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
 from django.conf import settings
 from django.contrib.auth import get_user_model
+from django.db import IntegrityError, transaction
 from django.utils import timezone
 
 from apps.notifications.services import NotificationService
@@ -212,14 +213,85 @@ class MonitoringAlertService:
         return sent_count
 
     @staticmethod
+    def _merge_duplicate_events(events, description=None):
+        canonical = events[0]
+        duplicates = events[1:]
+        if not duplicates:
+            return canonical
+
+        duplicate_ids = [str(event.id) for event in duplicates]
+        descriptions = [event.description for event in events if event.description]
+        selected_description = description or (descriptions[-1] if descriptions else canonical.description)
+        latest_updated_at = max((event.updated_at for event in events if event.updated_at), default=canonical.updated_at)
+        latest_created_at = max((event.created_at for event in events if event.created_at), default=canonical.created_at)
+
+        update_fields = []
+        if selected_description and canonical.description != selected_description:
+            canonical.description = selected_description
+            update_fields.append("description")
+        if latest_updated_at and canonical.updated_at != latest_updated_at:
+            canonical.updated_at = latest_updated_at
+            update_fields.append("updated_at")
+
+        if update_fields:
+            DeviceEvent.objects.filter(pk=canonical.pk).update(
+                **{field: getattr(canonical, field) for field in update_fields}
+            )
+
+        DeviceEvent.objects.filter(pk__in=[event.pk for event in duplicates]).delete()
+        logger.warning(
+            "Duplicate active DeviceEvent records merged",
+            extra={
+                "device_id": canonical.device.device_id if canonical.device else None,
+                "event_type": canonical.event_type,
+                "canonical_event_id": str(canonical.id),
+                "duplicate_record_ids": duplicate_ids,
+                "duplicate_count": len(duplicates),
+                "earliest_created_at": canonical.created_at.isoformat() if canonical.created_at else None,
+                "latest_occurrence_at": latest_created_at.isoformat() if latest_created_at else None,
+            },
+        )
+        canonical.refresh_from_db()
+        return canonical
+
+    @staticmethod
+    def _get_or_create_active_event(device, event_type, description):
+        identity = {
+            "device": device,
+            "event_type": event_type,
+            "resolved": False,
+        }
+
+        with transaction.atomic():
+            events = list(
+                DeviceEvent.objects.select_for_update()
+                .filter(**identity)
+                .order_by("created_at", "id")
+            )
+            if events:
+                return MonitoringAlertService._merge_duplicate_events(events, description=description), False
+
+            try:
+                return DeviceEvent.objects.create(
+                    device=device,
+                    event_type=event_type,
+                    resolved=False,
+                    description=description,
+                ), True
+            except IntegrityError:
+                events = list(
+                    DeviceEvent.objects.select_for_update()
+                    .filter(**identity)
+                    .order_by("created_at", "id")
+                )
+                if events:
+                    return MonitoringAlertService._merge_duplicate_events(events, description=description), False
+                raise
+
+    @staticmethod
     def raise_event(device, event_type, description, notify=True, dedupe_active=True):
         if dedupe_active:
-            event, created = DeviceEvent.objects.get_or_create(
-                device=device,
-                event_type=event_type,
-                resolved=False,
-                defaults={"description": description},
-            )
+            event, created = MonitoringAlertService._get_or_create_active_event(device, event_type, description)
             if not created and event.description != description:
                 event.description = description
                 event.save(update_fields=["description", "updated_at"])

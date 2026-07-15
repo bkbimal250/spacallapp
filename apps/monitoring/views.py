@@ -52,6 +52,37 @@ class DeviceHeartbeatView(views.APIView):
     authentication_classes = [DeviceAuthentication]
     permission_classes = [IsDevice]
 
+    def _raise_event_safely(self, device, event_type, description, **kwargs):
+        try:
+            return MonitoringAlertService.raise_event(
+                device=device,
+                event_type=event_type,
+                description=description,
+                **kwargs,
+            )
+        except Exception:
+            logger.exception(
+                "Heartbeat alert processing failed",
+                extra={
+                    "device_id": getattr(device, "device_id", None),
+                    "event_type": event_type,
+                },
+            )
+            return None
+
+    def _resolve_events_safely(self, device, event_types):
+        try:
+            return MonitoringAlertService.resolve_events(device, event_types)
+        except Exception:
+            logger.exception(
+                "Heartbeat alert resolution failed",
+                extra={
+                    "device_id": getattr(device, "device_id", None),
+                    "event_types": event_types,
+                },
+            )
+            return 0
+
     def handle_exception(self, exc):
         if isinstance(exc, exceptions.AuthenticationFailed):
             detail = exc.detail if isinstance(exc.detail, dict) else {"detail": str(exc.detail)}
@@ -224,13 +255,13 @@ class DeviceHeartbeatView(views.APIView):
             health.battery_level = battery
             # Trigger alert for low battery (< 15%)
             if battery < settings.MONITORING_LOW_BATTERY_PERCENT:
-                MonitoringAlertService.raise_event(
-                    device=device,
-                    event_type="battery_low",
-                    description=f"Battery critically low: {battery}%",
+                self._raise_event_safely(
+                    device,
+                    "battery_low",
+                    f"Battery critically low: {battery}%",
                 )
             elif battery >= settings.MONITORING_BATTERY_RECOVERY_PERCENT:
-                MonitoringAlertService.resolve_events(device, ["battery_low"])
+                self._resolve_events_safely(device, ["battery_low"])
 
         # SIM Change Detection
         sim_changed = False
@@ -252,10 +283,10 @@ class DeviceHeartbeatView(views.APIView):
             health.sim_2_number = new_sim2
 
         if sim_changed:
-            MonitoringAlertService.raise_event(
-                device=device,
-                event_type='sim_change',
-                description=description,
+            self._raise_event_safely(
+                device,
+                'sim_change',
+                description,
                 dedupe_active=False,
             )
 
@@ -263,13 +294,13 @@ class DeviceHeartbeatView(views.APIView):
             signal = int(health_data["signal_strength"])
             health.signal_strength = signal
             if signal <= settings.MONITORING_WEAK_SIGNAL_DBM:
-                MonitoringAlertService.raise_event(
-                    device=device,
-                    event_type="network_weak",
-                    description=f"Weak signal reported: {signal} dBm",
+                self._raise_event_safely(
+                    device,
+                    "network_weak",
+                    f"Weak signal reported: {signal} dBm",
                 )
             elif signal >= settings.MONITORING_SIGNAL_RECOVERY_DBM:
-                MonitoringAlertService.resolve_events(device, ["network_weak"])
+                self._resolve_events_safely(device, ["network_weak"])
         if "app_version" in health_data:
             health.app_version = str(health_data["app_version"] or "")[:20]
         if "device_model" in health_data:
@@ -329,48 +360,48 @@ class DeviceHeartbeatView(views.APIView):
             storage_used = float(health_data["storage_used_mb"])
             health.storage_used_mb = storage_used
             if storage_used >= settings.MONITORING_STORAGE_ALERT_MB:
-                MonitoringAlertService.raise_event(
-                    device=device,
-                    event_type="storage_full",
-                    description=f"App storage usage reported: {storage_used:.1f} MB",
+                self._raise_event_safely(
+                    device,
+                    "storage_full",
+                    f"App storage usage reported: {storage_used:.1f} MB",
                 )
             else:
-                MonitoringAlertService.resolve_events(device, ["storage_full"])
+                self._resolve_events_safely(device, ["storage_full"])
 
         if health_data.get("permission_denied"):
             permission_name = health_data.get("permission_name") or "Required permission"
-            MonitoringAlertService.raise_event(
-                device=device,
-                event_type="permission_denied",
-                description=f"{permission_name} permission denied on device.",
+            self._raise_event_safely(
+                device,
+                "permission_denied",
+                f"{permission_name} permission denied on device.",
             )
 
         if health_data.get("app_crash"):
             crash_message = health_data.get("crash_message") or "App crash reported by device."
-            MonitoringAlertService.raise_event(
-                device=device,
-                event_type="app_crash",
-                description=crash_message,
+            self._raise_event_safely(
+                device,
+                "app_crash",
+                crash_message,
                 dedupe_active=False,
             )
 
         if health.is_data_saver_on or health.is_background_restricted:
-            MonitoringAlertService.raise_event(
-                device=device,
-                event_type="sync_failure",
-                description="Network Restricted: background data or Data Saver is blocking sync.",
+            self._raise_event_safely(
+                device,
+                "sync_failure",
+                "Network Restricted: background data or Data Saver is blocking sync.",
             )
         if health.is_battery_optimized:
-            MonitoringAlertService.raise_event(
-                device=device,
-                event_type="sync_failure",
-                description="Battery Restricted: unrestricted battery is not enabled for MasterCall.",
+            self._raise_event_safely(
+                device,
+                "sync_failure",
+                "Battery Restricted: unrestricted battery is not enabled for MasterCall.",
             )
 
         health.save()
 
         # A successful heartbeat proves the app is installed and running again.
-        resolved_count = MonitoringAlertService.resolve_events(
+        resolved_count = self._resolve_events_safely(
             device,
             ["offline", "app_uninstall_suspected"],
         )

@@ -1,7 +1,10 @@
 from datetime import timedelta
+import importlib
 from unittest.mock import patch
 
+from django.db import connection
 from django.test import TestCase, override_settings
+from django.test import TransactionTestCase
 from django.utils import timezone
 from rest_framework.test import APIClient
 
@@ -69,6 +72,28 @@ class MonitoringAlertServiceTests(TestCase):
 
         self.assertEqual(DeviceEvent.objects.filter(device=self.device, event_type="offline").count(), 1)
         self.assertEqual(send_push.call_count, 2)  # one event, sent to device and manager
+
+    @patch("apps.notifications.services.NotificationService.send_push", return_value=True)
+    def test_resolved_event_receiving_new_occurrence_creates_active_event(self, send_push):
+        DeviceEvent.objects.create(
+            device=self.device,
+            event_type="offline",
+            description="Old offline alert",
+            resolved=True,
+            resolved_at=timezone.now(),
+        )
+
+        event = MonitoringAlertService.raise_event(self.device, "offline", "Device offline again")
+
+        self.assertFalse(event.resolved)
+        self.assertEqual(
+            DeviceEvent.objects.filter(device=self.device, event_type="offline", resolved=False).count(),
+            1,
+        )
+        self.assertEqual(
+            DeviceEvent.objects.filter(device=self.device, event_type="offline", resolved=True).count(),
+            1,
+        )
 
     def test_resolve_events_marks_alert_resolved(self):
         event = DeviceEvent.objects.create(
@@ -176,6 +201,27 @@ class DeviceHeartbeatClockSkewTests(TestCase):
         health = DeviceHealth.objects.get(device=self.device)
         self.assertGreater(abs(health.device_time_skew_seconds), 5 * 60)
 
+    @patch("apps.monitoring.views.MonitoringAlertService.raise_event", side_effect=RuntimeError("alert failure"))
+    def test_heartbeat_returns_success_if_alert_processing_fails(self, raise_event):
+        response = self.client.post(
+            "/api/v1/monitoring/heartbeat/",
+            {
+                "battery_level": 10,
+                "signal_strength": -75,
+                "app_version": "1.0.0",
+                "storage_used_mb": 20.0,
+                "android_id": self.device.android_id,
+            },
+            format="json",
+            **self.headers,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["status"], "heartbeat acknowledged")
+        self.device.refresh_from_db()
+        self.assertIsNotNone(self.device.last_heartbeat)
+        raise_event.assert_called()
+
     @override_settings(
         MONITORING_OFFLINE_AFTER_MINUTES=20,
         MONITORING_UNINSTALL_SUSPECT_AFTER_HOURS=24,
@@ -193,3 +239,113 @@ class DeviceHeartbeatClockSkewTests(TestCase):
                 event_type="app_uninstall_suspected",
             ).exists()
         )
+
+
+@override_settings(CHANNEL_LAYERS={"default": {"BACKEND": "channels.layers.InMemoryChannelLayer"}})
+class DeviceEventDuplicateHandlingTests(TransactionTestCase):
+    reset_sequences = True
+
+    def setUp(self):
+        self.branch = Branch.objects.create(
+            spa_name="Duplicate Monitoring Branch",
+            code="MON-DUP-01",
+            city="Pune",
+            state="Maharashtra",
+            area="Koregaon Park",
+            postal_code=411001,
+            address="Test address",
+        )
+        self.device = Device.objects.create(
+            branch=self.branch,
+            device_id="DEV-DUP-01",
+            secret_key="secret-dup",
+            phone_name="Duplicate Phone",
+            is_registered=True,
+            android_id=None,
+        )
+        self.constraint = next(
+            constraint for constraint in DeviceEvent._meta.constraints
+            if constraint.name == "uniq_active_device_event_type"
+        )
+
+    def _remove_constraint(self):
+        with connection.schema_editor() as schema_editor:
+            schema_editor.remove_constraint(DeviceEvent, self.constraint)
+
+    def _add_constraint(self):
+        with connection.schema_editor() as schema_editor:
+            schema_editor.add_constraint(DeviceEvent, self.constraint)
+
+    def test_no_matching_device_event_creates_new_event(self):
+        event = MonitoringAlertService.raise_event(self.device, "battery_low", "Battery low", notify=False)
+
+        self.assertFalse(event.resolved)
+        self.assertEqual(DeviceEvent.objects.filter(device=self.device, event_type="battery_low").count(), 1)
+
+    def test_exactly_one_matching_event_updates_description(self):
+        event = DeviceEvent.objects.create(
+            device=self.device,
+            event_type="sync_failure",
+            description="Old description",
+        )
+
+        updated = MonitoringAlertService.raise_event(self.device, "sync_failure", "New description", notify=False)
+
+        self.assertEqual(updated.id, event.id)
+        updated.refresh_from_db()
+        self.assertEqual(updated.description, "New description")
+        self.assertEqual(DeviceEvent.objects.filter(device=self.device, event_type="sync_failure", resolved=False).count(), 1)
+
+    def test_two_duplicate_matching_events_are_merged(self):
+        self._remove_constraint()
+        try:
+            first = DeviceEvent.objects.create(device=self.device, event_type="offline", description="First")
+            second = DeviceEvent.objects.create(device=self.device, event_type="offline", description="Second")
+
+            event = MonitoringAlertService.raise_event(self.device, "offline", "Latest", notify=False)
+
+            self.assertEqual(event.id, first.id)
+            self.assertFalse(DeviceEvent.objects.filter(id=second.id).exists())
+            self.assertEqual(DeviceEvent.objects.filter(device=self.device, event_type="offline", resolved=False).count(), 1)
+            event.refresh_from_db()
+            self.assertEqual(event.description, "Latest")
+        finally:
+            DeviceEvent.objects.filter(device=self.device, event_type="offline").exclude(id=first.id).delete()
+            self._add_constraint()
+
+    def test_more_than_two_duplicate_matching_events_are_merged(self):
+        self._remove_constraint()
+        try:
+            first = DeviceEvent.objects.create(device=self.device, event_type="network_weak", description="First")
+            duplicate_ids = [
+                DeviceEvent.objects.create(device=self.device, event_type="network_weak", description=f"Duplicate {index}").id
+                for index in range(3)
+            ]
+
+            event = MonitoringAlertService.raise_event(self.device, "network_weak", "Weak now", notify=False)
+
+            self.assertEqual(event.id, first.id)
+            self.assertFalse(DeviceEvent.objects.filter(id__in=duplicate_ids).exists())
+            self.assertEqual(DeviceEvent.objects.filter(device=self.device, event_type="network_weak", resolved=False).count(), 1)
+        finally:
+            DeviceEvent.objects.filter(device=self.device, event_type="network_weak").exclude(id=first.id).delete()
+            self._add_constraint()
+
+    def test_migration_duplicate_cleanup_uses_same_identity(self):
+        self._remove_constraint()
+        try:
+            first = DeviceEvent.objects.create(device=self.device, event_type="storage_full", description="First")
+            second = DeviceEvent.objects.create(device=self.device, event_type="storage_full", description="Second")
+            migration = importlib.import_module("apps.monitoring.migrations.0010_dedupe_active_device_events")
+
+            migration.merge_active_device_event_duplicates(
+                type("Apps", (), {"get_model": staticmethod(lambda app_label, model_name: DeviceEvent)})(),
+                connection.schema_editor(),
+            )
+
+            self.assertTrue(DeviceEvent.objects.filter(id=first.id).exists())
+            self.assertFalse(DeviceEvent.objects.filter(id=second.id).exists())
+            self.assertEqual(DeviceEvent.objects.filter(device=self.device, event_type="storage_full", resolved=False).count(), 1)
+        finally:
+            DeviceEvent.objects.filter(device=self.device, event_type="storage_full").exclude(id=first.id).delete()
+            self._add_constraint()

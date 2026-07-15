@@ -1,4 +1,5 @@
 from django.db import models
+from django.db.models import Q
 from core.models.timestamped import TimeStampedModel
 from apps.devices.models import Device
 
@@ -70,6 +71,13 @@ class DeviceEvent(TimeStampedModel):
         indexes = [
             models.Index(fields=["event_type", "resolved"]),
             models.Index(fields=["device", "created_at"]),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["device", "event_type"],
+                condition=Q(resolved=False),
+                name="uniq_active_device_event_type",
+            ),
         ]
 
 
