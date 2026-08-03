@@ -4,6 +4,7 @@ import DashboardLayout from '../layouts/DashboardLayout';
 import Login from '../modules/auth/pages/Login';
 import CallLogList from '../modules/auth/calllogs/pages/CallLogList';
 import CallLogSummary from '../modules/auth/calllogs/pages/CallLogSummary';
+import MonitoringDashboard from '../modules/monitoring/pages/MonitoringDashboard';
 import { getToken, getUser, removeToken, removeUser, setToken, setUser } from '../modules/shared/services/tokenService';
 
 export const AuthContext = React.createContext(null);
@@ -58,6 +59,7 @@ const App = () => {
                     <Route element={authValue.isAuthenticated ? <DashboardLayout /> : <Navigate to="/login" replace />}>
                         <Route index element={<CallLogSummary />} />
                         <Route path="/calllogs" element={<CallLogList />} />
+                        <Route path="/monitoring" element={<MonitoringDashboard />} />
                     </Route>
                     <Route path="*" element={<Navigate to={authValue.isAuthenticated ? '/' : '/login'} replace />} />
                 </Routes>

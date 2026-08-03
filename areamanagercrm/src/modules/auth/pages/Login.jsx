@@ -21,6 +21,9 @@ const Login = () => {
 
     const getErrorMessage = (err, fallback) => {
         const data = err.response?.data;
+        if (err.response?.status >= 500) {
+            return 'Unable to sign in right now. Please try again.';
+        }
         if (!data) return fallback;
         if (typeof data.error === 'string') return data.error;
         if (typeof data.detail === 'string') return data.detail;

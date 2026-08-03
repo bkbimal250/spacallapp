@@ -143,7 +143,8 @@ const DashboardHome = () => {
 
         try {
             const params = {
-                quick_date: quickDate
+                quick_date: quickDate,
+                branch_limit: 20,
             };
 
             if (leadSource !== 'all') params.lead_source = leadSource;

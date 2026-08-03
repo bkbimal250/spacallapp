@@ -1,6 +1,6 @@
 import axios from 'axios';
 import { CONFIG } from '../../../app/config';
-import { getToken, getRefreshToken, setToken, removeToken } from './tokenService';
+import { getToken, getRefreshToken, setToken, setRefreshToken, removeToken } from './tokenService';
 
 const axiosInstance = axios.create({
     baseURL: CONFIG.API_BASE_URL,
@@ -38,6 +38,9 @@ axiosInstance.interceptors.response.use(
 
                     const newAccessToken = response.data.access;
                     setToken(newAccessToken);
+                    if (response.data.refresh) {
+                        setRefreshToken(response.data.refresh);
+                    }
 
                     // Reconfigure the failed request object dynamically
                     originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;

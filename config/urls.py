@@ -21,9 +21,11 @@ from django.conf import settings
 from django.conf.urls.static import static
 from drf_spectacular.views import SpectacularAPIView, SpectacularRedocView, SpectacularSwaggerView
 from apps.webLead.views import WidgetScriptView
+from apps.monitoring.views import PlatformHealthView
 
 urlpatterns = [
     path("admin/", admin.site.urls),
+    path("health/", PlatformHealthView.as_view(), name="health"),
     # Swagger API Documentation
     path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
     path("api/docs/", SpectacularSwaggerView.as_view(url_name="schema"), name="swagger-ui"),
@@ -37,6 +39,7 @@ urlpatterns = [
     path("api/v1/exports/", include("apps.exports.urls")),
     path("api/v1/monitoring/", include("apps.monitoring.urls")),
     path("api/v1/dashboard/", include("apps.dashboard.urls")),
+    path("api/v2/dashboard/", include("apps.dashboard.urls_v2")),
     path("api/v1/contacts/", include("apps.contacts.urls")),
     path("api/v1/leadmanagement/", include("apps.leadmanagement.urls")),
     path("api/v1/notifications/", include("apps.notifications.urls")),

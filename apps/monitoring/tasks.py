@@ -131,3 +131,10 @@ def send_device_compliance_alerts():
     from django.core.management import call_command
 
     call_command("send_device_compliance_alerts", "--commit")
+
+
+@shared_task(ignore_result=True)
+def cleanup_observability_metrics():
+    from .services_observability import ObservabilityService
+
+    ObservabilityService.cleanup_old_metrics()

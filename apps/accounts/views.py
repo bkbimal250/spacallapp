@@ -19,6 +19,8 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework_simplejwt.exceptions import TokenError
+from rest_framework_simplejwt.views import TokenRefreshView
 from rest_framework import viewsets, status, exceptions
 from django.contrib.auth import authenticate
 from django.utils import timezone
@@ -38,6 +40,7 @@ from .serializers import (
 from .models.user import User
 from .models.user_history import UserLoginHistory
 from .services.auth_service import AuthService
+from .services.session_service import UserDeviceSessionService
 from apps.common.permissions import IsSuperAdmin, IsAdminOrSuperAdmin
 
 
@@ -115,11 +118,14 @@ class LoginView(APIView):
 
         # Generate JWT token pair for the authenticated user
         refresh = RefreshToken.for_user(user)
+        refresh_token = str(refresh)
+        access_token = str(refresh.access_token)
+        UserDeviceSessionService.record_login(user, request, access_token, refresh_token)
 
         return Response({
             "message": "Login successful",
-            "refresh": str(refresh),
-            "access": str(refresh.access_token),
+            "refresh": refresh_token,
+            "access": access_token,
             "user": UserSerializer(user, context={"request": request}).data,
         })
 
@@ -217,11 +223,14 @@ class VerifyOTPView(APIView):
             )
 
             refresh = RefreshToken.for_user(user)
+            refresh_token = str(refresh)
+            access_token = str(refresh.access_token)
+            UserDeviceSessionService.record_login(user, request, access_token, refresh_token)
 
             return Response({
                 "message": "Login successful",
-                "refresh": str(refresh),
-                "access": str(refresh.access_token),
+                "refresh": refresh_token,
+                "access": access_token,
                 "user": UserSerializer(user, context={"request": request}).data,
             })
         except ValueError as e:
@@ -320,11 +329,14 @@ class VerifyPhoneOTPView(APIView):
             )
 
             refresh = RefreshToken.for_user(user)
+            refresh_token = str(refresh)
+            access_token = str(refresh.access_token)
+            UserDeviceSessionService.record_login(user, request, access_token, refresh_token)
 
             return Response({
                 "message": "Login successful",
-                "refresh": str(refresh),
-                "access": str(refresh.access_token),
+                "refresh": refresh_token,
+                "access": access_token,
                 "user": UserSerializer(user, context={"request": request}).data,
             })
         except ValueError as e:
@@ -559,3 +571,85 @@ class UpdateProfileView(APIView):
     def get(self, request):
         serializer = UserSerializer(request.user, context={"request": request})
         return Response(serializer.data)
+
+
+class EnterpriseTokenRefreshView(TokenRefreshView):
+    def post(self, request, *args, **kwargs):
+        old_refresh_token = request.data.get("refresh")
+        response = super().post(request, *args, **kwargs)
+        if response.status_code == status.HTTP_200_OK and old_refresh_token:
+            new_refresh_token = response.data.get("refresh") or old_refresh_token
+            session = UserDeviceSessionService.rotate_refresh_token(old_refresh_token, new_refresh_token)
+            if session:
+                session.last_refresh = timezone.now()
+                session.last_activity = timezone.now()
+                session.save(update_fields=["last_refresh", "last_activity", "updated_at"])
+        return response
+
+
+class LogoutView(APIView):
+    """
+    Logout from one device/session by blacklisting the submitted refresh token.
+    """
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        request=inline_serializer(
+            name="LogoutRequest",
+            fields={"refresh": serializers.CharField()},
+        ),
+        responses={200: inline_serializer(name="LogoutResponse", fields={"message": serializers.CharField()})},
+        description="Invalidates the current refresh token. Access token naturally expires shortly after.",
+    )
+    def post(self, request):
+        refresh_token = request.data.get("refresh")
+        if not refresh_token:
+            return Response({"error": "refresh token is required"}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            token = RefreshToken(refresh_token)
+            token.blacklist()
+        except TokenError:
+            return Response({"error": "Invalid refresh token"}, status=status.HTTP_400_BAD_REQUEST)
+
+        UserDeviceSessionService.revoke_refresh_token(refresh_token)
+        return Response({"message": "Logout successful"})
+
+
+class ActiveDeviceSessionsView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        sessions = request.user.device_sessions.filter(is_active=True).order_by("-last_activity", "-last_login")
+        return Response([
+            {
+                "id": str(session.id),
+                "device_id": session.device_id,
+                "device_name": session.device_name,
+                "platform": session.platform,
+                "manufacturer": session.manufacturer,
+                "model": session.model,
+                "android_version": session.android_version,
+                "app_version": session.app_version,
+                "ip": session.ip,
+                "last_login": session.last_login,
+                "last_activity": session.last_activity,
+                "last_refresh": session.last_refresh,
+                "status": session.status,
+                "is_active": session.is_active,
+                "created_at": session.created_at,
+            }
+            for session in sessions
+        ])
+
+
+class LogoutAllDeviceSessionsView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        request.user.device_sessions.filter(is_active=True).update(
+            status="revoked",
+            is_active=False,
+            updated_at=timezone.now(),
+        )
+        return Response({"message": "All device sessions revoked"})

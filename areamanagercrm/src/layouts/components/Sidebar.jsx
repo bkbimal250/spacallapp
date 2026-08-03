@@ -5,6 +5,7 @@ import { useAuth } from '../../modules/shared/hooks/useAuth';
 const navItems = [
     { to: '/', label: 'Dashboard', icon: 'D' },
     { to: '/calllogs', label: 'Call Logs', icon: 'C' },
+    { to: '/monitoring', label: 'Monitoring', icon: 'M' },
 ];
 
 const Sidebar = ({ isOpen, onClose }) => {

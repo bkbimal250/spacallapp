@@ -10,7 +10,9 @@ const BranchPerformanceTable = ({ data = [] }) => {
     const navigate = useNavigate();
     const [searchTerm, setSearchTerm] = useState('');
 
-    const filteredData = data.filter(branch => {
+    const topBranches = data.slice(0, 20);
+
+    const filteredData = topBranches.filter(branch => {
         const haystack = [
             branch.name,
             branch.code,
@@ -132,7 +134,7 @@ const BranchPerformanceTable = ({ data = [] }) => {
                     </h3>
 
                     <p className="text-xs text-text-muted uppercase tracking-wider mt-1">
-                        Performance by call volume
+                        Today performance by call volume
                     </p>
                 </div>
 
@@ -155,7 +157,7 @@ const BranchPerformanceTable = ({ data = [] }) => {
                     </div>
 
                     <Badge variant="primary" className="whitespace-nowrap">
-                        {filteredData.length} Branches
+                        Top {filteredData.length} / 20
                     </Badge>
 
                 </div>

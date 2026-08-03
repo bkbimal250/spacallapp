@@ -66,6 +66,7 @@ INSTALLED_APPS = [
     "corsheaders",
     "rest_framework",
     "rest_framework_simplejwt",
+    "rest_framework_simplejwt.token_blacklist",
     "django_filters",
     "drf_spectacular",
 
@@ -95,6 +96,8 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",
     "django.middleware.security.SecurityMiddleware",
+    "apps.monitoring.middleware.RequestIDMiddleware",
+    "apps.monitoring.middleware.APIMetricsMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -209,11 +212,28 @@ REST_FRAMEWORK = {
 }
 
 from datetime import timedelta
+
+# Runtime feature flags. These are intentionally environment-driven so
+# production rollout can be reversed without a code deployment.
+ENABLE_DASHBOARD_V2 = env.bool("ENABLE_DASHBOARD_V2", default=True)
+ENABLE_REDIS_CACHE = env.bool("ENABLE_REDIS_CACHE", default=True)
+ENABLE_BACKGROUND_ANALYTICS = env.bool("ENABLE_BACKGROUND_ANALYTICS", default=False)
+ENABLE_REFRESH_ROTATION = env.bool("ENABLE_REFRESH_ROTATION", default=True)
+ENABLE_DEVICE_SESSIONS = env.bool("ENABLE_DEVICE_SESSIONS", default=True)
+ENABLE_SQL_PROFILING = env.bool("ENABLE_SQL_PROFILING", default=False)
+ENABLE_API_OBSERVABILITY = env.bool("ENABLE_API_OBSERVABILITY", default=True)
+API_OBSERVABILITY_PATH_PREFIXES = env.list(
+    "API_OBSERVABILITY_PATH_PREFIXES",
+    default=["/api/v1/dashboard/", "/api/v2/dashboard/"],
+)
+API_SLOW_QUERY_THRESHOLD_MS = env.int("API_SLOW_QUERY_THRESHOLD_MS", default=500)
+API_METRIC_RETENTION_DAYS = env.int("API_METRIC_RETENTION_DAYS", default=14)
+
 SIMPLE_JWT = {
-    "ACCESS_TOKEN_LIFETIME": timedelta(days=30),
-    "REFRESH_TOKEN_LIFETIME": timedelta(days=365),
-    "ROTATE_REFRESH_TOKENS": True,
-    "BLACKLIST_AFTER_ROTATION": True,
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=env.int("JWT_ACCESS_TOKEN_LIFETIME_MINUTES", default=30)),
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=env.int("JWT_REFRESH_TOKEN_LIFETIME_DAYS", default=90)),
+    "ROTATE_REFRESH_TOKENS": ENABLE_REFRESH_ROTATION,
+    "BLACKLIST_AFTER_ROTATION": ENABLE_REFRESH_ROTATION,
     "UPDATE_LAST_LOGIN": True,
     "ALGORITHM": "HS256",
     "SIGNING_KEY": SECRET_KEY,
@@ -281,6 +301,14 @@ DEVICE_COMPLIANCE_ADMIN_EMAILS = env.list("DEVICE_COMPLIANCE_ADMIN_EMAILS", defa
 DEVICE_COMPLIANCE_ADMIN_EMAIL_COOLDOWN_MINUTES = env.int("DEVICE_COMPLIANCE_ADMIN_EMAIL_COOLDOWN_MINUTES", default=60)
 
 CELERY_BEAT_SCHEDULE = {
+    'warm-dashboard-cache-every-minute': {
+        'task': 'apps.dashboard.tasks.warm_dashboard_cache',
+        'schedule': 60.0,
+    },
+    'refresh-dashboard-statistics-every-minute': {
+        'task': 'apps.dashboard.tasks.refresh_dashboard_statistics',
+        'schedule': 60.0,
+    },
     'check-offline-devices-every-5-mins': {
         'task': 'apps.monitoring.tasks.check_offline_devices',
         'schedule': 300.0,  # 5 minutes
@@ -291,6 +319,10 @@ CELERY_BEAT_SCHEDULE = {
     },
     'send-device-compliance-alerts-hourly': {
         'task': 'apps.monitoring.tasks.send_device_compliance_alerts',
+        'schedule': 3600.0,
+    },
+    'cleanup-observability-metrics-hourly': {
+        'task': 'apps.monitoring.tasks.cleanup_observability_metrics',
         'schedule': 3600.0,
     },
     'send-due-missed-call-reminders-every-5-mins': {

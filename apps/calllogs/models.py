@@ -138,6 +138,7 @@ class CallLog(BaseModel, TimeStampedModel):
         db_table = "call_logs"
         indexes = [
             models.Index(fields=["branch", "call_time"]),  # Primary query pattern
+            models.Index(fields=["branch", "call_type", "call_time"], name="calllog_branch_type_time_idx"),
             models.Index(fields=["call_time"]),             # Time-range filtering
             models.Index(fields=["branch"]),                # Branch-based filtering
             models.Index(fields=["device"]),                # Device-based filtering

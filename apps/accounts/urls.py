@@ -1,8 +1,11 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from rest_framework_simplejwt.views import TokenRefreshView
 from .views import (
+    ActiveDeviceSessionsView,
+    EnterpriseTokenRefreshView,
     LoginView,
+    LogoutView,
+    LogoutAllDeviceSessionsView,
     OnlineUsersView,
     RequestOTPView,
     RequestPhoneOTPView,
@@ -19,7 +22,10 @@ router.register(r"login-history", UserLoginHistoryViewSet, basename="login-histo
 
 urlpatterns = [
     path("login/", LoginView.as_view()),
-    path("token/refresh/", TokenRefreshView.as_view(), name="token_refresh"),
+    path("logout/", LogoutView.as_view()),
+    path("sessions/", ActiveDeviceSessionsView.as_view()),
+    path("sessions/logout-all/", LogoutAllDeviceSessionsView.as_view()),
+    path("token/refresh/", EnterpriseTokenRefreshView.as_view(), name="token_refresh"),
     path("otp/request/", RequestOTPView.as_view()),
     path("otp/verify/", VerifyOTPView.as_view()),
     path("otp/phone/request/", RequestPhoneOTPView.as_view()),

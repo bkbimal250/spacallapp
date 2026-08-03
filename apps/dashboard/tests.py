@@ -8,6 +8,7 @@ from rest_framework.test import APITestCase
 from apps.branches.models import Branch
 from apps.calllogs.models import CallLog
 from apps.devices.models import Device
+from apps.monitoring.models import APIRequestMetric
 
 
 class DashboardOverviewDeviceFilterTests(APITestCase):
@@ -108,3 +109,126 @@ class DashboardOverviewDeviceFilterTests(APITestCase):
             "missed": 1,
             "rejected": 0,
         })
+
+    def test_dashboard_summary_returns_only_card_metrics(self):
+        self.client.force_authenticate(user=self.user)
+        response = self.client.get(reverse("dashboard-summary"), {"quick_date": "today"})
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["total_calls"], 4)
+        self.assertEqual(payload["missed_calls"], 1)
+        self.assertEqual(payload["today_total_calls"], 4)
+        self.assertNotIn("call_volume_trends", payload)
+        self.assertNotIn("branch_performance", payload)
+
+    def test_dashboard_stats_keeps_legacy_response_shape(self):
+        self.client.force_authenticate(user=self.user)
+        response = self.client.get(reverse("dashboard-stats"), {"quick_date": "today"})
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        expected_keys = {
+            "total_calls",
+            "active_devices",
+            "total_devices",
+            "missed_calls",
+            "total_leads",
+            "total_branches",
+            "total_contacts",
+            "total_users",
+            "total_exports",
+            "today_total_calls",
+            "today_incoming_calls",
+            "today_outgoing_calls",
+            "today_missed_calls",
+            "avg_duration",
+            "call_volume_trends",
+            "branch_performance",
+        }
+        self.assertTrue(expected_keys.issubset(payload.keys()))
+        self.assertEqual(payload["total_calls"], 4)
+        self.assertEqual(payload["branch_performance"][0]["calls"], 4)
+
+    def test_branch_performance_defaults_to_today_top_20(self):
+        now = timezone.now()
+        yesterday = now - timedelta(days=1)
+
+        old_branch = Branch.objects.create(
+            spa_name="Yesterday Only Branch",
+            code="YB-01",
+            city="Pune",
+            state="Maharashtra",
+            postal_code=411001,
+        )
+        old_device = Device.objects.create(
+            branch=old_branch,
+            device_id="SPA-YESTERDAY",
+            is_registered=True,
+        )
+        for index in range(3):
+            CallLog.objects.create(
+                branch=old_branch,
+                device=old_device,
+                phone_number=f"90000000{index:02d}",
+                call_type="incoming",
+                duration=30,
+                sim_slot=1,
+                call_time=yesterday,
+                call_hash=f"dashboard_yesterday_{index}",
+            )
+
+        for branch_index in range(25):
+            branch = Branch.objects.create(
+                spa_name=f"Today Branch {branch_index:02d}",
+                code=f"TBR-{branch_index:02d}",
+                city="Pune",
+                state="Maharashtra",
+                postal_code=411001,
+            )
+            device = Device.objects.create(
+                branch=branch,
+                device_id=f"SPA-TODAY-{branch_index:02d}",
+                is_registered=True,
+            )
+            for call_index in range(branch_index + 1):
+                CallLog.objects.create(
+                    branch=branch,
+                    device=device,
+                    phone_number=f"800{branch_index:02d}{call_index:04d}",
+                    call_type="incoming",
+                    duration=30,
+                    sim_slot=1,
+                    call_time=now,
+                    call_hash=f"dashboard_today_{branch_index}_{call_index}",
+                )
+
+        self.client.force_authenticate(user=self.user)
+        response = self.client.get(reverse("dashboard-branches"))
+
+        self.assertEqual(response.status_code, 200)
+        rows = response.json()["branch_performance"]
+        self.assertEqual(len(rows), 20)
+        self.assertEqual(rows[0]["name"], "Today Branch 24")
+        self.assertEqual(rows[0]["calls"], 25)
+        self.assertTrue(all(row["calls"] >= 6 for row in rows))
+
+    def test_dashboard_v2_summary_is_additive_route(self):
+        self.client.force_authenticate(user=self.user)
+        response = self.client.get(reverse("dashboard-v2-summary"), {"quick_date": "today"})
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["total_calls"], 4)
+        self.assertNotIn("branch_performance", payload)
+
+    def test_dashboard_request_records_observability_metric(self):
+        self.client.force_authenticate(user=self.user)
+        response = self.client.get(reverse("dashboard-summary"), {"quick_date": "today"}, HTTP_X_REQUEST_ID="test-request-id")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["X-Request-ID"], "test-request-id")
+        metric = APIRequestMetric.objects.filter(request_id="test-request-id").latest("created_at")
+        self.assertEqual(metric.path, "/api/v1/dashboard/summary/")
+        self.assertEqual(metric.status_code, 200)
+        self.assertGreaterEqual(metric.sql_count, 1)

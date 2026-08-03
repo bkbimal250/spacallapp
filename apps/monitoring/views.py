@@ -21,15 +21,107 @@ from rest_framework import serializers
 from django_filters.rest_framework import DjangoFilterBackend
 from .filters import DeviceEventFilter
 
-from .models import DeviceEvent, DeviceHealth
+from .models import APIRequestMetric, DeviceEvent, DeviceHealth, SlowQuery
 from .serializers import DeviceEventSerializer, DeviceHealthSerializer
 from .services import MonitoringAlertService, offline_threshold
+from .services_observability import ObservabilityService
 from apps.devices.models import Device
 from apps.common.utils import get_branch_filter_ids
+from apps.common.permissions import IsMonitoringViewer
 from core.authentication import DeviceAuthentication
 from core.permissions import IsDevice
 
 logger = logging.getLogger(__name__)
+
+
+class PlatformHealthView(views.APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request):
+        data = ObservabilityService.health()
+        http_status = status.HTTP_200_OK if data["status"] == "ok" else status.HTTP_503_SERVICE_UNAVAILABLE
+        return response.Response(data, status=http_status)
+
+
+class PlatformMetricsSummaryView(views.APIView):
+    permission_classes = [permissions.IsAuthenticated, IsMonitoringViewer]
+
+    @extend_schema(
+        summary="Platform API performance summary",
+        description="Returns recent request counts, average latency, SQL counts, error counts, and cache hit rate.",
+        parameters=[
+            OpenApiParameter("minutes", type=int, description="Lookback window in minutes. Default: 60"),
+        ],
+    )
+    def get(self, request):
+        try:
+            minutes = int(request.query_params.get("minutes", 60))
+        except (TypeError, ValueError):
+            minutes = 60
+        minutes = max(5, min(minutes, 1440))
+        return response.Response({
+            "window_minutes": minutes,
+            "endpoints": ObservabilityService.platform_summary(minutes=minutes),
+        })
+
+
+class SlowQueryListView(views.APIView):
+    permission_classes = [permissions.IsAuthenticated, IsMonitoringViewer]
+
+    @extend_schema(
+        summary="Recent slow SQL queries",
+        parameters=[
+            OpenApiParameter("limit", type=int, description="Maximum rows. Default: 50"),
+        ],
+    )
+    def get(self, request):
+        try:
+            limit = int(request.query_params.get("limit", 50))
+        except (TypeError, ValueError):
+            limit = 50
+        if not ObservabilityService.tables_available():
+            return response.Response([])
+        limit = max(1, min(limit, 200))
+        rows = SlowQuery.objects.select_related("request_metric").order_by("-created_at", "-duration_ms")[:limit]
+        return response.Response([
+            {
+                "request_id": row.request_id,
+                "path": row.path,
+                "duration_ms": row.duration_ms,
+                "sql": row.sql,
+                "created_at": row.created_at,
+            }
+            for row in rows
+        ])
+
+
+class RecentRequestMetricsView(views.APIView):
+    permission_classes = [permissions.IsAuthenticated, IsMonitoringViewer]
+
+    def get(self, request):
+        try:
+            limit = int(request.query_params.get("limit", 50))
+        except (TypeError, ValueError):
+            limit = 50
+        if not ObservabilityService.tables_available():
+            return response.Response([])
+        limit = max(1, min(limit, 200))
+        rows = APIRequestMetric.objects.order_by("-created_at")[:limit]
+        return response.Response([
+            {
+                "request_id": row.request_id,
+                "method": row.method,
+                "path": row.path,
+                "status_code": row.status_code,
+                "duration_ms": row.duration_ms,
+                "sql_count": row.sql_count,
+                "slowest_query_ms": row.slowest_query_ms,
+                "cache_hit": row.cache_hit,
+                "cache_miss": row.cache_miss,
+                "created_at": row.created_at,
+            }
+            for row in rows
+        ])
 
 
 class DeviceHeartbeatView(views.APIView):

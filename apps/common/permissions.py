@@ -50,6 +50,22 @@ class IsAdminOrSuperAdmin(BasePermission):
         )
 
 
+class IsMonitoringViewer(BasePermission):
+    """
+    Allow platform monitoring access to central operators and area managers.
+    """
+
+    message = "Only monitoring viewers can access this endpoint."
+
+    def has_permission(self, request, view):
+        return (
+            request.user
+            and request.user.is_authenticated
+            and hasattr(request.user, "role")
+            and request.user.role in ["super_admin", "admin", "area_manager"]
+        )
+
+
 class IsSPAManager(BasePermission):
     """
     Allow access to 'spa_manager' role.

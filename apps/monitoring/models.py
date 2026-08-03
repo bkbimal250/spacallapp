@@ -113,3 +113,46 @@ class DeviceComplianceState(TimeStampedModel):
             models.Index(fields=["status", "updated_at"], name="device_comp_status__idx"),
             models.Index(fields=["fcm_invalid"], name="device_comp_fcm_inv_idx"),
         ]
+
+
+class APIRequestMetric(TimeStampedModel):
+    request_id = models.CharField(max_length=64, db_index=True)
+    method = models.CharField(max_length=12)
+    path = models.CharField(max_length=500, db_index=True)
+    view_name = models.CharField(max_length=255, blank=True, default="")
+    status_code = models.PositiveIntegerField(db_index=True)
+    duration_ms = models.FloatField(db_index=True)
+    sql_count = models.PositiveIntegerField(default=0)
+    slowest_query_ms = models.FloatField(default=0.0)
+    cache_hit = models.BooleanField(default=False, db_index=True)
+    cache_miss = models.BooleanField(default=False, db_index=True)
+    cache_key = models.CharField(max_length=255, blank=True, default="")
+    user_id = models.UUIDField(null=True, blank=True, db_index=True)
+    error = models.TextField(blank=True, default="")
+
+    class Meta:
+        db_table = "api_request_metrics"
+        indexes = [
+            models.Index(fields=["path", "-created_at"], name="api_metric_path_time_idx"),
+            models.Index(fields=["status_code", "-created_at"], name="api_metric_status_time_idx"),
+            models.Index(fields=["duration_ms", "-created_at"], name="api_metric_duration_idx"),
+        ]
+
+
+class SlowQuery(TimeStampedModel):
+    request_metric = models.ForeignKey(
+        APIRequestMetric,
+        on_delete=models.CASCADE,
+        related_name="slow_queries",
+    )
+    request_id = models.CharField(max_length=64, db_index=True)
+    path = models.CharField(max_length=500, db_index=True)
+    duration_ms = models.FloatField(db_index=True)
+    sql = models.TextField()
+
+    class Meta:
+        db_table = "slow_queries"
+        indexes = [
+            models.Index(fields=["duration_ms", "-created_at"], name="slow_query_duration_idx"),
+            models.Index(fields=["path", "-created_at"], name="slow_query_path_time_idx"),
+        ]
