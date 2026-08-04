@@ -46,6 +46,12 @@ class DeviceHealth(TimeStampedModel):
 
     class Meta:
         db_table = "device_health"
+        indexes = [
+            models.Index(fields=["is_online", "last_heartbeat"], name="dev_health_online_hb_idx"),
+            models.Index(fields=["last_heartbeat"], name="dev_health_last_hb_idx"),
+            models.Index(fields=["last_sync"], name="dev_health_last_sync_idx"),
+            models.Index(fields=["pending_call_count"], name="dev_health_pending_idx"),
+        ]
 
 class DeviceEvent(TimeStampedModel):
     EVENT_TYPES = (

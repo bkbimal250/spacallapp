@@ -1,4 +1,5 @@
 from django.utils import timezone
+from django.db import IntegrityError
 from .models import Device, Lastsynchistory
 
 
@@ -17,10 +18,12 @@ class DeviceService:
     def update_sync_time(device):
         device.last_sync = timezone.now()
         device.save(update_fields=["last_sync"])
-        Lastsynchistory.objects.update_or_create(
-            device=device,
-            defaults={"last_sync_time": device.last_sync},
-        )
+        updated = Lastsynchistory.objects.filter(device=device).update(last_sync_time=device.last_sync)
+        if not updated:
+            try:
+                Lastsynchistory.objects.create(device=device, last_sync_time=device.last_sync)
+            except IntegrityError:
+                Lastsynchistory.objects.filter(device=device).update(last_sync_time=device.last_sync)
         return device.last_sync
 
     @staticmethod

@@ -156,6 +156,10 @@ class Device(BaseModel, TimeStampedModel, SoftDeleteModel):
             models.Index(fields=["device_id"]),
             models.Index(fields=["android_id"], name="devices_android_id_idx"),
             models.Index(fields=["branch"]),
+            models.Index(fields=["branch", "last_heartbeat"], name="devices_branch_heartbeat_idx"),
+            models.Index(fields=["branch", "last_sync"], name="devices_branch_sync_idx"),
+            models.Index(fields=["last_heartbeat"], name="devices_last_heartbeat_idx"),
+            models.Index(fields=["last_sync"], name="devices_last_sync_idx"),
             models.Index(fields=["is_active"]),
             models.Index(fields=["is_registered"]),
             models.Index(fields=["registration_token"]),
@@ -205,6 +209,9 @@ class Lastsynchistory(BaseModel):
 
     class Meta:
         db_table = "last_sync_history"
+        indexes = [
+            models.Index(fields=["last_sync_time"], name="lastsync_time_idx"),
+        ]
         verbose_name = "Last Sync History"
         verbose_name_plural = "Last Sync Histories"
 

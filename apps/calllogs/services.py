@@ -133,7 +133,18 @@ class FollowUpService:
                     else:
                         # Schedule notification tasks normally
                         from .tasks import schedule_missed_call_notifications
-                        schedule_missed_call_notifications.delay(m_log.id)
+                        try:
+                            schedule_missed_call_notifications.apply_async(
+                                args=(m_log.id,),
+                                ignore_result=True,
+                                retry=False,
+                            )
+                        except Exception:
+                            import logging
+                            logging.getLogger(__name__).exception(
+                                "Failed to enqueue missed-call notifications",
+                                extra={"call_log_id": str(m_log.id)},
+                            )
 
         # 2. Handle Outgoing and Incoming Calls (Resolve pending follow-ups)
         resolving_logs = [log for log in call_logs if log.call_type in ["outgoing", "incoming"]]

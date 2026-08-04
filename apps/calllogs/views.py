@@ -1,18 +1,18 @@
-"""
+﻿"""
 Views for the CallLogs app.
 
 Endpoints:
-    POST /calllogs/sync/              → Android device syncs call log batch.
-    GET  /calllogs/                   → List call logs (filtered by role).
-    GET  /calllogs/stats/             → Aggregate stats (total, missed, etc).
-    GET  /calllogs/branch_summary/    → Per-branch call log summary.
-    GET  /calllogs/export_excel/      → Download call logs as Excel file.
-    POST /calllogs/bulk_delete/       → Delete multiple call logs (super_admin only).
+    POST /calllogs/sync/              â†’ Android device syncs call log batch.
+    GET  /calllogs/                   â†’ List call logs (filtered by role).
+    GET  /calllogs/stats/             â†’ Aggregate stats (total, missed, etc).
+    GET  /calllogs/branch_summary/    â†’ Per-branch call log summary.
+    GET  /calllogs/export_excel/      â†’ Download call logs as Excel file.
+    POST /calllogs/bulk_delete/       â†’ Delete multiple call logs (super_admin only).
 
 Access Control:
-    super_admin    → See all call logs across all branches.
-    admin          → See all call logs across all branches.
-    branch_manager → See only call logs for their assigned branch.
+    super_admin    â†’ See all call logs across all branches.
+    admin          â†’ See all call logs across all branches.
+    branch_manager â†’ See only call logs for their assigned branch.
 
 Android Sync Flow:
     1. Android device sends a batch of call log objects to /calllogs/sync/.
@@ -56,6 +56,7 @@ from apps.devices.services import DeviceService
 
 
 logger = logging.getLogger(__name__)
+MAX_DEVICE_SYNC_BATCH_SIZE = 100
 FUTURE_CALL_TIME_TOLERANCE = timedelta(minutes=10)
 
 
@@ -290,8 +291,22 @@ class DeviceSyncView(views.APIView):
                 },
                 status=status.HTTP_400_BAD_REQUEST
             )
+        if len(payloads) > MAX_DEVICE_SYNC_BATCH_SIZE:
+            logger.warning(
+                "Call log sync rejected: payload too large",
+                extra={**log_context, "payload_count": len(payloads), "max_batch_size": MAX_DEVICE_SYNC_BATCH_SIZE},
+            )
+            return response.Response(
+                {
+                    "error": "Too many call logs in one sync request.",
+                    "code": "payload_too_large",
+                    "details": {"max_items": MAX_DEVICE_SYNC_BATCH_SIZE, "received": len(payloads)},
+                    "request_id": log_context["request_id"],
+                },
+                status=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            )
 
-        # ── Step 1: Pre-fetch contacts for all phone numbers in this batch ──
+        # â”€â”€ Step 1: Pre-fetch contacts for all phone numbers in this batch â”€â”€
         # We match by last 10 digits to handle variations like +91, 0, etc.
         if not payloads:
             logger.info(
@@ -345,7 +360,7 @@ class DeviceSyncView(views.APIView):
         phone_numbers = {item.get("phone_number") for item in payloads if item.get("phone_number")}
 
         from apps.contacts.models import Contact
-        contact_map = {}  # Maps last_10_digits → Contact object
+        contact_map = {}  # Maps last_10_digits â†’ Contact object
 
         if phone_numbers:
             # Build a list of normalized numbers (last 10 digits cleaning non-digits)
@@ -362,7 +377,7 @@ class DeviceSyncView(views.APIView):
             for c in contacts:
                 contact_map[c.phone_normalized] = c
 
-        # ── Step 2: Build CallLog objects for bulk insert ──
+        # â”€â”€ Step 2: Build CallLog objects for bulk insert â”€â”€
         logs_to_create = []
         server_now = timezone.now()
         invalid_time_count = 0
@@ -370,11 +385,11 @@ class DeviceSyncView(views.APIView):
         sync_results = []
         all_candidate_hashes = set()
         for item in payloads:
-            # Normalize sim_slot: Android uses 0-indexed (0, 1) → we use 1-indexed (1, 2)
+            # Normalize sim_slot: Android uses 0-indexed (0, 1) â†’ we use 1-indexed (1, 2)
             raw_slot = item.get("sim_slot", 1)
             try:
                 raw_slot = int(raw_slot)
-                # Android slot 0 → SIM 1, slot 1 → SIM 2 (odd/even fallback for unusual values)
+                # Android slot 0 â†’ SIM 1, slot 1 â†’ SIM 2 (odd/even fallback for unusual values)
                 normalized_slot = 1 if raw_slot % 2 == 0 else 2
             except (ValueError, TypeError):
                 normalized_slot = 1
@@ -429,7 +444,8 @@ class DeviceSyncView(views.APIView):
                 (candidate for candidate in prepared["candidate_hashes"] if candidate in existing_hashes),
                 None,
             )
-            final_hash = duplicate_hash or prepared["canonical_hash"]
+            submitted_hash = (prepared["item"].get("call_hash") or "").strip() or None
+            final_hash = duplicate_hash or submitted_hash or prepared["canonical_hash"]
             if duplicate_hash:
                 sync_results.append({
                     "call_hash": final_hash,
@@ -461,7 +477,7 @@ class DeviceSyncView(views.APIView):
                 "status": "created",
             })
 
-        # ── Step 3: Bulk insert — ignore duplicates (by call_hash unique constraint) ──
+        # â”€â”€ Step 3: Bulk insert â€” ignore duplicates (by call_hash unique constraint) â”€â”€
         if logs_to_create:
             CallLog.objects.bulk_create(logs_to_create, ignore_conflicts=True)
 
@@ -483,9 +499,9 @@ class DeviceSyncView(views.APIView):
             inserted_logs = CallLog.objects.filter(call_hash__in=created_hashes)
             FollowUpService.process_batch(inserted_logs)
             
-            # ── New: Hook up FollowUpService to process missed calls ──
+            # â”€â”€ New: Hook up FollowUpService to process missed calls â”€â”€
 
-        # ── Step 4: Auto-create Leads for newly created call logs ──
+        # â”€â”€ Step 4: Auto-create Leads for newly created call logs â”€â”€
         # We query the database to find which hashes actually got inserted.
         # This avoids creating duplicate leads for already-existing call logs.
         from apps.leadmanagement.models import LeadManagement
@@ -518,7 +534,7 @@ class DeviceSyncView(views.APIView):
         if leads_to_create:
             LeadManagement.objects.bulk_create(leads_to_create, ignore_conflicts=True)
 
-        # ── Step 5: Update sync timestamp ──
+        # â”€â”€ Step 5: Update sync timestamp â”€â”€
         DeviceService.update_sync_time(device)
 
         # Reset monitoring flags
@@ -562,13 +578,13 @@ class CallLogViewSet(viewsets.ModelViewSet):
     Call Log CRUD and analytics viewset.
 
     Used by the web dashboard to view, filter, and analyze call logs.
-    Access is filtered by role — branch_managers only see their branch.
+    Access is filtered by role â€” branch_managers only see their branch.
 
     Key custom actions:
-        stats          → Aggregate counts and durations.
-        branch_summary → Per-branch breakdown of call types.
-        export_excel   → Download all filtered logs as an Excel file.
-        bulk_delete    → Delete multiple logs (super_admin only).
+        stats          â†’ Aggregate counts and durations.
+        branch_summary â†’ Per-branch breakdown of call types.
+        export_excel   â†’ Download all filtered logs as an Excel file.
+        bulk_delete    â†’ Delete multiple logs (super_admin only).
     """
     filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
     filterset_class = CallLogFilter
@@ -610,8 +626,8 @@ class CallLogViewSet(viewsets.ModelViewSet):
         """
         Return call logs filtered by the user's role and branch access.
 
-        super_admin / admin → See ALL call logs.
-        branch_manager      → See ONLY call logs for their assigned branch.
+        super_admin / admin â†’ See ALL call logs.
+        branch_manager      â†’ See ONLY call logs for their assigned branch.
         """
         if getattr(self, "swagger_fake_view", False):
             return CallLog.objects.none()
@@ -629,10 +645,10 @@ class CallLogViewSet(viewsets.ModelViewSet):
             elif user.branch:
                 queryset = queryset.filter(branch=user.branch)
             else:
-                # No branch assigned → return nothing (prevent data leak)
+                # No branch assigned â†’ return nothing (prevent data leak)
                 return queryset.none()
 
-        # super_admin and admin see all — no filter
+        # super_admin and admin see all â€” no filter
 
         return queryset
 
@@ -850,7 +866,7 @@ class CallLogViewSet(viewsets.ModelViewSet):
             cell.value = header_title
             cell.font = header_font
 
-        # Data rows — using iterator() for memory efficiency (no full queryset load)
+        # Data rows â€” using iterator() for memory efficiency (no full queryset load)
         for row_num, log in enumerate(queryset, 2):
             # Determine the receiver's SIM number based on which SIM handled the call
             receiver = "N/A"
