@@ -8,13 +8,16 @@ reuse the same service layer so React can migrate one panel at a time.
 import logging
 
 from django.db.models import Count, Q
+from rest_framework import exceptions
 from rest_framework import serializers
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.accounts.models import UserDeviceSession
 from apps.calllogs.filters import CallLogFilter
 from apps.calllogs.models import CallLog
+from apps.common.feature_flags import device_sessions_enabled
 from apps.common.utils import get_branch_filter_ids
 from apps.dashboard.services import (
     DashboardAnalyticsService,
@@ -26,18 +29,69 @@ from apps.dashboard.services import (
     DashboardTrendService,
     DashboardUserService,
 )
+from core.authentication import DeviceAuthentication
 from apps.dashboard.services.instrumentation import profile_segment
 from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
 
 logger = logging.getLogger(__name__)
 
 
+def _authenticated_dashboard_device(request):
+    """
+    Resolve the registered Android device for a dashboard request.
+
+    JWT sessions are preferred when they carry a server-recorded device_id. If
+    the deployed app has not bound the JWT session to a device, validate the
+    existing X-Device-ID/X-Device-Secret headers instead. Query params are not
+    used for access control.
+    """
+    auth = getattr(request, "auth", None)
+    if auth and hasattr(auth, "device_id"):
+        return auth
+
+    user = getattr(request, "user", None)
+    if not user or not user.is_authenticated:
+        return None
+
+    if device_sessions_enabled():
+        auth_header = request.META.get("HTTP_AUTHORIZATION", "")
+        parts = auth_header.split()
+        if len(parts) == 2 and parts[0].lower() == "bearer":
+            session = UserDeviceSession.objects.filter(
+                user=user,
+                access_token_hash=UserDeviceSession.hash_token(parts[1]),
+                is_active=True,
+                status=UserDeviceSession.STATUS_ACTIVE,
+            ).order_by("-last_activity", "-last_login").first()
+            if session and session.device_id:
+                from apps.devices.models import Device
+
+                return Device.objects.filter(
+                    device_id=session.device_id,
+                    branch_id=getattr(user, "branch_id", None),
+                    is_registered=True,
+                ).only("id", "device_id", "branch_id").first()
+
+    if request.headers.get("X-Device-ID") or request.headers.get("X-Device-Secret"):
+        try:
+            authenticated = DeviceAuthentication().authenticate(request)
+        except exceptions.AuthenticationFailed:
+            raise
+        if authenticated:
+            device, _ = authenticated
+            if getattr(device, "branch_id", None) == getattr(user, "branch_id", None):
+                return device
+
+    return None
+
+
 class DashboardOverviewView(APIView):
     """
     Returns call type counts for the dashboard overview.
 
-    When ?device=<device_uid> is supplied, counts are scoped to that registered
-    device before aggregation. Without device, branch-level behavior is unchanged.
+    Android SPA-manager requests are scoped to the authenticated registered
+    device before aggregation. Admin/area-manager branch-level behavior is
+    unchanged.
     """
 
     permission_classes = [IsAuthenticated]
@@ -50,7 +104,6 @@ class DashboardOverviewView(APIView):
             OpenApiParameter("start_date", str, description="Format: YYYY-MM-DD"),
             OpenApiParameter("end_date", str, description="Format: YYYY-MM-DD"),
             OpenApiParameter("branch", str, description="Filter by Branch UUID"),
-            OpenApiParameter("device", str, description="Filter by registered device UID"),
             OpenApiParameter("call_type", str, enum=["incoming", "outgoing", "missed", "rejected"]),
             OpenApiParameter("search", str, description="Search by phone number or contact name"),
             OpenApiParameter("ordering", str, description="Ordering parameter retained for compatibility"),
@@ -72,10 +125,18 @@ class DashboardOverviewView(APIView):
         user = request.user
         branch_ids = get_branch_filter_ids(user)
         queryset = CallLog.objects.select_related("branch", "contact", "device")
+        authenticated_device = None
 
-        if branch_ids and branch_ids != ["NONE"]:
+        if getattr(user, "role", None) == "spa_manager":
+            authenticated_device = _authenticated_dashboard_device(request)
+            if authenticated_device:
+                queryset = queryset.filter(device=authenticated_device)
+            else:
+                queryset = queryset.none()
+
+        if not authenticated_device and branch_ids and branch_ids != ["NONE"]:
             queryset = queryset.filter(branch_id__in=branch_ids)
-        elif branch_ids == ["NONE"]:
+        elif not authenticated_device and branch_ids == ["NONE"]:
             queryset = queryset.none()
 
         with profile_segment("dashboard.overview", request):
@@ -90,7 +151,6 @@ class DashboardOverviewView(APIView):
                 rejected=Count("id", filter=Q(call_type="rejected")),
             )
 
-        device_uid = request.query_params.get("device")
         quick_date = request.query_params.get("quick_date")
         start_date = request.query_params.get("start_date")
         end_date = request.query_params.get("end_date")
@@ -99,8 +159,8 @@ class DashboardOverviewView(APIView):
         logger.info(
             "Dashboard Analytics",
             extra={
-                "branch_id": branch_id or branch_ids or None,
-                "device_uid": device_uid.strip() if device_uid else None,
+                "branch_id": getattr(authenticated_device, "branch_id", None) or branch_id or branch_ids or None,
+                "device_uid": getattr(authenticated_device, "device_id", None),
                 "date_filter": quick_date or {"start_date": start_date, "end_date": end_date},
                 "final_record_count": final_record_count,
             },

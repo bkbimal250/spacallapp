@@ -4,6 +4,7 @@ from django.contrib.auth import get_user_model
 from django.urls import reverse
 from django.utils import timezone
 from rest_framework.test import APITestCase
+from rest_framework_simplejwt.tokens import RefreshToken
 
 from apps.branches.models import Branch
 from apps.calllogs.models import CallLog
@@ -107,6 +108,70 @@ class DashboardOverviewDeviceFilterTests(APITestCase):
             "incoming": 1,
             "outgoing": 0,
             "missed": 1,
+            "rejected": 0,
+        })
+
+    def test_android_dashboard_overview_uses_authenticated_device_not_branch_totals(self):
+        User = get_user_model()
+        manager = User.objects.create_user(
+            email="spa-manager@example.com",
+            password="pass1234",
+            full_name="SPA Manager",
+            role="spa_manager",
+            branch=self.branch,
+        )
+        new_device = Device.objects.create(
+            branch=self.branch,
+            device_id="SPA-070F28-F55345",
+            secret_key="new-device-secret",
+            is_registered=True,
+        )
+        token = str(RefreshToken.for_user(manager).access_token)
+
+        response = self.client.get(
+            reverse("dashboard-overview"),
+            {"quick_date": "today"},
+            HTTP_AUTHORIZATION=f"Bearer {token}",
+            HTTP_X_DEVICE_ID=new_device.device_id,
+            HTTP_X_DEVICE_SECRET=new_device.secret_key,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {
+            "total": 0,
+            "incoming": 0,
+            "outgoing": 0,
+            "missed": 0,
+            "rejected": 0,
+        })
+
+    def test_android_dashboard_overview_does_not_trust_device_query_param(self):
+        User = get_user_model()
+        manager = User.objects.create_user(
+            email="spa-manager-query@example.com",
+            password="pass1234",
+            full_name="SPA Manager",
+            role="spa_manager",
+            branch=self.branch,
+        )
+        self.device_a.secret_key = "device-a-secret"
+        self.device_a.save(update_fields=["secret_key"])
+        token = str(RefreshToken.for_user(manager).access_token)
+
+        response = self.client.get(
+            reverse("dashboard-overview"),
+            {"quick_date": "today", "device": self.device_b.device_id},
+            HTTP_AUTHORIZATION=f"Bearer {token}",
+            HTTP_X_DEVICE_ID=self.device_a.device_id,
+            HTTP_X_DEVICE_SECRET=self.device_a.secret_key,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {
+            "total": 0,
+            "incoming": 0,
+            "outgoing": 0,
+            "missed": 0,
             "rejected": 0,
         })
 
