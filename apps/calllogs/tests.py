@@ -92,6 +92,31 @@ class CallLogTimeValidationTests(TestCase):
         self.assertEqual(data["call_time_label"], "Invalid device time")
         self.assertIn("future call time", data["call_time_warning"])
 
+    def test_sync_normalizes_oversized_phone_and_hash_instead_of_rejecting_batch(self):
+        call_time = timezone.now() - timedelta(minutes=2)
+        call_time_ms = int(call_time.timestamp() * 1000)
+        long_phone = "+910123456789012345678901234567890"
+        long_hash = "x" * 96
+
+        response = self.client.post(
+            "/api/v1/calllogs/sync/",
+            [{
+                "phone_number": long_phone,
+                "call_type": "incoming",
+                "duration": 30,
+                "sim_slot": 0,
+                "call_time_ms": call_time_ms,
+                "call_hash": long_hash,
+            }],
+            format="json",
+            **self.headers,
+        )
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.data["created_count"], 1)
+        log = CallLog.objects.get(call_hash=long_hash[:64])
+        self.assertEqual(log.phone_number, long_phone[-20:])
+
 class MissedCallFollowUpTests(TestCase):
     def setUp(self):
         self.group = BranchGroups.objects.create(name="Test Group")

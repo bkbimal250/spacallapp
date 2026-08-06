@@ -94,14 +94,24 @@ class CallLogSyncItemSerializer(serializers.Serializer):
     Validates the Android sync payload without changing the public endpoint.
     The view still owns branch/device assignment and duplicate handling.
     """
-    phone_number = serializers.CharField(max_length=20)
+    phone_number = serializers.CharField(max_length=64)
     call_type = serializers.ChoiceField(choices=["incoming", "outgoing", "missed", "rejected"])
     duration = serializers.IntegerField(min_value=0, default=0)
     sim_slot = serializers.IntegerField(required=False, default=1)
     call_time = serializers.DateTimeField(required=False)
     call_time_ms = serializers.IntegerField(required=False, min_value=0)
-    call_hash = serializers.CharField(max_length=64, required=False, allow_blank=True)
-    client_call_id = serializers.CharField(max_length=128, required=False, allow_blank=True)
+    call_hash = serializers.CharField(max_length=256, required=False, allow_blank=True)
+    client_call_id = serializers.CharField(max_length=256, required=False, allow_blank=True)
+
+    def validate_phone_number(self, value):
+        value = str(value or "").strip()
+        if not value:
+            raise serializers.ValidationError("This field may not be blank.")
+        return value[-20:] if len(value) > 20 else value
+
+    def validate_call_hash(self, value):
+        value = str(value or "").strip()
+        return value[:64] if len(value) > 64 else value
 
     def validate(self, attrs):
         if attrs.get("call_time_ms") is None and attrs.get("call_time") is None:

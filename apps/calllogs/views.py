@@ -339,7 +339,13 @@ class DeviceSyncView(views.APIView):
             diagnostics = _serializer_error_diagnostics(serializer.errors)
             safe_errors = _safe_errors(serializer.errors)
             logger.warning(
-                "Call log sync rejected: serializer validation failed",
+                (
+                    "Call log sync rejected: serializer validation failed "
+                    "invalid_fields=%s invalid_item_count=%s invalid_item_indices=%s"
+                ),
+                diagnostics["invalid_fields"],
+                diagnostics["invalid_item_count"],
+                diagnostics["invalid_item_indices"],
                 extra={
                     **log_context,
                     **_safe_payload_diagnostics(payloads),
