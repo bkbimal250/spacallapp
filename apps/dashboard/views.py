@@ -36,22 +36,40 @@ from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serial
 logger = logging.getLogger(__name__)
 
 
+def _safe_query_sql(queryset):
+    try:
+        return str(queryset.query)
+    except Exception as exc:
+        return f"<unavailable: {exc.__class__.__name__}>"
+
+
 def _authenticated_dashboard_device(request):
     """
     Resolve the registered Android device for a dashboard request.
 
     JWT sessions are preferred when they carry a server-recorded device_id. If
     the deployed app has not bound the JWT session to a device, validate the
-    existing X-Device-ID/X-Device-Secret headers instead. Query params are not
-    used for access control.
+    existing X-Device-ID/X-Device-Secret headers instead. Old APKs may fall
+    back to a validated legacy device query param during migration.
     """
+    diagnostics = {
+        "resolution_source": "NONE",
+        "resolution_failure_reason": "",
+        "session_found": False,
+        "session_has_device_id": False,
+        "has_device_headers": bool(request.headers.get("X-Device-ID") or request.headers.get("X-Device-Secret")),
+        "has_legacy_device_param": bool(request.query_params.get("device")),
+    }
+
     auth = getattr(request, "auth", None)
     if auth and hasattr(auth, "device_id"):
-        return auth
+        diagnostics["resolution_source"] = "AUTH_DEVICE"
+        return auth, diagnostics
 
     user = getattr(request, "user", None)
     if not user or not user.is_authenticated:
-        return None
+        diagnostics["resolution_failure_reason"] = "unauthenticated_user"
+        return None, diagnostics
 
     if device_sessions_enabled():
         auth_header = request.META.get("HTTP_AUTHORIZATION", "")
@@ -63,14 +81,28 @@ def _authenticated_dashboard_device(request):
                 is_active=True,
                 status=UserDeviceSession.STATUS_ACTIVE,
             ).order_by("-last_activity", "-last_login").first()
+            diagnostics["session_found"] = bool(session)
+            diagnostics["session_has_device_id"] = bool(session and session.device_id)
             if session and session.device_id:
                 from apps.devices.models import Device
 
-                return Device.objects.filter(
+                device = Device.objects.filter(
                     device_id=session.device_id,
                     branch_id=getattr(user, "branch_id", None),
                     is_registered=True,
                 ).only("id", "device_id", "branch_id").first()
+                if device:
+                    diagnostics["resolution_source"] = "SESSION_DEVICE"
+                    return device, diagnostics
+                diagnostics["resolution_failure_reason"] = "session_device_not_registered_for_user_branch"
+            elif session:
+                diagnostics["resolution_failure_reason"] = "session_missing_device_id"
+            else:
+                diagnostics["resolution_failure_reason"] = "no_active_session_for_access_token"
+        else:
+            diagnostics["resolution_failure_reason"] = "missing_bearer_token"
+    else:
+        diagnostics["resolution_failure_reason"] = "device_sessions_disabled"
 
     if request.headers.get("X-Device-ID") or request.headers.get("X-Device-Secret"):
         try:
@@ -80,9 +112,31 @@ def _authenticated_dashboard_device(request):
         if authenticated:
             device, _ = authenticated
             if getattr(device, "branch_id", None) == getattr(user, "branch_id", None):
-                return device
+                diagnostics["resolution_source"] = "SIGNED_HEADERS"
+                diagnostics["resolution_failure_reason"] = ""
+                return device, diagnostics
+            diagnostics["resolution_failure_reason"] = "device_header_branch_mismatch"
 
-    return None
+    legacy_device_uid = request.query_params.get("device")
+    if legacy_device_uid and getattr(user, "branch_id", None):
+        from apps.devices.models import Device
+
+        device = Device.objects.filter(
+            device_id=str(legacy_device_uid).strip(),
+            branch_id=user.branch_id,
+            is_registered=True,
+            is_active=True,
+            is_blocked=False,
+        ).only("id", "device_id", "branch_id").first()
+        if device:
+            diagnostics["resolution_source"] = "LEGACY_DEVICE"
+            diagnostics["resolution_failure_reason"] = ""
+            return device, diagnostics
+        diagnostics["resolution_failure_reason"] = "legacy_device_param_not_registered_for_user_branch"
+
+    if not diagnostics["resolution_failure_reason"]:
+        diagnostics["resolution_failure_reason"] = "no_device_context"
+    return None, diagnostics
 
 
 class DashboardOverviewView(APIView):
@@ -126,13 +180,22 @@ class DashboardOverviewView(APIView):
         branch_ids = get_branch_filter_ids(user)
         queryset = CallLog.objects.select_related("branch", "contact", "device")
         authenticated_device = None
+        device_diagnostics = {}
 
         if getattr(user, "role", None) == "spa_manager":
-            authenticated_device = _authenticated_dashboard_device(request)
+            authenticated_device, device_diagnostics = _authenticated_dashboard_device(request)
             if authenticated_device:
                 queryset = queryset.filter(device=authenticated_device)
             else:
-                queryset = queryset.none()
+                logger.warning(
+                    "Dashboard device resolution failed",
+                    extra={
+                        "user_id": str(getattr(user, "id", "")),
+                        "branch_id": str(getattr(user, "branch_id", "")),
+                        **device_diagnostics,
+                    },
+                )
+                raise exceptions.PermissionDenied("Authenticated device could not be resolved.")
 
         if not authenticated_device and branch_ids and branch_ids != ["NONE"]:
             queryset = queryset.filter(branch_id__in=branch_ids)
@@ -159,10 +222,23 @@ class DashboardOverviewView(APIView):
         logger.info(
             "Dashboard Analytics",
             extra={
+                "user_id": str(getattr(user, "id", "")),
                 "branch_id": getattr(authenticated_device, "branch_id", None) or branch_id or branch_ids or None,
                 "device_uid": getattr(authenticated_device, "device_id", None),
+                "resolved_device_id": str(getattr(authenticated_device, "id", "")) if authenticated_device else None,
+                "authenticated_device": bool(authenticated_device),
+                "resolution_source": device_diagnostics.get("resolution_source"),
+                "resolution_failure_reason": device_diagnostics.get("resolution_failure_reason", ""),
                 "date_filter": quick_date or {"start_date": start_date, "end_date": end_date},
+                "dashboard_query_device": str(getattr(authenticated_device, "id", "")) if authenticated_device else None,
+                "dashboard_sql": _safe_query_sql(filtered_qs),
+                "cache_key": None,
+                "cache_used": False,
                 "final_record_count": final_record_count,
+                "incoming": stats["incoming"] or 0,
+                "outgoing": stats["outgoing"] or 0,
+                "missed": stats["missed"] or 0,
+                "rejected": stats["rejected"] or 0,
             },
         )
 

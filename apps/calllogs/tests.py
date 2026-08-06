@@ -453,6 +453,40 @@ class CallLogDeviceScopedListTests(TestCase):
 
         self.assertEqual(self._result_ids(response), set())
 
+    def test_signed_headers_recover_call_logs_for_unbound_android_token(self):
+        user = User.objects.create_user(
+            email="spa-header@example.com",
+            password="password",
+            full_name="SPA Manager",
+            role="spa_manager",
+            branch=self.branch,
+        )
+        token = str(RefreshToken.for_user(user).access_token)
+
+        client = APIClient()
+        client.credentials(
+            HTTP_AUTHORIZATION=f"Bearer {token}",
+            HTTP_X_DEVICE_ID=self.device_a.device_id,
+            HTTP_X_DEVICE_SECRET=self.device_a.secret_key,
+        )
+        response = client.get("/api/v1/calllogs/")
+
+        self.assertEqual(self._result_ids(response), {str(self.device_a_log.id)})
+
+    def test_legacy_device_param_recovers_call_logs_for_old_unbound_token(self):
+        user = User.objects.create_user(
+            email="spa-legacy-calllogs@example.com",
+            password="password",
+            full_name="SPA Manager",
+            role="spa_manager",
+            branch=self.branch,
+        )
+        token = str(RefreshToken.for_user(user).access_token)
+
+        response = self._get_calllogs(token, {"device": self.device_a.device_id})
+
+        self.assertEqual(self._result_ids(response), {str(self.device_a_log.id)})
+
     def test_area_manager_keeps_branch_wide_call_log_access(self):
         user = User.objects.create_user(
             email="area@example.com",

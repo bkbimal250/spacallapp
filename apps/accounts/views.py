@@ -579,7 +579,13 @@ class EnterpriseTokenRefreshView(TokenRefreshView):
         response = super().post(request, *args, **kwargs)
         if response.status_code == status.HTTP_200_OK and old_refresh_token:
             new_refresh_token = response.data.get("refresh") or old_refresh_token
-            session = UserDeviceSessionService.rotate_refresh_token(old_refresh_token, new_refresh_token)
+            new_access_token = response.data.get("access")
+            session = UserDeviceSessionService.rotate_refresh_token(
+                old_refresh_token,
+                new_refresh_token,
+                new_access_token,
+                request.headers.get("X-Device-ID"),
+            )
             if session:
                 session.last_refresh = timezone.now()
                 session.last_activity = timezone.now()

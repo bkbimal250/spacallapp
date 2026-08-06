@@ -175,6 +175,32 @@ class DashboardOverviewDeviceFilterTests(APITestCase):
             "rejected": 0,
         })
 
+    def test_legacy_android_dashboard_device_param_recovers_old_unbound_tokens(self):
+        User = get_user_model()
+        manager = User.objects.create_user(
+            email="spa-manager-legacy@example.com",
+            password="pass1234",
+            full_name="SPA Manager",
+            role="spa_manager",
+            branch=self.branch,
+        )
+        token = str(RefreshToken.for_user(manager).access_token)
+
+        response = self.client.get(
+            reverse("dashboard-overview"),
+            {"quick_date": "today", "device": self.device_a.device_id},
+            HTTP_AUTHORIZATION=f"Bearer {token}",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {
+            "total": 2,
+            "incoming": 1,
+            "outgoing": 0,
+            "missed": 1,
+            "rejected": 0,
+        })
+
     def test_dashboard_summary_returns_only_card_metrics(self):
         self.client.force_authenticate(user=self.user)
         response = self.client.get(reverse("dashboard-summary"), {"quick_date": "today"})

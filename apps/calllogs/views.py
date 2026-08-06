@@ -29,7 +29,7 @@ from django.http import HttpResponse
 from django.utils import timezone
 from django.db.models import Count, Q, Sum, Avg
 from rest_framework import viewsets, permissions, views, response, status, filters
-from rest_framework.exceptions import ParseError
+from rest_framework.exceptions import ParseError, PermissionDenied
 from rest_framework.decorators import action
 from drf_spectacular.utils import extend_schema, OpenApiParameter, inline_serializer
 from rest_framework import serializers
@@ -630,40 +630,97 @@ class CallLogViewSet(viewsets.ModelViewSet):
 
         Device-authenticated requests expose the Device as request.auth. JWT
         requests are resolved through the server-recorded UserDeviceSession for
-        the bearer token, so a client-supplied device query param is never the
-        access-control boundary.
+        the bearer token. New Android builds also send signed device headers.
+        The legacy device query param is accepted only after server-side branch
+        and device-state validation for old APK migration.
         """
+        diagnostics = {
+            "resolution_source": "NONE",
+            "resolution_failure_reason": "",
+            "session_found": False,
+            "session_has_device_id": False,
+            "has_device_headers": bool(self.request.headers.get("X-Device-ID") or self.request.headers.get("X-Device-Secret")),
+            "has_legacy_device_param": bool(self.request.query_params.get("device")),
+        }
+
         auth = getattr(self.request, "auth", None)
         if auth and hasattr(auth, "device_id"):
-            return auth
+            diagnostics["resolution_source"] = "AUTH_DEVICE"
+            return auth, diagnostics
 
         user = getattr(self.request, "user", None)
-        if not user or not user.is_authenticated or not device_sessions_enabled():
-            return None
+        if not user or not user.is_authenticated:
+            diagnostics["resolution_failure_reason"] = "unauthenticated_user"
+            return None, diagnostics
         if getattr(user, "role", None) != "spa_manager":
-            return None
+            diagnostics["resolution_failure_reason"] = "not_android_spa_manager"
+            return None, diagnostics
 
-        auth_header = self.request.META.get("HTTP_AUTHORIZATION", "")
-        parts = auth_header.split()
-        if len(parts) != 2 or parts[0].lower() != "bearer":
-            return None
+        if device_sessions_enabled():
+            auth_header = self.request.META.get("HTTP_AUTHORIZATION", "")
+            parts = auth_header.split()
+            if len(parts) == 2 and parts[0].lower() == "bearer":
+                session = UserDeviceSession.objects.filter(
+                    user=user,
+                    access_token_hash=UserDeviceSession.hash_token(parts[1]),
+                    is_active=True,
+                    status=UserDeviceSession.STATUS_ACTIVE,
+                ).order_by("-last_activity", "-last_login").first()
+                diagnostics["session_found"] = bool(session)
+                diagnostics["session_has_device_id"] = bool(session and session.device_id)
+                if session and session.device_id:
+                    from apps.devices.models import Device
 
-        session = UserDeviceSession.objects.filter(
-            user=user,
-            access_token_hash=UserDeviceSession.hash_token(parts[1]),
-            is_active=True,
-            status=UserDeviceSession.STATUS_ACTIVE,
-        ).order_by("-last_activity", "-last_login").first()
-        if not session or not session.device_id:
-            return None
+                    device = Device.objects.filter(
+                        device_id=session.device_id,
+                        branch_id=getattr(user, "branch_id", None),
+                        is_registered=True,
+                        is_active=True,
+                        is_blocked=False,
+                    ).only("id", "device_id", "branch_id").first()
+                    if device:
+                        diagnostics["resolution_source"] = "SESSION_DEVICE"
+                        return device, diagnostics
+                    diagnostics["resolution_failure_reason"] = "session_device_not_registered_for_user_branch"
+                elif session:
+                    diagnostics["resolution_failure_reason"] = "session_missing_device_id"
+                else:
+                    diagnostics["resolution_failure_reason"] = "no_active_session_for_access_token"
+            else:
+                diagnostics["resolution_failure_reason"] = "missing_bearer_token"
+        else:
+            diagnostics["resolution_failure_reason"] = "device_sessions_disabled"
 
-        from apps.devices.models import Device
+        if self.request.headers.get("X-Device-ID") or self.request.headers.get("X-Device-Secret"):
+            authenticated = DeviceAuthentication().authenticate(self.request)
+            if authenticated:
+                device, _ = authenticated
+                if getattr(device, "branch_id", None) == getattr(user, "branch_id", None):
+                    diagnostics["resolution_source"] = "SIGNED_HEADERS"
+                    diagnostics["resolution_failure_reason"] = ""
+                    return device, diagnostics
+                diagnostics["resolution_failure_reason"] = "device_header_branch_mismatch"
 
-        return Device.objects.filter(
-            device_id=session.device_id,
-            branch_id=getattr(user, "branch_id", None),
-            is_registered=True,
-        ).only("id", "device_id", "branch_id").first()
+        legacy_device_uid = self.request.query_params.get("device")
+        if legacy_device_uid and getattr(user, "branch_id", None):
+            from apps.devices.models import Device
+
+            device = Device.objects.filter(
+                device_id=str(legacy_device_uid).strip(),
+                branch_id=user.branch_id,
+                is_registered=True,
+                is_active=True,
+                is_blocked=False,
+            ).only("id", "device_id", "branch_id").first()
+            if device:
+                diagnostics["resolution_source"] = "LEGACY_DEVICE"
+                diagnostics["resolution_failure_reason"] = ""
+                return device, diagnostics
+            diagnostics["resolution_failure_reason"] = "legacy_device_param_not_registered_for_user_branch"
+
+        if not diagnostics["resolution_failure_reason"]:
+            diagnostics["resolution_failure_reason"] = "no_device_context"
+        return None, diagnostics
 
     def get_queryset(self):
         """
@@ -681,7 +738,7 @@ class CallLogViewSet(viewsets.ModelViewSet):
         related = ["branch", "contact", "lead", "followup_status", "device"]
         queryset = CallLog.objects.select_related(*related).order_by("-call_time")
 
-        authenticated_device = self._authenticated_device()
+        authenticated_device, device_diagnostics = self._authenticated_device()
         if authenticated_device:
             return queryset.filter(device=authenticated_device)
 
@@ -690,10 +747,15 @@ class CallLogViewSet(viewsets.ModelViewSet):
             if user.role == "area_manager":
                 queryset = apply_branch_filter(queryset, "branch_id", user)
             elif user.branch:
-                # Android SPA manager sessions must resolve to a registered
-                # device. Without that server-side association, return nothing
-                # rather than falling back to branch-wide call logs.
-                return queryset.none()
+                logger.warning(
+                    "Call log device resolution failed",
+                    extra={
+                        "user_id": str(getattr(user, "id", "")),
+                        "branch_id": str(getattr(user, "branch_id", "")),
+                        **device_diagnostics,
+                    },
+                )
+                raise PermissionDenied("Authenticated device could not be resolved.")
             else:
                 # No branch assigned â†’ return nothing (prevent data leak)
                 return queryset.none()

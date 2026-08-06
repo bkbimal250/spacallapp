@@ -1,8 +1,12 @@
+import logging
+
 from django.utils import timezone
 
 from apps.common.feature_flags import device_sessions_enabled
 
 from ..models.device_session import UserDeviceSession
+
+logger = logging.getLogger(__name__)
 
 
 class UserDeviceSessionService:
@@ -19,10 +23,31 @@ class UserDeviceSessionService:
             return None
 
         data = request.data if hasattr(request, "data") else {}
+        device_id = str(data.get("device_id") or "").strip()
+        if device_id:
+            from apps.devices.models import Device
+
+            device_exists = Device.objects.filter(
+                device_id=device_id,
+                branch_id=getattr(user, "branch_id", None),
+                is_registered=True,
+                is_active=True,
+                is_blocked=False,
+            ).only("id").exists()
+            if not device_exists:
+                logger.warning(
+                    "UserDeviceSession login device binding rejected",
+                    extra={
+                        "user_id": str(getattr(user, "id", "")),
+                        "branch_id": str(getattr(user, "branch_id", "")),
+                        "device_id": device_id,
+                    },
+                )
+                device_id = ""
         now = timezone.now()
         return UserDeviceSession.objects.create(
             user=user,
-            device_id=str(data.get("device_id") or ""),
+            device_id=device_id,
             device_name=str(data.get("device_name") or ""),
             platform=str(data.get("platform") or data.get("client") or ""),
             manufacturer=str(data.get("manufacturer") or ""),
@@ -50,7 +75,7 @@ class UserDeviceSessionService:
         )
 
     @staticmethod
-    def rotate_refresh_token(old_refresh_token, new_refresh_token):
+    def rotate_refresh_token(old_refresh_token, new_refresh_token, new_access_token=None, device_id=None):
         if not device_sessions_enabled():
             return None
 
@@ -60,5 +85,31 @@ class UserDeviceSessionService:
             return None
 
         session.refresh_token_hash = UserDeviceSession.hash_token(new_refresh_token)
-        session.save(update_fields=["refresh_token_hash", "updated_at"])
+        update_fields = ["refresh_token_hash", "updated_at"]
+        if new_access_token:
+            session.access_token_hash = UserDeviceSession.hash_token(new_access_token)
+            update_fields.append("access_token_hash")
+        if device_id and not session.device_id:
+            from apps.devices.models import Device
+
+            device = Device.objects.filter(
+                device_id=str(device_id).strip(),
+                branch_id=getattr(session.user, "branch_id", None),
+                is_registered=True,
+                is_active=True,
+                is_blocked=False,
+            ).only("id").first()
+            if device:
+                session.device_id = str(device_id).strip()
+                update_fields.append("device_id")
+            else:
+                logger.warning(
+                    "UserDeviceSession refresh device binding rejected",
+                    extra={
+                        "user_id": str(getattr(session.user, "id", "")),
+                        "branch_id": str(getattr(session.user, "branch_id", "")),
+                        "device_id": str(device_id).strip(),
+                    },
+                )
+        session.save(update_fields=update_fields)
         return session

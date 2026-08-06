@@ -45,6 +45,7 @@ class LoginSerializer(serializers.Serializer):
     email = serializers.EmailField()
     password = serializers.CharField(write_only=True)
     client = serializers.CharField(required=False, default="android")
+    device_id = serializers.CharField(required=False, allow_blank=True)
 
 
 class OTPRequestSerializer(serializers.Serializer):
@@ -57,6 +58,7 @@ class OTPVerifySerializer(serializers.Serializer):
     email = serializers.EmailField()
     otp = serializers.CharField(max_length=6)
     client = serializers.CharField(required=False, default="android")
+    device_id = serializers.CharField(required=False, allow_blank=True)
 
 
 class PhoneOTPRequestSerializer(serializers.Serializer):
@@ -77,6 +79,7 @@ class PhoneOTPVerifySerializer(serializers.Serializer):
     phone_number = serializers.CharField(max_length=20)
     otp = serializers.CharField(max_length=6)
     client = serializers.CharField(required=False, default="android")
+    device_id = serializers.CharField(required=False, allow_blank=True)
 
     def validate_phone_number(self, value):
         normalized = User.normalize_phone_number(value)
