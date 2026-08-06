@@ -50,6 +50,8 @@ from .serializers import (
 )
 from core.authentication import DeviceAuthentication
 from core.permissions import IsDevice
+from apps.accounts.models import UserDeviceSession
+from apps.common.feature_flags import device_sessions_enabled
 from apps.common.permissions import IsSuperAdmin
 from apps.common.utils import apply_branch_filter
 from apps.devices.services import DeviceService
@@ -622,6 +624,47 @@ class CallLogViewSet(viewsets.ModelViewSet):
             return [permissions.IsAuthenticated(), IsSuperAdmin()]
         return [permissions.IsAuthenticated()]
 
+    def _authenticated_device(self):
+        """
+        Resolve the Android Device bound to this authenticated request.
+
+        Device-authenticated requests expose the Device as request.auth. JWT
+        requests are resolved through the server-recorded UserDeviceSession for
+        the bearer token, so a client-supplied device query param is never the
+        access-control boundary.
+        """
+        auth = getattr(self.request, "auth", None)
+        if auth and hasattr(auth, "device_id"):
+            return auth
+
+        user = getattr(self.request, "user", None)
+        if not user or not user.is_authenticated or not device_sessions_enabled():
+            return None
+        if getattr(user, "role", None) != "spa_manager":
+            return None
+
+        auth_header = self.request.META.get("HTTP_AUTHORIZATION", "")
+        parts = auth_header.split()
+        if len(parts) != 2 or parts[0].lower() != "bearer":
+            return None
+
+        session = UserDeviceSession.objects.filter(
+            user=user,
+            access_token_hash=UserDeviceSession.hash_token(parts[1]),
+            is_active=True,
+            status=UserDeviceSession.STATUS_ACTIVE,
+        ).order_by("-last_activity", "-last_login").first()
+        if not session or not session.device_id:
+            return None
+
+        from apps.devices.models import Device
+
+        return Device.objects.filter(
+            device_id=session.device_id,
+            branch_id=getattr(user, "branch_id", None),
+            is_registered=True,
+        ).only("id", "device_id", "branch_id").first()
+
     def get_queryset(self):
         """
         Return call logs filtered by the user's role and branch access.
@@ -638,12 +681,19 @@ class CallLogViewSet(viewsets.ModelViewSet):
         related = ["branch", "contact", "lead", "followup_status", "device"]
         queryset = CallLog.objects.select_related(*related).order_by("-call_time")
 
+        authenticated_device = self._authenticated_device()
+        if authenticated_device:
+            return queryset.filter(device=authenticated_device)
+
         # SPA manager: strict filter to single assigned branch
         if user.is_authenticated and hasattr(user, 'role') and user.role in ["spa_manager", "area_manager"]:
             if user.role == "area_manager":
                 queryset = apply_branch_filter(queryset, "branch_id", user)
             elif user.branch:
-                queryset = queryset.filter(branch=user.branch)
+                # Android SPA manager sessions must resolve to a registered
+                # device. Without that server-side association, return nothing
+                # rather than falling back to branch-wide call logs.
+                return queryset.none()
             else:
                 # No branch assigned â†’ return nothing (prevent data leak)
                 return queryset.none()

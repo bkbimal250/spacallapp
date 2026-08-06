@@ -3,6 +3,8 @@ from django.utils import timezone
 from datetime import datetime, timedelta, timezone as datetime_timezone
 from unittest.mock import patch
 from rest_framework.test import APIClient
+from rest_framework_simplejwt.tokens import RefreshToken
+from apps.accounts.models import User, UserDeviceSession
 from apps.branches.models import Branch, BranchGroups
 from apps.devices.models import Device
 from apps.calllogs.models import CallLog, MissedCallFollowUp
@@ -344,3 +346,126 @@ class CallLogSimFilterTests(TestCase):
         ).qs
 
         self.assertEqual(set(results), {self.sim1_log, self.sim2_log})
+
+
+class CallLogDeviceScopedListTests(TestCase):
+    def setUp(self):
+        self.branch = Branch.objects.create(
+            spa_name="Navi Mumbai",
+            code="NM-01",
+            city="Navi Mumbai",
+            state="Maharashtra",
+            postal_code=400703,
+            address="Test address",
+        )
+        self.other_branch = Branch.objects.create(
+            spa_name="Pune",
+            code="PN-01",
+            city="Pune",
+            state="Maharashtra",
+            postal_code=411001,
+            address="Other address",
+        )
+        self.device_a = Device.objects.create(
+            branch=self.branch,
+            device_id="SPA-NM-A",
+            secret_key="secret-a",
+            is_registered=True,
+        )
+        self.device_b = Device.objects.create(
+            branch=self.branch,
+            device_id="SPA-NM-B",
+            secret_key="secret-b",
+            is_registered=True,
+        )
+        self.other_device = Device.objects.create(
+            branch=self.other_branch,
+            device_id="SPA-PN-C",
+            secret_key="secret-c",
+            is_registered=True,
+        )
+        self.device_a_log = self._create_log(self.device_a, "device-a-call")
+        self.device_b_log = self._create_log(self.device_b, "device-b-call")
+        self.other_log = self._create_log(self.other_device, "other-branch-call")
+
+    def _create_log(self, device, call_hash):
+        return CallLog.objects.create(
+            branch=device.branch,
+            device=device,
+            phone_number="9876543210",
+            call_type="incoming",
+            duration=30,
+            sim_slot=1,
+            call_time=timezone.now(),
+            call_hash=call_hash,
+        )
+
+    def _jwt_for_user(self, user, device_id="", platform="android"):
+        refresh = RefreshToken.for_user(user)
+        access_token = str(refresh.access_token)
+        UserDeviceSession.objects.create(
+            user=user,
+            device_id=device_id,
+            platform=platform,
+            access_token_hash=UserDeviceSession.hash_token(access_token),
+            refresh_token_hash=UserDeviceSession.hash_token(str(refresh)),
+            is_active=True,
+            status=UserDeviceSession.STATUS_ACTIVE,
+            last_login=timezone.now(),
+            last_activity=timezone.now(),
+        )
+        return access_token
+
+    def _get_calllogs(self, token, params=None):
+        client = APIClient()
+        client.credentials(HTTP_AUTHORIZATION=f"Bearer {token}")
+        return client.get("/api/v1/calllogs/", params or {})
+
+    def _result_ids(self, response):
+        self.assertEqual(response.status_code, 200)
+        return {item["id"] for item in response.data["results"]}
+
+    def test_android_spa_manager_sees_only_authenticated_session_device_calls(self):
+        user = User.objects.create_user(
+            email="spa@example.com",
+            password="password",
+            full_name="SPA Manager",
+            role="spa_manager",
+            branch=self.branch,
+        )
+        token = self._jwt_for_user(user, device_id=self.device_a.device_id)
+
+        response = self._get_calllogs(token)
+
+        self.assertEqual(self._result_ids(response), {str(self.device_a_log.id)})
+
+    def test_client_device_filter_cannot_widen_android_session_scope(self):
+        user = User.objects.create_user(
+            email="spa-filter@example.com",
+            password="password",
+            full_name="SPA Manager",
+            role="spa_manager",
+            branch=self.branch,
+        )
+        token = self._jwt_for_user(user, device_id=self.device_a.device_id)
+
+        response = self._get_calllogs(token, {"device": self.device_b.device_id})
+
+        self.assertEqual(self._result_ids(response), set())
+
+    def test_area_manager_keeps_branch_wide_call_log_access(self):
+        user = User.objects.create_user(
+            email="area@example.com",
+            password="password",
+            full_name="Area Manager",
+            role="area_manager",
+        )
+        user.area_branches.add(self.branch)
+        token = self._jwt_for_user(user, device_id=self.device_a.device_id, platform="web")
+
+        response = self._get_calllogs(token)
+
+        self.assertEqual(
+            self._result_ids(response),
+            {str(self.device_a_log.id), str(self.device_b_log.id)},
+        )
