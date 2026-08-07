@@ -224,7 +224,7 @@ ENABLE_SQL_PROFILING = env.bool("ENABLE_SQL_PROFILING", default=False)
 ENABLE_API_OBSERVABILITY = env.bool("ENABLE_API_OBSERVABILITY", default=True)
 API_OBSERVABILITY_PATH_PREFIXES = env.list(
     "API_OBSERVABILITY_PATH_PREFIXES",
-    default=["/api/v1/dashboard/", "/api/v2/dashboard/"],
+    default=[ "/api/v2/dashboard/","/api/v1/dashboard/"],
 )
 API_SLOW_QUERY_THRESHOLD_MS = env.int("API_SLOW_QUERY_THRESHOLD_MS", default=500)
 API_METRIC_RETENTION_DAYS = env.int("API_METRIC_RETENTION_DAYS", default=14)
