@@ -198,7 +198,7 @@ AUTH_USER_MODEL = "accounts.User"
 # REST Framework settings
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (
-        "rest_framework_simplejwt.authentication.JWTAuthentication",
+        "core.authentication.SessionAwareJWTAuthentication",
     ),
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
     "DEFAULT_PAGINATION_CLASS": "core.pagination.StandardResultsSetPagination",
@@ -230,8 +230,8 @@ API_SLOW_QUERY_THRESHOLD_MS = env.int("API_SLOW_QUERY_THRESHOLD_MS", default=500
 API_METRIC_RETENTION_DAYS = env.int("API_METRIC_RETENTION_DAYS", default=14)
 
 SIMPLE_JWT = {
-    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=env.int("JWT_ACCESS_TOKEN_LIFETIME_MINUTES", default=1440)),
-    "REFRESH_TOKEN_LIFETIME": timedelta(days=env.int("JWT_REFRESH_TOKEN_LIFETIME_DAYS", default=365)),
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=env.int("JWT_ACCESS_TOKEN_LIFETIME_MINUTES", default=52560000)),
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=env.int("JWT_REFRESH_TOKEN_LIFETIME_DAYS", default=36500)),
     "ROTATE_REFRESH_TOKENS": ENABLE_REFRESH_ROTATION,
     "BLACKLIST_AFTER_ROTATION": ENABLE_REFRESH_ROTATION,
     "UPDATE_LAST_LOGIN": True,

@@ -39,6 +39,61 @@ def _auth_failed(message, code, context):
     })
 
 
+class SessionAwareJWTAuthentication(authentication.BaseAuthentication):
+    """
+    JWT auth backed by UserDeviceSession when a login-created session exists.
+
+    JWTs still carry an exp claim, but the project uses very long lifetimes so
+    users stay signed in across web and Android. Logout revokes the server-side
+    session, and this authenticator rejects that access token immediately.
+    """
+
+    def authenticate(self, request):
+        from rest_framework_simplejwt.authentication import JWTAuthentication
+
+        jwt_auth = JWTAuthentication()
+        result = jwt_auth.authenticate(request)
+        if result is None:
+            return None
+
+        user, validated_token = result
+        if not getattr(user, "is_authenticated", False):
+            return result
+
+        from apps.accounts.models import UserDeviceSession
+        from apps.common.feature_flags import device_sessions_enabled
+
+        if not device_sessions_enabled():
+            return result
+
+        header = jwt_auth.get_header(request)
+        raw_token = jwt_auth.get_raw_token(header)
+        token_hash = UserDeviceSession.hash_token(raw_token.decode("utf-8") if isinstance(raw_token, bytes) else raw_token)
+        session = UserDeviceSession.objects.filter(
+            user=user,
+            access_token_hash=token_hash,
+        ).only("id", "is_active", "status").first()
+
+        # Preserve older/manually minted JWTs that do not have a corresponding
+        # session row. Normal web and Android logins always record one.
+        if session is None:
+            return result
+
+        if not session.is_active or session.status != UserDeviceSession.STATUS_ACTIVE:
+            raise exceptions.AuthenticationFailed({
+                "detail": "Session has been logged out.",
+                "error": "Session has been logged out.",
+                "code": "session_revoked",
+            })
+
+        return result
+
+    def authenticate_header(self, request):
+        from rest_framework_simplejwt.authentication import JWTAuthentication
+
+        return JWTAuthentication().authenticate_header(request)
+
+
 class DeviceAuthentication(authentication.BaseAuthentication):
     """
     Authenticate Android devices via X-Device-ID and X-Device-Secret headers.
