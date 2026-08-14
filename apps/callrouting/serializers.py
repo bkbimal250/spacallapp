@@ -28,6 +28,10 @@ class BranchSnapshotSerializer(serializers.Serializer):
     city = serializers.CharField(read_only=True)
     area = serializers.CharField(read_only=True)
     state = serializers.CharField(read_only=True)
+    phone = serializers.SerializerMethodField()
+
+    def get_phone(self, obj):
+        return obj.phone or ""
 
 
 class RoutingRuleSerializer(serializers.ModelSerializer):
@@ -98,14 +102,18 @@ class RoutingEventSerializer(serializers.ModelSerializer):
 
 class RoutingWhatsAppMessageSerializer(serializers.ModelSerializer):
     recipient_phone_masked = serializers.SerializerMethodField()
+    provider = serializers.SerializerMethodField()
+    language_label = serializers.SerializerMethodField()
 
     class Meta:
         model = RoutingWhatsAppMessage
         fields = [
             "id",
             "recipient_phone_masked",
+            "provider",
             "template_name",
             "template_language",
+            "language_label",
             "template_payload",
             "provider_message_id",
             "status",
@@ -123,6 +131,12 @@ class RoutingWhatsAppMessageSerializer(serializers.ModelSerializer):
     def get_recipient_phone_masked(self, obj):
         return mask_phone(obj.recipient_phone)
 
+    def get_provider(self, obj):
+        return "DoubleTick"
+
+    def get_language_label(self, obj):
+        return {"en": "English"}.get(obj.template_language, obj.template_language or "")
+
 
 class RoutingRequestListSerializer(serializers.ModelSerializer):
     customer_name = serializers.SerializerMethodField()
@@ -139,7 +153,11 @@ class RoutingRequestListSerializer(serializers.ModelSerializer):
             "id",
             "call_log_id",
             "lead_id",
+            "source_branch_id",
+            "source_device_id",
+            "routing_rule_id",
             "created_at",
+            "updated_at",
             "call_time",
             "completed_at",
             "customer_name",
@@ -175,9 +193,12 @@ class RoutingRequestListSerializer(serializers.ModelSerializer):
                 "id": str(candidate.branch_id),
                 "name": candidate.branch.spa_name,
                 "rank": candidate.rank,
+                "code": candidate.branch.code,
+                "location": ", ".join(part for part in [candidate.branch.area, candidate.branch.city] if part),
+                "phone": candidate.branch.phone or "",
             }
             for candidate in candidates
-            if candidate.is_selected and candidate.branch_id
+            if candidate.is_selected and candidate.is_eligible and candidate.branch_id
         ]
 
     def get_whatsapp_status(self, obj):
@@ -218,13 +239,19 @@ class RoutingRequestDetailSerializer(RoutingRequestListSerializer):
         return {
             "id": str(call_log.id),
             "phone_masked": mask_phone(call_log.phone_number),
+            "phone_normalized": call_log.phone_normalized,
             "call_type": call_log.call_type,
             "duration": call_log.duration,
             "sim_slot": call_log.sim_slot,
             "call_time": call_log.call_time,
+            "device_reported_call_time": call_log.device_reported_call_time,
+            "is_time_invalid": call_log.is_time_invalid,
+            "invalid_time_reason": call_log.invalid_time_reason,
             "device_id": str(call_log.device_id) if call_log.device_id else "",
             "device_uid": getattr(call_log.device, "device_id", ""),
             "phone_name": getattr(call_log.device, "phone_name", ""),
+            "created_at": call_log.created_at,
+            "updated_at": call_log.updated_at,
         }
 
     def get_contact(self, obj):

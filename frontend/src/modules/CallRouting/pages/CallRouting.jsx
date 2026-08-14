@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { BarChart3, Eye, FileText, GitBranch, RefreshCw, Search, SlidersHorizontal, X } from 'lucide-react';
+import { useSelector } from 'react-redux';
+import { AlertTriangle, BarChart3, Eye, FileText, GitBranch, RefreshCw, Search, SlidersHorizontal, Trash2, X } from 'lucide-react';
 import Badge from '../../../shared/components/Badge';
 import Button from '../../../shared/components/Button';
 import Input from '../../../shared/components/Input';
@@ -36,12 +37,15 @@ const StatusBadge = ({ value }) => (
 );
 
 const CallRouting = () => {
+    const { user } = useSelector((state) => state.auth);
     const [activeTab, setActiveTab] = useState('requests');
     const [requests, setRequests] = useState([]);
     const [rules, setRules] = useState([]);
     const [summary, setSummary] = useState(null);
+    const [integrationStatus, setIntegrationStatus] = useState(null);
     const [loading, setLoading] = useState(false);
     const [detailLoading, setDetailLoading] = useState(false);
+    const [deletingId, setDeletingId] = useState('');
     const [selectedRequest, setSelectedRequest] = useState(null);
     const [page, setPage] = useState(1);
     const [totalCount, setTotalCount] = useState(0);
@@ -65,6 +69,9 @@ const CallRouting = () => {
         });
         return clean;
     }, [filters, page]);
+
+    const normalizedRole = String(user?.role || '').toLowerCase();
+    const canDelete = normalizedRole === 'admin' || normalizedRole === 'super_admin';
 
     const fetchRequests = useCallback(async () => {
         setLoading(true);
@@ -95,6 +102,16 @@ const CallRouting = () => {
         }
     }, []);
 
+    const fetchIntegrationStatus = useCallback(async () => {
+        try {
+            const response = await callRoutingAPI.getIntegrationStatus();
+            setIntegrationStatus(response.data || null);
+        } catch (error) {
+            console.error('Failed to fetch call routing integration status', error);
+            setIntegrationStatus(null);
+        }
+    }, []);
+
     useEffect(() => {
         const timeout = window.setTimeout(() => {
             setPage(1);
@@ -109,7 +126,8 @@ const CallRouting = () => {
 
     useEffect(() => {
         fetchRules();
-    }, [fetchRules]);
+        fetchIntegrationStatus();
+    }, [fetchRules, fetchIntegrationStatus]);
 
     const updateFilter = (key, value) => {
         setPage(1);
@@ -141,6 +159,25 @@ const CallRouting = () => {
             console.error('Failed to fetch routing request detail', error);
         } finally {
             setDetailLoading(false);
+        }
+    };
+
+    const deleteRequest = async (request) => {
+        if (!canDelete || !request?.id) return;
+        const confirmed = window.confirm(`Delete routing request ${compactId(request.id)}? This removes routing audit records only and keeps the original CallLog/Lead.`);
+        if (!confirmed) return;
+        setDeletingId(request.id);
+        try {
+            await callRoutingAPI.deleteRequest(request.id);
+            if (selectedRequest?.id === request.id) {
+                setSelectedRequest(null);
+            }
+            await fetchRequests();
+        } catch (error) {
+            console.error('Failed to delete routing request', error);
+            window.alert('Delete failed. Check permissions and try again.');
+        } finally {
+            setDeletingId('');
         }
     };
 
@@ -184,6 +221,10 @@ const CallRouting = () => {
                 <SummaryGrid summary={summary} loading={loading} />
             )}
 
+            {(activeTab === 'overview' || activeTab === 'requests') && (
+                <IntegrationStatusPanel status={integrationStatus} />
+            )}
+
             {activeTab === 'requests' && (
                 <>
                     <RequestFilters
@@ -194,7 +235,7 @@ const CallRouting = () => {
                         updateFilter={updateFilter}
                         resetFilters={resetFilters}
                     />
-                    <RequestTable rows={requests} loading={loading} onOpen={openRequest} />
+                    <RequestTable rows={requests} loading={loading} onOpen={openRequest} onDelete={deleteRequest} canDelete={canDelete} deletingId={deletingId} />
                     <Pagination currentPage={page} totalPages={totalPages} onPageChange={setPage} totalCount={totalCount} pageSize={PAGE_SIZE} />
                 </>
             )}
@@ -203,7 +244,7 @@ const CallRouting = () => {
             {activeTab === 'analytics' && <AnalyticsPanel summary={summary} />}
 
             {selectedRequest && (
-                <RequestDetailDrawer request={selectedRequest} loading={detailLoading} onClose={() => setSelectedRequest(null)} />
+                <RequestDetailDrawer request={selectedRequest} loading={detailLoading} onClose={() => setSelectedRequest(null)} onDelete={deleteRequest} canDelete={canDelete} deletingId={deletingId} />
             )}
         </div>
     );
@@ -229,6 +270,36 @@ const SummaryGrid = ({ summary, loading }) => {
                     <p className="mt-2 text-2xl font-semibold text-text-primary">{loading ? '-' : value ?? 0}</p>
                 </div>
             ))}
+        </div>
+    );
+};
+
+const IntegrationStatusPanel = ({ status }) => {
+    const items = [
+        ['Provider', status?.provider || 'DoubleTick'],
+        ['Template', status?.template_name || 'night_spa_recommendation'],
+        ['Language', status?.template_language_label || 'English'],
+        ['Endpoint', status?.endpoint || '/whatsapp/message/template'],
+        ['API Key', status?.api_key_configured ? 'Configured' : 'Missing'],
+        ['WABA Sender', status?.waba_sender_configured ? 'Configured' : 'Missing'],
+        ['Routing', status?.enable_call_routing ? 'Enabled' : 'Disabled'],
+        ['WhatsApp Send', status?.enable_call_routing_whatsapp && !status?.call_routing_dry_run ? 'Live' : 'Safe / Dry Run'],
+    ];
+
+    return (
+        <div className="rounded-lg border border-border bg-card p-4">
+            <div className="mb-3 flex items-center gap-2">
+                <AlertTriangle size={16} className={status?.api_key_configured && status?.waba_sender_configured ? 'text-success' : 'text-warning'} />
+                <h2 className="text-sm font-semibold uppercase text-text-secondary">Integration Status</h2>
+            </div>
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-8">
+                {items.map(([label, value]) => (
+                    <div key={label} className="rounded-lg bg-background p-3">
+                        <p className="text-xs text-text-secondary">{label}</p>
+                        <p className="mt-1 break-words text-sm font-medium text-text-primary">{value}</p>
+                    </div>
+                ))}
+            </div>
         </div>
     );
 };
@@ -278,7 +349,7 @@ const Select = ({ label, value, options, labels = {}, onChange }) => (
     </label>
 );
 
-const RequestTable = ({ rows, loading, onOpen }) => (
+const RequestTable = ({ rows, loading, onOpen, onDelete, canDelete, deletingId }) => (
     <div className="overflow-hidden rounded-lg border border-border bg-card">
         <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-border text-sm">
@@ -309,10 +380,24 @@ const RequestTable = ({ rows, loading, onOpen }) => (
                             <td className="px-4 py-3 min-w-48">{(row.selected_spas || []).map((spa) => spa.name).join(', ') || 'None'}</td>
                             <td className="px-4 py-3"><StatusBadge value={row.whatsapp_status} /></td>
                             <td className="px-4 py-3">
+                                <div className="flex flex-wrap gap-2">
                                 <Button variant="ghost" size="sm" className="gap-2" onClick={() => onOpen(row.id)}>
                                     <Eye size={15} />
                                     View
                                 </Button>
+                                <Button
+                                    variant="danger"
+                                    size="sm"
+                                    className="gap-2"
+                                    onClick={() => onDelete(row)}
+                                    loading={deletingId === row.id}
+                                    disabled={!canDelete}
+                                    title={canDelete ? 'Delete routing request' : 'Only admin and super admin can delete'}
+                                >
+                                    <Trash2 size={15} />
+                                    Delete
+                                </Button>
+                                </div>
                             </td>
                         </tr>
                     ))}
@@ -366,7 +451,7 @@ const MetricLine = ({ label, value }) => (
     </div>
 );
 
-const RequestDetailDrawer = ({ request, onClose }) => (
+const RequestDetailDrawer = ({ request, onClose, onDelete, canDelete, deletingId }) => (
     <div className="fixed inset-0 z-50 flex justify-end bg-black/40">
         <aside className="h-full w-full max-w-5xl overflow-y-auto bg-background shadow-xl">
             <div className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-background px-5 py-4">
@@ -374,29 +459,52 @@ const RequestDetailDrawer = ({ request, onClose }) => (
                     <h2 className="text-lg font-semibold text-text-primary">Routing Request {compactId(request.id)}</h2>
                     <p className="text-sm text-text-secondary">{formatDate(request.call_time || request.created_at)}</p>
                 </div>
-                <Button variant="ghost" size="sm" onClick={onClose} aria-label="Close detail">
-                    <X size={18} />
-                </Button>
+                <div className="flex items-center gap-2">
+                    {canDelete && (
+                        <Button variant="danger" size="sm" className="gap-2" onClick={() => onDelete(request)} loading={deletingId === request.id}>
+                            <Trash2 size={16} />
+                            Delete
+                        </Button>
+                    )}
+                    <Button variant="ghost" size="sm" onClick={onClose} aria-label="Close detail">
+                        <X size={18} />
+                    </Button>
+                </div>
             </div>
             <div className="space-y-4 p-5">
                 <DetailSection title="Customer & Original Enquiry">
                     <InfoGrid items={[
+                        ['Routing Request ID', request.id],
+                        ['CallLog ID', request.call_log_id],
+                        ['Lead ID', request.lead_id],
                         ['Customer', request.customer_name],
                         ['Phone', request.phone_masked],
                         ['Call Type', request.call_log?.call_type],
                         ['Duration', `${request.call_log?.duration || 0}s`],
+                        ['SIM Slot', request.call_log?.sim_slot],
                         ['Device', request.call_log?.phone_name || request.call_log?.device_uid],
+                        ['Device ID', request.call_log?.device_id],
+                        ['Device UID', request.call_log?.device_uid],
                         ['Lead Status', request.lead?.status || 'No lead'],
+                        ['Lead Booking Date', request.lead?.booking_date],
                     ]} />
                 </DetailSection>
                 <DetailSection title="Source Spa & Routing Decision">
                     <InfoGrid items={[
+                        ['Source Branch ID', request.source_branch_id],
                         ['Source Spa', request.source_branch?.spa_name],
+                        ['Source Code', request.source_branch?.code],
                         ['Location', request.location],
                         ['Source Status', request.source_branch_open === null ? 'Unknown' : request.source_branch_open ? 'Open' : 'Closed'],
+                        ['Open Checked At', formatDate(request.source_open_checked_at)],
+                        ['Routing Rule ID', request.routing_rule_id],
                         ['Routing Rule', request.routing_rule?.name || 'None'],
+                        ['Routing Type', labelize(request.routing_type)],
                         ['Routing Status', labelize(request.status)],
                         ['Rejection Reason', labelize(request.rejection_reason)],
+                        ['Created At', formatDate(request.created_at)],
+                        ['Updated At', formatDate(request.updated_at)],
+                        ['Completed At', formatDate(request.completed_at)],
                     ]} />
                 </DetailSection>
                 <CandidateList title="Selected Spas" candidates={(request.candidates || []).filter((candidate) => candidate.is_selected)} />
@@ -443,7 +551,18 @@ const CandidateList = ({ title, candidates }) => (
                         <span>Score {candidate.relevance_score}</span>
                         <span>{candidate.is_open ? 'Open' : 'Closed'}</span>
                     </div>
+                    <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-text-secondary">
+                        <span>Eligible: {candidate.is_eligible ? 'Yes' : 'No'}</span>
+                        <span>Selected: {candidate.is_selected ? 'Yes' : 'No'}</span>
+                        <span>Branch ID: {compactId(candidate.branch?.id)}</span>
+                        <span>Phone: {candidate.branch?.phone || 'N/A'}</span>
+                    </div>
                     {candidate.rejection_reason && <p className="mt-2 text-xs text-danger">{candidate.rejection_reason}</p>}
+                    {candidate.metadata && Object.keys(candidate.metadata).length > 0 && (
+                        <pre className="mt-2 max-h-32 overflow-auto rounded border border-border bg-card p-2 text-xs">
+                            {JSON.stringify(candidate.metadata, null, 2)}
+                        </pre>
+                    )}
                 </div>
             ))}
             {candidates.length === 0 && <p className="text-sm text-text-secondary">No candidates recorded.</p>}
@@ -495,6 +614,14 @@ const WhatsAppPanel = ({ messages }) => (
                         <p className="text-sm text-text-primary">{message.template_name || 'No template'}</p>
                     </div>
                     <div>
+                        <p className="text-xs font-medium uppercase text-text-secondary">Provider</p>
+                        <p className="text-sm text-text-primary">{message.provider || 'DoubleTick'}</p>
+                    </div>
+                    <div>
+                        <p className="text-xs font-medium uppercase text-text-secondary">Language</p>
+                        <p className="text-sm text-text-primary">{message.language_label || message.template_language || 'N/A'}</p>
+                    </div>
+                    <div>
                         <p className="text-xs font-medium uppercase text-text-secondary">Recipient</p>
                         <p className="text-sm text-text-primary">{message.recipient_phone_masked || 'N/A'}</p>
                     </div>
@@ -519,6 +646,20 @@ const WhatsAppPanel = ({ messages }) => (
                     <div>
                         <p className="text-xs font-medium uppercase text-text-secondary">Read</p>
                         <p className="text-sm">{formatDate(message.read_at)}</p>
+                    </div>
+                </div>
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                    <div>
+                        <p className="text-xs font-medium uppercase text-text-secondary">Created</p>
+                        <p className="text-sm">{formatDate(message.created_at)}</p>
+                    </div>
+                    <div>
+                        <p className="text-xs font-medium uppercase text-text-secondary">Updated</p>
+                        <p className="text-sm">{formatDate(message.updated_at)}</p>
+                    </div>
+                    <div>
+                        <p className="text-xs font-medium uppercase text-text-secondary">Failed</p>
+                        <p className="text-sm">{formatDate(message.failed_at)}</p>
                     </div>
                 </div>
                 {message.template_payload?.template_variables && (
@@ -547,6 +688,11 @@ const WhatsAppPanel = ({ messages }) => (
                 <pre className="max-h-80 overflow-auto rounded-lg border border-border bg-card p-3 text-xs text-text-primary">
                     {JSON.stringify(message.template_payload || {}, null, 2)}
                 </pre>
+                {message.provider_payload && Object.keys(message.provider_payload).length > 0 && (
+                    <pre className="max-h-60 overflow-auto rounded-lg border border-border bg-card p-3 text-xs text-text-primary">
+                        {JSON.stringify(message.provider_payload, null, 2)}
+                    </pre>
+                )}
                 {message.failure_reason && <p className="text-sm text-danger">Provider error: {message.failure_reason}</p>}
             </div>
         ))}

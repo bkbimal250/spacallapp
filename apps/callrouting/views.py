@@ -1,17 +1,25 @@
+from django.conf import settings
 from django.db.models import CharField, Count, Q
 from django.db.models.functions import Cast
 from django.utils.dateparse import parse_date
-from rest_framework import permissions, viewsets
+from rest_framework import mixins, permissions, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from apps.callrouting.models import RoutingRequest, RoutingRule, RoutingWhatsAppMessage
+from apps.callrouting.provider import DoubleTickTemplateProvider
 from apps.callrouting.serializers import RoutingRequestDetailSerializer, RoutingRequestListSerializer, RoutingRuleSerializer
+from apps.common.permissions import IsAdminOrSuperAdmin
 from apps.common.utils import apply_branch_filter
 
 
-class RoutingRequestViewSet(viewsets.ReadOnlyModelViewSet):
+class RoutingRequestViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.DestroyModelMixin, viewsets.GenericViewSet):
     permission_classes = [permissions.IsAuthenticated]
+
+    def get_permissions(self):
+        if self.action == "destroy":
+            return [permissions.IsAuthenticated(), IsAdminOrSuperAdmin()]
+        return [permissions.IsAuthenticated()]
 
     def get_serializer_class(self):
         if self.action == "retrieve":
@@ -101,20 +109,39 @@ class RoutingRequestViewSet(viewsets.ReadOnlyModelViewSet):
             failed=Count("id", filter=Q(status=RoutingRequest.Status.FAILED)),
             pending=Count("id", filter=Q(status=RoutingRequest.Status.PENDING)),
             whatsapp_queued=Count("whatsapp_messages", filter=Q(whatsapp_messages__status=RoutingWhatsAppMessage.Status.QUEUED)),
+            whatsapp_sending=Count("whatsapp_messages", filter=Q(whatsapp_messages__status=RoutingWhatsAppMessage.Status.SENDING)),
             whatsapp_sent=Count("whatsapp_messages", filter=Q(whatsapp_messages__status=RoutingWhatsAppMessage.Status.SENT)),
             whatsapp_delivered=Count("whatsapp_messages", filter=Q(whatsapp_messages__status=RoutingWhatsAppMessage.Status.DELIVERED)),
+            whatsapp_read=Count("whatsapp_messages", filter=Q(whatsapp_messages__status=RoutingWhatsAppMessage.Status.READ)),
             whatsapp_failed=Count("whatsapp_messages", filter=Q(whatsapp_messages__status=RoutingWhatsAppMessage.Status.FAILED)),
         )
         total = totals["total"] or 0
         whatsapp_total = sum(
             totals[key] or 0
-            for key in ["whatsapp_queued", "whatsapp_sent", "whatsapp_delivered", "whatsapp_failed"]
+            for key in ["whatsapp_queued", "whatsapp_sending", "whatsapp_sent", "whatsapp_delivered", "whatsapp_read", "whatsapp_failed"]
         )
         totals["routing_success_rate"] = round(((totals["routed"] or 0) / total) * 100, 2) if total else 0
         totals["whatsapp_delivery_rate"] = (
             round(((totals["whatsapp_delivered"] or 0) / whatsapp_total) * 100, 2) if whatsapp_total else 0
         )
         return Response(totals)
+
+    @action(detail=False, methods=["get"], url_path="integration-status")
+    def integration_status(self, request):
+        return Response(
+            {
+                "provider": "DoubleTick",
+                "template_name": DoubleTickTemplateProvider.TEMPLATE_NAME,
+                "template_language": DoubleTickTemplateProvider.LANGUAGE,
+                "template_language_label": "English",
+                "endpoint": getattr(settings, "DOUBLETICK_SEND_TEMPLATE_ENDPOINT", "/whatsapp/message/template"),
+                "api_key_configured": bool(getattr(settings, "DOUBLETICK_API_KEY", "")),
+                "waba_sender_configured": bool(getattr(settings, "DOUBLETICK_SEND_FROM_WABA_NUMBER", "")),
+                "enable_call_routing": bool(getattr(settings, "ENABLE_CALL_ROUTING", False)),
+                "call_routing_dry_run": bool(getattr(settings, "CALL_ROUTING_DRY_RUN", True)),
+                "enable_call_routing_whatsapp": bool(getattr(settings, "ENABLE_CALL_ROUTING_WHATSAPP", False)),
+            }
+        )
 
 
 class RoutingRuleViewSet(viewsets.ReadOnlyModelViewSet):

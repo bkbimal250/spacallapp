@@ -227,10 +227,53 @@ class CallRoutingAPITests(TestCase):
         response = self.client.get(f"/api/v1/callrouting/requests/{self.routing_request.id}/")
 
         self.assertEqual(response.status_code, 200)
+        self.assertEqual(str(response.data["source_branch_id"]), str(self.branch.id))
+        self.assertEqual(response.data["call_log"]["phone_normalized"], "9876543210")
         self.assertEqual(response.data["call_log"]["phone_masked"], "XXXXX43210")
         self.assertEqual(response.data["candidates"][0]["branch"]["spa_name"], "Green View Spa")
+        self.assertEqual(response.data["candidates"][0]["branch"]["phone"], self.other_branch.phone or "")
         self.assertEqual(response.data["events"][0]["event_type"], "candidate_selected")
+        self.assertEqual(response.data["whatsapp_messages"][0]["provider"], "DoubleTick")
         self.assertEqual(response.data["whatsapp_messages"][0]["template_payload"]["selected_branches"][0]["name"], "Green View Spa")
+
+    @override_settings(
+        DOUBLETICK_API_KEY="secret-live-key",
+        DOUBLETICK_SEND_FROM_WABA_NUMBER="917506359139",
+        ENABLE_CALL_ROUTING=True,
+        CALL_ROUTING_DRY_RUN=False,
+        ENABLE_CALL_ROUTING_WHATSAPP=True,
+    )
+    def test_integration_status_reports_safe_config_without_api_key(self):
+        response = self.client.get("/api/v1/callrouting/requests/integration-status/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["provider"], "DoubleTick")
+        self.assertEqual(response.data["template_name"], "night_spa_recommendation")
+        self.assertTrue(response.data["api_key_configured"])
+        self.assertTrue(response.data["waba_sender_configured"])
+        self.assertNotIn("secret-live-key", str(response.data))
+
+    def test_admin_can_delete_routing_request_without_deleting_call_log(self):
+        response = self.client.delete(f"/api/v1/callrouting/requests/{self.routing_request.id}/")
+
+        self.assertEqual(response.status_code, 204)
+        self.assertFalse(RoutingRequest.objects.filter(id=self.routing_request.id).exists())
+        self.assertTrue(CallLog.objects.filter(id=self.call_log.id).exists())
+
+    def test_non_admin_cannot_delete_routing_request(self):
+        manager = User.objects.create_user(
+            email="routing-manager@example.com",
+            password="pass",
+            full_name="Routing Manager",
+            role="spa_manager",
+            branch=self.branch,
+        )
+        self.client.force_authenticate(manager)
+
+        response = self.client.delete(f"/api/v1/callrouting/requests/{self.routing_request.id}/")
+
+        self.assertEqual(response.status_code, 403)
+        self.assertTrue(RoutingRequest.objects.filter(id=self.routing_request.id).exists())
 
     def test_summary_respects_filters(self):
         response = self.client.get("/api/v1/callrouting/requests/summary/", {"whatsapp_status": "queued"})
