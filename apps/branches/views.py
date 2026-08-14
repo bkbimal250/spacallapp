@@ -19,6 +19,7 @@ Filters:
     ?status=true|false      → Filter by is_active status.
 """
 
+from django.conf import settings
 from django.db import models
 from rest_framework import viewsets, permissions, status
 from rest_framework.response import Response
@@ -33,8 +34,14 @@ from rest_framework import serializers
 
 from django_filters.rest_framework import DjangoFilterBackend
 from django.db.models import Count, Q
-from .models import Branch, BranchGroups
-from .serializers import BranchSerializer, BranchListSerializer, BranchGroupSerializer
+from .models import Branch, BranchGroups, BranchOperatingHours
+from .serializers import (
+    BranchOperatingHoursSerializer,
+    BranchSerializer,
+    BranchListSerializer,
+    BranchGroupSerializer,
+    BranchWeeklyOperatingHoursSerializer,
+)
 from .filters import BranchFilter, BranchGroupFilter
 from core.pagination import StandardResultsSetPagination
 from apps.common.permissions import IsAdminOrSuperAdmin
@@ -68,7 +75,7 @@ class BranchViewSet(viewsets.ModelViewSet):
         """
         Apply stricter permissions for write operations.
         """
-        if self.action in ["create", "update", "partial_update", "destroy"]:
+        if self.action in ["create", "update", "partial_update", "destroy", "operating_hours_update"]:
             return [permissions.IsAuthenticated(), IsAdminOrSuperAdmin()]
         return [permissions.IsAuthenticated()]
 
@@ -127,7 +134,8 @@ class BranchViewSet(viewsets.ModelViewSet):
 
     def _clear_cache(self):
         """Clear branch related cache."""
-        cache.delete_pattern("branches_list_*")
+        if hasattr(cache, "delete_pattern"):
+            cache.delete_pattern("branches_list_*")
 
     def get_queryset(self):
         """
@@ -146,6 +154,11 @@ class BranchViewSet(viewsets.ModelViewSet):
             "location_city",
             "location_group",
             "location_area",
+        ).annotate(
+            operating_hours_configured=Count(
+                "operating_hours",
+                filter=Q(operating_hours__is_active=True, operating_hours__is_deleted=False),
+            )
         ).all().order_by("spa_name")
 
         # Optimization: prune columns for the list view
@@ -172,6 +185,76 @@ class BranchViewSet(viewsets.ModelViewSet):
 
         # Admin and super_admin see all branches — no filter needed
         return queryset
+
+    def _weekly_payload(self, branch):
+        rows = {
+            row.weekday: row
+            for row in BranchOperatingHours.objects.filter(
+                branch=branch,
+                is_active=True,
+                is_deleted=False,
+            ).order_by("weekday")
+        }
+        timezone_name = next((row.timezone for row in rows.values() if row.timezone), settings.TIME_ZONE)
+        operating_hours = []
+        for weekday, label in BranchOperatingHours.Weekday.choices:
+            row = rows.get(weekday)
+            if row:
+                operating_hours.append(BranchOperatingHoursSerializer(row).data)
+            else:
+                operating_hours.append({
+                    "id": None,
+                    "weekday": weekday,
+                    "weekday_label": label,
+                    "is_closed": True,
+                    "is_24_hours": False,
+                    "opens_at": None,
+                    "closes_at": None,
+                    "timezone": timezone_name,
+                    "is_active": True,
+                    "is_overnight": False,
+                    "created_at": None,
+                    "updated_at": None,
+                })
+        return {
+            "branch": BranchSerializer(branch).data,
+            "timezone": timezone_name,
+            "operating_hours": operating_hours,
+        }
+
+    @action(detail=True, methods=["get"], url_path="operating-hours")
+    def operating_hours(self, request, pk=None):
+        branch = self.get_object()
+        return Response(self._weekly_payload(branch))
+
+    @operating_hours.mapping.put
+    def operating_hours_update(self, request, pk=None):
+        branch = self.get_object()
+        serializer = BranchWeeklyOperatingHoursSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        timezone_name = serializer.validated_data.get("timezone") or settings.TIME_ZONE
+        with transaction.atomic():
+            for item in serializer.validated_data["operating_hours"]:
+                values = {
+                    "is_closed": item.get("is_closed", False),
+                    "is_24_hours": item.get("is_24_hours", False),
+                    "opens_at": item.get("opens_at"),
+                    "closes_at": item.get("closes_at"),
+                    "timezone": item.get("timezone") or timezone_name,
+                    "is_active": True,
+                    "is_deleted": False,
+                }
+                BranchOperatingHours.objects.update_or_create(
+                    branch=branch,
+                    weekday=item["weekday"],
+                    is_active=True,
+                    is_deleted=False,
+                    defaults=values,
+                )
+        self._clear_cache()
+        branch = self.get_queryset().get(pk=branch.pk)
+        return Response(self._weekly_payload(branch))
 
 
 class BranchGroupViewSet(viewsets.ModelViewSet):

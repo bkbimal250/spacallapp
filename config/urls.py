@@ -35,6 +35,7 @@ urlpatterns = [
     path("api/v1/branches/", include("apps.branches.urls")),
     path("api/v1/devices/", include("apps.devices.urls")),
     path("api/v1/calllogs/", include("apps.calllogs.urls")),
+    path("api/v1/callrouting/", include("apps.callrouting.urls")),
     path("api/v1/analytics/", include("apps.analytics.urls")),
     path("api/v1/exports/", include("apps.exports.urls")),
     path("api/v1/monitoring/", include("apps.monitoring.urls")),

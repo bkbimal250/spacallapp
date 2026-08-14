@@ -9,6 +9,8 @@ Relationship Summary:
 """
 
 from django.db import models
+from django.conf import settings
+from django.core.exceptions import ValidationError
 from core.models.base import BaseModel
 from core.models.timestamped import TimeStampedModel
 from core.models.soft_delete import SoftDeleteModel
@@ -146,3 +148,77 @@ class BranchGroups(BaseModel, TimeStampedModel, SoftDeleteModel):
 
     def __str__(self):
         return self.name
+
+
+class BranchOperatingHours(BaseModel, TimeStampedModel, SoftDeleteModel):
+    """
+    Weekly operating hours for a branch.
+
+    Hours belong to the Branch master data. A missing active row means the
+    branch is treated as closed by routing/eligibility services.
+    """
+
+    class Weekday(models.IntegerChoices):
+        MONDAY = 0, "Monday"
+        TUESDAY = 1, "Tuesday"
+        WEDNESDAY = 2, "Wednesday"
+        THURSDAY = 3, "Thursday"
+        FRIDAY = 4, "Friday"
+        SATURDAY = 5, "Saturday"
+        SUNDAY = 6, "Sunday"
+
+    branch = models.ForeignKey(
+        "branches.Branch",
+        on_delete=models.CASCADE,
+        related_name="operating_hours",
+        help_text="Branch these weekly operating hours belong to.",
+    )
+    weekday = models.PositiveSmallIntegerField(choices=Weekday.choices, db_index=True)
+    is_closed = models.BooleanField(default=False, db_index=True)
+    is_24_hours = models.BooleanField(default=False)
+    opens_at = models.TimeField(null=True, blank=True)
+    closes_at = models.TimeField(null=True, blank=True)
+    timezone = models.CharField(
+        max_length=64,
+        default=settings.TIME_ZONE,
+        help_text="IANA timezone used to evaluate these branch hours.",
+    )
+    is_active = models.BooleanField(default=True, db_index=True)
+
+    class Meta:
+        db_table = "branch_operating_hours"
+        ordering = ["branch__spa_name", "weekday", "opens_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["branch", "weekday"],
+                condition=models.Q(is_deleted=False, is_active=True),
+                name="unique_active_branch_hours_weekday",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["branch", "weekday"], name="branch_hours_branch_day_idx"),
+            models.Index(fields=["branch", "is_active"], name="branch_hours_branch_active_idx"),
+            models.Index(fields=["weekday", "is_active"], name="branch_hours_day_active_idx"),
+        ]
+        verbose_name = "Branch Operating Hours"
+        verbose_name_plural = "Branch Operating Hours"
+
+    def clean(self):
+        super().clean()
+        if self.is_closed or self.is_24_hours:
+            return
+        if not self.opens_at or not self.closes_at:
+            raise ValidationError("opens_at and closes_at are required unless closed or 24 hours.")
+
+    @property
+    def is_overnight(self):
+        return bool(
+            not self.is_closed
+            and not self.is_24_hours
+            and self.opens_at
+            and self.closes_at
+            and self.opens_at > self.closes_at
+        )
+
+    def __str__(self):
+        return f"{self.branch} - {self.get_weekday_display()}"

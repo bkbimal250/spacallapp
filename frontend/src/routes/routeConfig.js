@@ -7,6 +7,7 @@ export const ROUTES = {
     DEVICES: '/devices',
     CALLLOGS: '/calllogs',
     CALLLOG_DETAILS: '/calllogs/details',
+    CALL_ROUTING: '/call-routing',
     ANALYTICS: '/analytics',
     EXPORTS: '/exports',
     MONITORING: '/monitoring',

@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { useSelector } from 'react-redux';
 import {
     ArrowLeft,
     BarChart3,
@@ -18,6 +19,7 @@ import {
 import { branchesAPI } from '../api';
 import Button from '../../../shared/components/Button';
 import BranchForm from '../components/BranchForm';
+import OperatingHoursSection from '../components/OperatingHoursSection';
 
 const emptyValue = '-';
 
@@ -52,12 +54,15 @@ const StatusBadge = ({ active }) => (
 const BranchView = () => {
     const { id } = useParams();
     const navigate = useNavigate();
+    const { user } = useSelector((state) => state.auth);
     const [branch, setBranch] = useState(null);
     const [coverages, setCoverages] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const [isEditOpen, setIsEditOpen] = useState(false);
     const [saving, setSaving] = useState(false);
+
+    const canEditOperatingHours = user?.role === 'admin' || user?.role === 'super_admin';
 
     const fetchBranch = useCallback(async () => {
         setLoading(true);
@@ -113,6 +118,10 @@ const BranchView = () => {
             branch.location_state_name || branch.state,
         ].filter(Boolean).join(', ') || emptyValue;
     }, [branch]);
+
+    const handleOperatingHoursConfiguredChange = useCallback((count) => {
+        setBranch(prev => prev ? { ...prev, operating_hours_configured: count } : prev);
+    }, []);
 
     if (loading) {
         return (
@@ -228,6 +237,12 @@ const BranchView = () => {
             <Section title="Address" icon={<MapPin size={18} />}>
                 <p className="whitespace-pre-wrap text-sm leading-6 text-text-primary">{branch.address || emptyValue}</p>
             </Section>
+
+            <OperatingHoursSection
+                branch={branch}
+                canEdit={canEditOperatingHours}
+                onConfiguredChange={handleOperatingHoursConfiguredChange}
+            />
 
             <Section title="Location Coverage" icon={<Layers size={18} />}>
                 {coverages.length > 0 ? (

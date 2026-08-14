@@ -18,6 +18,7 @@ const BranchView = lazy(() => import('../modules/branches/pages/BranchView'));
 const DeviceList = lazy(() => import('../modules/devices/pages/DeviceList'));
 const CallLogSummary = lazy(() => import('../modules/calllogs/pages/CallLogSummary'));
 const CallLogList = lazy(() => import('../modules/calllogs/pages/CallLogList'));
+const CallRouting = lazy(() => import('../modules/CallRouting/pages/CallRouting'));
 const AnalyticsDashboard = lazy(() => import('../modules/analytics/pages/AnalyticsDashboard'));
 const ExportHistory = lazy(() => import('../modules/exports/pages/ExportHistory'));
 const DeviceHealth = lazy(() => import('../modules/monitoring/pages/DeviceHealth'));
@@ -89,6 +90,7 @@ export const AppRoutes = () => {
                         <Route path={ROUTES.DEVICES} element={<DeviceList />} />
                         <Route path={ROUTES.CALLLOGS} element={<CallLogSummary />} />
                         <Route path={ROUTES.CALLLOG_DETAILS} element={<CallLogList />} />
+                        <Route path={ROUTES.CALL_ROUTING} element={<CallRouting />} />
                         <Route path={ROUTES.ANALYTICS} element={<AnalyticsDashboard />} />
                         <Route path={ROUTES.EXPORTS} element={<ExportHistory />} />
                         <Route path={ROUTES.MONITORING} element={<DeviceHealth />} />

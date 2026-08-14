@@ -542,6 +542,24 @@ class DeviceSyncView(views.APIView):
         if leads_to_create:
             LeadManagement.objects.bulk_create(leads_to_create, ignore_conflicts=True)
 
+        # Queue routing only after CallLogs and their LeadManagement rows have
+        # been created. The helper uses transaction.on_commit and the routing
+        # feature flag, so existing sync behavior is unchanged when disabled.
+        routing_tasks_queued = 0
+        if created_hashes:
+            try:
+                from apps.callrouting.queue import enqueue_call_log_routing
+
+                routing_call_log_ids = list(
+                    CallLog.objects.filter(call_hash__in=created_hashes).values_list("id", flat=True)
+                )
+                routing_tasks_queued = enqueue_call_log_routing(routing_call_log_ids)
+            except Exception:
+                logger.exception(
+                    "Failed to enqueue call routing tasks",
+                    extra={**log_context, "created_count": created_count},
+                )
+
         # â”€â”€ Step 5: Update sync timestamp â”€â”€
         DeviceService.update_sync_time(device)
 
@@ -567,6 +585,7 @@ class DeviceSyncView(views.APIView):
                 "created_count": created_count,
                 "duplicate_count": duplicate_count,
                 "leads_created": len(leads_to_create),
+                "routing_tasks_queued": routing_tasks_queued,
                 "invalid_time_count": invalid_time_count,
             },
         )

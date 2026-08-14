@@ -1,4 +1,5 @@
-from django.test import TestCase
+from django.test import TestCase, override_settings
+from django.db import transaction
 from django.utils import timezone
 from datetime import datetime, timedelta, timezone as datetime_timezone
 from unittest.mock import patch
@@ -12,6 +13,7 @@ from apps.calllogs.filters import CallLogFilter
 from apps.calllogs.serializers import CallLogListSerializer
 from apps.calllogs.services import FollowUpService
 from apps.calllogs.tasks import send_due_missed_call_reminders, send_missed_call_reminder
+from apps.callrouting.queue import enqueue_call_log_routing
 
 
 class CallLogTimeValidationTests(TestCase):
@@ -528,3 +530,135 @@ class CallLogDeviceScopedListTests(TestCase):
             self._result_ids(response),
             {str(self.device_a_log.id), str(self.device_b_log.id)},
         )
+
+
+class CallLogRoutingEnqueueTests(TestCase):
+    def setUp(self):
+        self.branch = Branch.objects.create(
+            spa_name="Routing Sync Branch",
+            code="RS-01",
+            city="Navi Mumbai",
+            state="Maharashtra",
+            postal_code=400703,
+            address="Test address",
+        )
+        self.device = Device.objects.create(
+            branch=self.branch,
+            device_id="ROUTING-SYNC-DEVICE",
+            secret_key="routing-secret",
+            is_registered=True,
+        )
+        self.client = APIClient()
+        self.headers = {
+            "HTTP_X_DEVICE_ID": self.device.device_id,
+            "HTTP_X_DEVICE_SECRET": self.device.secret_key,
+        }
+
+    def payload(self, call_hash, phone="9876543210"):
+        call_time = timezone.now() - timedelta(minutes=2)
+        return {
+            "phone_number": phone,
+            "call_type": "incoming",
+            "duration": 30,
+            "sim_slot": 0,
+            "call_time_ms": int(call_time.timestamp() * 1000),
+            "call_hash": call_hash,
+        }
+
+    def sync(self, payloads):
+        return self.client.post("/api/v1/calllogs/sync/", payloads, format="json", **self.headers)
+
+    @override_settings(ENABLE_CALL_ROUTING=False)
+    @patch("apps.callrouting.tasks.process_call_log_routing.apply_async")
+    def test_feature_flag_disabled_does_not_queue_routing(self, apply_async):
+        response = self.sync([self.payload("routing-disabled-1")])
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.data["created_count"], 1)
+        apply_async.assert_not_called()
+
+    @override_settings(ENABLE_CALL_ROUTING=True)
+    @patch("apps.callrouting.tasks.process_call_log_routing.apply_async")
+    def test_feature_flag_enabled_queues_new_call_log_after_commit(self, apply_async):
+        with self.captureOnCommitCallbacks(execute=True):
+            response = self.sync([self.payload("routing-enabled-1")])
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.data["created_count"], 1)
+        apply_async.assert_called_once()
+        queued_id = apply_async.call_args.kwargs["args"][0]
+        self.assertTrue(CallLog.objects.filter(id=queued_id, call_hash="routing-enabled-1").exists())
+
+    @override_settings(ENABLE_CALL_ROUTING=True)
+    @patch("apps.callrouting.tasks.process_call_log_routing.apply_async")
+    def test_duplicate_call_log_does_not_queue_routing(self, apply_async):
+        with self.captureOnCommitCallbacks(execute=True):
+            first = self.sync([self.payload("routing-duplicate-1")])
+        self.assertEqual(first.data["created_count"], 1)
+        self.assertEqual(apply_async.call_count, 1)
+
+        with self.captureOnCommitCallbacks(execute=True):
+            second = self.sync([self.payload("routing-duplicate-1")])
+
+        self.assertEqual(second.data["created_count"], 0)
+        self.assertEqual(second.data["duplicate_skipped"], 1)
+        self.assertEqual(apply_async.call_count, 1)
+
+    @override_settings(ENABLE_CALL_ROUTING=True)
+    @patch("apps.callrouting.tasks.process_call_log_routing.apply_async")
+    def test_multiple_call_logs_queue_only_new_records(self, apply_async):
+        CallLog.objects.create(
+            branch=self.branch,
+            device=self.device,
+            phone_number="9876543212",
+            call_type="incoming",
+            duration=30,
+            sim_slot=1,
+            call_time=timezone.now(),
+            call_hash="routing-existing",
+        )
+
+        with self.captureOnCommitCallbacks(execute=True):
+            response = self.sync([
+                self.payload("routing-existing", "9876543212"),
+                self.payload("routing-new-1", "9876543213"),
+                self.payload("routing-new-2", "9876543214"),
+            ])
+
+        self.assertEqual(response.data["created_count"], 2)
+        self.assertEqual(response.data["duplicate_skipped"], 1)
+        self.assertEqual(apply_async.call_count, 2)
+
+    @override_settings(ENABLE_CALL_ROUTING=True)
+    @patch("apps.callrouting.tasks.process_call_log_routing.apply_async")
+    def test_leadmanagement_exists_before_routing_task_is_queued(self, apply_async):
+        with self.captureOnCommitCallbacks(execute=True):
+            response = self.sync([self.payload("routing-lead-order")])
+
+        self.assertEqual(response.status_code, 201)
+        call_log = CallLog.objects.get(call_hash="routing-lead-order")
+        self.assertTrue(hasattr(call_log, "lead"))
+        queued_id = apply_async.call_args.kwargs["args"][0]
+        self.assertEqual(str(call_log.id), str(queued_id))
+
+    @override_settings(ENABLE_CALL_ROUTING=True)
+    @patch("apps.callrouting.tasks.process_call_log_routing.apply_async")
+    def test_enqueue_helper_uses_transaction_on_commit(self, apply_async):
+        call_log = CallLog.objects.create(
+            branch=self.branch,
+            device=self.device,
+            phone_number="9876543215",
+            call_type="incoming",
+            duration=30,
+            sim_slot=1,
+            call_time=timezone.now(),
+            call_hash="routing-on-commit",
+        )
+
+        with self.captureOnCommitCallbacks(execute=True):
+            with transaction.atomic():
+                queued = enqueue_call_log_routing([call_log.id])
+                self.assertEqual(queued, 1)
+                apply_async.assert_not_called()
+
+        apply_async.assert_called_once()

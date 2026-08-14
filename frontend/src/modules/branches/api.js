@@ -6,6 +6,8 @@ export const branchesAPI = {
     createBranch: (data) => axiosInstance.post('/branches/', data),
     updateBranch: (id, data) => axiosInstance.put(`/branches/${id}/`, data),
     deleteBranch: (id) => axiosInstance.delete(`/branches/${id}/`),
+    getOperatingHours: (id) => axiosInstance.get(`/branches/${id}/operating-hours/`),
+    updateOperatingHours: (id, data) => axiosInstance.put(`/branches/${id}/operating-hours/`, data),
 
     // Branch Groups
     getGroups: (params) => axiosInstance.get('/branches/groups/', { params }),

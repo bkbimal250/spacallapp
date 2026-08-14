@@ -2049,6 +2049,12 @@ class DoubleTickConversationService:
                 "raw_payload",
                 "updated_at",
             ])
+            try:
+                from apps.callrouting.whatsapp import RoutingWhatsAppWebhookService
+
+                RoutingWhatsAppWebhookService.sync_from_doubletick_message(existing_message)
+            except Exception:
+                logger.exception("Failed to sync DoubleTick status to call routing message.")
             _activity(
                 conversation=existing_message.conversation,
                 lead=existing_message.lead,
@@ -2156,6 +2162,12 @@ class DoubleTickConversationService:
         message.assigned_to_raw = message.assigned_to_raw or assigned_to_raw
         message.raw_payload = payload
         message.save()
+        try:
+            from apps.callrouting.whatsapp import RoutingWhatsAppWebhookService
+
+            RoutingWhatsAppWebhookService.sync_from_doubletick_message(message)
+        except Exception:
+            logger.exception("Failed to sync DoubleTick status to call routing message.")
 
         conversation.last_message_at = max(filter(None, [conversation.last_message_at, message.message_timestamp, status_timestamp]), default=status_timestamp)
         conversation.last_agent_message_at = max(filter(None, [conversation.last_agent_message_at, status_timestamp]), default=status_timestamp)

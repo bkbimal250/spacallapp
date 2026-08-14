@@ -84,6 +84,7 @@ INSTALLED_APPS = [
     "apps.dashboard",
     "apps.contacts",
     "apps.leadmanagement",
+    "apps.callrouting",
     "apps.notifications",
     "apps.doubletick",
     "apps.bots",
@@ -222,6 +223,9 @@ ENABLE_REFRESH_ROTATION = env.bool("ENABLE_REFRESH_ROTATION", default=True)
 ENABLE_DEVICE_SESSIONS = env.bool("ENABLE_DEVICE_SESSIONS", default=True)
 ENABLE_SQL_PROFILING = env.bool("ENABLE_SQL_PROFILING", default=False)
 ENABLE_API_OBSERVABILITY = env.bool("ENABLE_API_OBSERVABILITY", default=True)
+ENABLE_CALL_ROUTING = env.bool("ENABLE_CALL_ROUTING", default=False)
+CALL_ROUTING_DRY_RUN = env.bool("CALL_ROUTING_DRY_RUN", default=True)
+ENABLE_CALL_ROUTING_WHATSAPP = env.bool("ENABLE_CALL_ROUTING_WHATSAPP", default=False)
 API_OBSERVABILITY_PATH_PREFIXES = env.list(
     "API_OBSERVABILITY_PATH_PREFIXES",
     default=[ "/api/v2/dashboard/","/api/v1/dashboard/"],
@@ -366,6 +370,7 @@ else:
 DOUBLETICK_WEBHOOK_SECRET = env("DOUBLETICK_WEBHOOK_SECRET", default="")
 DOUBLETICK_API_KEY = env("DOUBLETICK_API_KEY", default="")
 DOUBLETICK_BASE_URL = env("DOUBLETICK_BASE_URL", default="https://public.doubletick.io")
+DOUBLETICK_SEND_TEMPLATE_ENDPOINT = env("DOUBLETICK_SEND_TEMPLATE_ENDPOINT", default="/whatsapp/message/template")
 DOUBLETICK_SEND_TEXT_ENDPOINT = env("DOUBLETICK_SEND_TEXT_ENDPOINT", default="/whatsapp/message/text")
 DOUBLETICK_AUTH_HEADER = env("DOUBLETICK_AUTH_HEADER", default="Authorization")
 DOUBLETICK_AUTH_SCHEME = env("DOUBLETICK_AUTH_SCHEME", default="Bearer")

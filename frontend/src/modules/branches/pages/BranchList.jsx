@@ -61,7 +61,7 @@ const BranchList = () => {
         } finally {
             setLoading(false);
         }
-    }, [pageSize]);
+    }, []);
 
     const fetchStats = useCallback(async () => {
         try {
@@ -89,14 +89,6 @@ const BranchList = () => {
 
     const handleFilter = useCallback((newFilters) => {
         setFilters(newFilters);
-        setPage(1);
-    }, []);
-
-    const handleGroupSelect = useCallback((groupId) => {
-        setFilters(prev => ({
-            ...prev,
-            group: groupId || ''
-        }));
         setPage(1);
     }, []);
 
@@ -321,6 +313,21 @@ const BranchList = () => {
                         </span>
                     )}
                 </div>
+            )
+        },
+
+        {
+            header: 'Operating Hours',
+            render: (row) => (
+                <span
+                    className={`inline-flex items-center rounded-md px-2 py-1 text-xs font-semibold ${
+                        row.operating_hours_configured
+                            ? 'bg-success/10 text-success'
+                            : 'bg-warning/10 text-warning'
+                    }`}
+                >
+                    {row.operating_hours_configured ? 'Configured' : 'Not Configured'}
+                </span>
             )
         },
 

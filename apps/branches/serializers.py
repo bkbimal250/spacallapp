@@ -1,5 +1,8 @@
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+from django.conf import settings
 from rest_framework import serializers
-from .models import Branch, BranchGroups
+from .models import Branch, BranchGroups, BranchOperatingHours
 from drf_spectacular.utils import extend_schema_field
 
 
@@ -17,6 +20,7 @@ class BranchGroupSerializer(serializers.ModelSerializer):
 
 class BranchSerializer(serializers.ModelSerializer):
     branch_group_name = serializers.ReadOnlyField(source='branch_group.name')
+    operating_hours_configured = serializers.IntegerField(read_only=True, default=0)
 
     # Normalized location FK read-only details
     location_state_name = serializers.ReadOnlyField(source='location_state.name')
@@ -29,6 +33,7 @@ class BranchSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'spa_name', 'code', 'state', 'city', 'area',
             'postal_code', 'address', 'phone', 'is_active',
+            'operating_hours_configured',
             'branch_group', 'branch_group_name',
             # Normalized location FKs
             'location_state', 'location_state_name',
@@ -72,6 +77,7 @@ class BranchListSerializer(serializers.ModelSerializer):
     Includes only essential fields to prevent N+1 queries for excluded fields.
     """
     branch_group_name = serializers.ReadOnlyField(source='branch_group.name')
+    operating_hours_configured = serializers.IntegerField(read_only=True, default=0)
 
     # Normalized location FK read-only details (lightweight for list)
     location_state_name = serializers.ReadOnlyField(source='location_state.name')
@@ -83,10 +89,75 @@ class BranchListSerializer(serializers.ModelSerializer):
         model = Branch
         fields = [
             "id", "spa_name", "code", "city", "area", "state", "postal_code", "address", "phone",
-            "is_active", "branch_group", "branch_group_name",
+            "is_active", "operating_hours_configured", "branch_group", "branch_group_name",
             # Normalized location FKs
             "location_state", "location_state_name",
             "location_city", "location_city_name",
             "location_group", "location_group_name",
             "location_area", "location_area_name",
         ]
+
+
+class BranchOperatingHoursSerializer(serializers.ModelSerializer):
+    weekday_label = serializers.CharField(source="get_weekday_display", read_only=True)
+    is_overnight = serializers.BooleanField(read_only=True)
+
+    class Meta:
+        model = BranchOperatingHours
+        fields = [
+            "id",
+            "weekday",
+            "weekday_label",
+            "is_closed",
+            "is_24_hours",
+            "opens_at",
+            "closes_at",
+            "timezone",
+            "is_active",
+            "is_overnight",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["id", "weekday_label", "is_overnight", "created_at", "updated_at"]
+
+    def validate_timezone(self, value):
+        try:
+            ZoneInfo(value or settings.TIME_ZONE)
+        except ZoneInfoNotFoundError as exc:
+            raise serializers.ValidationError("Invalid IANA timezone.") from exc
+        return value or settings.TIME_ZONE
+
+    def validate(self, attrs):
+        is_closed = attrs.get("is_closed", getattr(self.instance, "is_closed", False))
+        is_24_hours = attrs.get("is_24_hours", getattr(self.instance, "is_24_hours", False))
+        opens_at = attrs.get("opens_at", getattr(self.instance, "opens_at", None))
+        closes_at = attrs.get("closes_at", getattr(self.instance, "closes_at", None))
+
+        if is_closed or is_24_hours:
+            attrs["opens_at"] = None
+            attrs["closes_at"] = None
+            return attrs
+
+        if not opens_at or not closes_at:
+            raise serializers.ValidationError("opens_at and closes_at are required when the branch is open.")
+        if opens_at == closes_at:
+            raise serializers.ValidationError("opens_at and closes_at cannot be the same for normal open hours.")
+        return attrs
+
+
+class BranchWeeklyOperatingHoursSerializer(serializers.Serializer):
+    timezone = serializers.CharField(required=False, allow_blank=True)
+    operating_hours = BranchOperatingHoursSerializer(many=True)
+
+    def validate_timezone(self, value):
+        try:
+            ZoneInfo(value or settings.TIME_ZONE)
+        except ZoneInfoNotFoundError as exc:
+            raise serializers.ValidationError("Invalid IANA timezone.") from exc
+        return value or settings.TIME_ZONE
+
+    def validate_operating_hours(self, value):
+        weekdays = [item["weekday"] for item in value]
+        if sorted(weekdays) != list(range(7)):
+            raise serializers.ValidationError("A complete Monday to Sunday schedule is required.")
+        return value
