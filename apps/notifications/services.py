@@ -57,11 +57,9 @@ class NotificationService:
         """Broadcast a refresh signal to the dashboard group and specific branch group."""
         try:
             channel_layer = get_channel_layer()
-            groups = ["crm_dashboard"]
-            if branch_id:
-                groups.append(f"branch_{branch_id}")
+            groups = NotificationService._groups_for_branch(branch_id)
 
-            for group in groups:
+            for group in dict.fromkeys(groups):
                 async_to_sync(channel_layer.group_send)(
                     group,
                     {
@@ -73,6 +71,32 @@ class NotificationService:
                 )
         except Exception as e:
             logger.error(f"Failed to broadcast refresh: {e}")
+
+    @staticmethod
+    def _area_manager_groups_for_branch(branch_id):
+        if not branch_id:
+            return []
+        try:
+            from django.contrib.auth import get_user_model
+
+            User = get_user_model()
+            manager_ids = User.objects.filter(
+                role="area_manager",
+                is_active=True,
+                area_branches__id=branch_id,
+            ).values_list("id", flat=True)
+            return [f"area_manager_{manager_id}" for manager_id in manager_ids]
+        except Exception:
+            logger.exception("Failed to resolve area manager notification groups")
+            return []
+
+    @staticmethod
+    def _groups_for_branch(branch_id=None):
+        groups = ["crm_dashboard"]
+        if branch_id:
+            groups.append(f"branch_{branch_id}")
+            groups.extend(NotificationService._area_manager_groups_for_branch(branch_id))
+        return list(dict.fromkeys(groups))
 
     @staticmethod
     def _broadcast_notification(notification_log):
@@ -91,9 +115,7 @@ class NotificationService:
             elif notification_log.user:
                 recipient_name = notification_log.user.full_name or notification_log.user.email
             
-            groups = ["crm_dashboard"]
-            if branch_id:
-                groups.append(f"branch_{branch_id}")
+            groups = NotificationService._groups_for_branch(branch_id)
 
             payload = {
                 "type": "broadcast_message",

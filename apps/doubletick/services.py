@@ -1048,6 +1048,9 @@ def send_lead_notification(lead, recipient):
     except Exception as exc:
         return False, str(exc)
 
+    if getattr(recipient, "role", None) and not getattr(recipient, "fcm_token", None):
+        return True, "CRM realtime notification only; user has no FCM token."
+
     name = lead.customer_name or lead.phone_number
     area = lead.matched_area.name if lead.matched_area else lead.raw_area
     service = lead.raw_service or lead.service_name or "WhatsApp inquiry"

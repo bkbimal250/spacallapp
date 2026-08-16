@@ -1,5 +1,6 @@
 from django.test import override_settings
 from io import StringIO
+from unittest.mock import patch
 from django.core.management import call_command
 from rest_framework import status
 from rest_framework.test import APITestCase
@@ -9,6 +10,7 @@ from apps.branches.models import Branch
 from apps.devices.models import Device
 from apps.locations.models import Area, City, LocationGroup, LocationGroupArea, State
 from apps.locations.services.fuzzy_matcher import clear_location_candidate_cache
+from apps.notifications.models import Notification
 
 from .models import (
     DoubleTickAreaAlias,
@@ -22,7 +24,7 @@ from .models import (
     DoubleTickMessage,
     DoubleTickTeamMemberMapping,
 )
-from .services import CRMLocationMatchEngine, DoubleTickConversationService, LeadQualificationService
+from .services import CRMLocationMatchEngine, DoubleTickConversationService, LeadDistributionService, LeadQualificationService
 
 
 @override_settings(DOUBLETICK_WEBHOOK_SECRET="test-secret", DOUBLETICK_API_KEY="")
@@ -119,6 +121,37 @@ class DoubleTickBackendTests(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         lead = DoubleTickLead.objects.get()
+        self.assertEqual(lead.matched_area, self.lead_area)
+        self.assertEqual(lead.status, DoubleTickLead.Status.AVAILABLE)
+        self.assertTrue(DoubleTickLeadVisibility.objects.filter(lead=lead, branch=self.branch).exists())
+
+    @patch("apps.notifications.services.NotificationService.send_push", return_value=True)
+    def test_distribution_does_not_log_failed_push_for_crm_user_without_fcm_token(self, send_push):
+        self.device.fcm_token = "device-token"
+        self.device.save(update_fields=["fcm_token"])
+        lead = DoubleTickLead.objects.create(
+            customer_name="CRM Customer",
+            phone_number="9999999999",
+            latest_customer_message="Need booking",
+            raw_area="Vashi",
+            raw_service="Massage",
+            matched_area=self.lead_area,
+            status=DoubleTickLead.Status.QUALIFIED,
+        )
+
+        LeadDistributionService.distribute(lead)
+
+        self.assertEqual(send_push.call_count, 1)
+        self.assertEqual(send_push.call_args.kwargs["recipient"], self.device)
+        self.assertFalse(
+            Notification.objects.filter(
+                notification_type="doubletick_lead",
+                user=self.spa_manager,
+                is_sent=False,
+                error_message__icontains="FCM token",
+            ).exists()
+        )
+        lead.refresh_from_db()
         self.assertEqual(lead.matched_area, self.lead_area)
         self.assertEqual(lead.status, DoubleTickLead.Status.AVAILABLE)
         self.assertTrue(DoubleTickLeadVisibility.objects.filter(lead=lead, branch=self.branch).exists())
