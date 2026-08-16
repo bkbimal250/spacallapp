@@ -16,7 +16,9 @@ Filters:
     ?search=<branch_city_area_code>  → Search by branch name, city, area, spa code, phone, address, or group.
     ?city=<city>            → Filter by city.
     ?state=<state>          → Filter by state.
+    ?area=<area>            → Filter by area.
     ?status=true|false      → Filter by is_active status.
+    ?open_24_hours=true|false → Filter branches with at least one 24-hour operating day.
 """
 
 from django.conf import settings
@@ -86,8 +88,10 @@ class BranchViewSet(viewsets.ModelViewSet):
             OpenApiParameter("search", type=str, description="Search by branch name, city, area, spa code, phone, address, or group"),
             OpenApiParameter("city", type=str, description="Filter by city"),
             OpenApiParameter("state", type=str, description="Filter by state"),
+            OpenApiParameter("area", type=str, description="Filter by area"),
             OpenApiParameter("status", type=bool, description="Filter by active status"),
             OpenApiParameter("group", type=str, description="Filter by branch group UUID"),
+            OpenApiParameter("open_24_hours", type=bool, description="Filter branches with at least one 24-hour operating day"),
         ]
     )
     def list(self, request, *args, **kwargs):
@@ -165,7 +169,7 @@ class BranchViewSet(viewsets.ModelViewSet):
         if self.action == "list":
             # Select related to avoid N+1; include all fields for BranchListSerializer
             queryset = queryset.only(
-                "id", "spa_name", "code", "city", "area", "state", "postal_code", "address", "phone", "is_active",
+                "id", "spa_name", "code", "city", "area", "state", "postal_code", "address", "phone", "shared_link", "is_active",
                 "branch_group_id", "branch_group__name",
                 "location_state_id", "location_state__name",
                 "location_city_id", "location_city__name",

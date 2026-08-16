@@ -32,7 +32,7 @@ class BranchSerializer(serializers.ModelSerializer):
         model = Branch
         fields = [
             'id', 'spa_name', 'code', 'state', 'city', 'area',
-            'postal_code', 'address', 'phone', 'is_active',
+            'postal_code', 'address', 'phone', 'shared_link', 'is_active',
             'operating_hours_configured',
             'branch_group', 'branch_group_name',
             # Normalized location FKs
@@ -88,7 +88,7 @@ class BranchListSerializer(serializers.ModelSerializer):
     class Meta:
         model = Branch
         fields = [
-            "id", "spa_name", "code", "city", "area", "state", "postal_code", "address", "phone",
+            "id", "spa_name", "code", "city", "area", "state", "postal_code", "address", "phone", "shared_link",
             "is_active", "operating_hours_configured", "branch_group", "branch_group_name",
             # Normalized location FKs
             "location_state", "location_state_name",

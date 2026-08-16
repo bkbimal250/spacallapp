@@ -51,6 +51,13 @@ class Branch(BaseModel, TimeStampedModel, SoftDeleteModel):
         help_text="Branch contact phone number."
     )
 
+    # Google Maps shared link for the branch.
+    shared_link = models.URLField(
+        blank=True,
+        null=True,
+        help_text="Google Maps shared link for this branch."
+    )
+
     # Active flag — inactive branches won't receive new call logs
     is_active = models.BooleanField(default=True)
 

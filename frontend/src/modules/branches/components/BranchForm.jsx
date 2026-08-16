@@ -11,6 +11,8 @@ const BranchForm = ({ isOpen, onClose, onSubmit, initialData, saving = false }) 
     const [formData, setFormData] = useState({
         spa_name: '',
         code: '',
+        phone: '',
+        shared_link: '',
         postal_code: '',
         address: '',
         is_active: true,
@@ -66,6 +68,8 @@ const BranchForm = ({ isOpen, onClose, onSubmit, initialData, saving = false }) 
             const fd = {
                 spa_name: initialData.spa_name || '',
                 code: initialData.code || '',
+                phone: initialData.phone || '',
+                shared_link: initialData.shared_link || '',
                 postal_code: initialData.postal_code || '',
                 address: initialData.address || '',
                 is_active: initialData.is_active !== undefined ? initialData.is_active : true,
@@ -87,6 +91,8 @@ const BranchForm = ({ isOpen, onClose, onSubmit, initialData, saving = false }) 
             setFormData({
                 spa_name: '',
                 code: '',
+                phone: '',
+                shared_link: '',
                 postal_code: '',
                 address: '',
                 is_active: true,
@@ -244,13 +250,33 @@ const BranchForm = ({ isOpen, onClose, onSubmit, initialData, saving = false }) 
                     required
                 />
 
-                <Input
+                    <Input
+                        label="Google Maps Shared Link"
+                        name="shared_link"
+                        type="url"
+                        value={formData.shared_link}
+                        onChange={handleChange}
+                        placeholder="https://maps.app.goo.gl/..."
+                    />
+               
+
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                 <Input
                     label="Branch Code"
                     name="code"
                     value={formData.code}
                     onChange={handleChange}
                     required
                 />
+                    <Input
+                        label="Branch Phone"
+                        name="phone"
+                        value={formData.phone}
+                        onChange={handleChange}
+                        placeholder="+91..."
+                    />
+
+                </div>
 
                 {/* ─── NORMALIZED LOCATION (cascading selects) ─── */}
                 <div className="border border-border rounded-lg p-3 space-y-3">

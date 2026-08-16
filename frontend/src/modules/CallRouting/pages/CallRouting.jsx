@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSelector } from 'react-redux';
-import { AlertTriangle, BarChart3, Eye, FileText, GitBranch, RefreshCw, Search, SlidersHorizontal, Trash2, X } from 'lucide-react';
+import { AlertTriangle, BarChart3, Clipboard, Eye, FileText, GitBranch, RefreshCw, Search, SlidersHorizontal, Trash2, X } from 'lucide-react';
 import Badge from '../../../shared/components/Badge';
 import Button from '../../../shared/components/Button';
 import Input from '../../../shared/components/Input';
@@ -29,11 +29,75 @@ const badgeVariant = {
 const labelize = (value) => (value ? String(value).replace(/_/g, ' ') : 'None');
 const formatDate = (value) => (value ? new Date(value).toLocaleString('en-IN') : 'N/A');
 const compactId = (value) => (value ? String(value).slice(0, 8) : '');
+const apiErrorMessage = (error, fallback) => (
+    error?.response?.data?.detail
+    || error?.response?.data?.error
+    || error?.message
+    || fallback
+);
+
+const reasonHelp = {
+    DUPLICATE_RECIPIENT_24H: 'Same customer already received this routing WhatsApp inside the configured cooldown window.',
+    INVALID_RECIPIENT: 'Recipient phone could not be normalized to a valid WhatsApp number.',
+    NO_SELECTED_CANDIDATES: 'No selected 24-hour-open spa was available for this request.',
+    TEMPLATE_NOT_CONFIGURED: 'The approved DoubleTick template is not configured for this routing request.',
+    DOUBLETICK_API_KEY_NOT_CONFIGURED: 'Server-side DoubleTick API key is missing.',
+    DOUBLETICK_WABA_SENDER_NOT_CONFIGURED: 'Configured WABA sender number is missing.',
+    TEMPLATE_PAYLOAD_CONTAINS_UNSUPPORTED_CHARACTERS: 'Template payload contains unsupported characters.',
+};
+
+const providerSummary = (payload) => {
+    const body = payload?.body || {};
+    if (body?.messages?.[0]) {
+        const item = body.messages[0];
+        return [item.status, item.messageId && `ID ${item.messageId}`, item.recipient && `Recipient ${item.recipient}`].filter(Boolean).join(' | ');
+    }
+    return body?.error || body?.message || payload?.error || '';
+};
 
 const StatusBadge = ({ value }) => (
     <Badge variant={badgeVariant[value] || 'gray'} className="capitalize whitespace-nowrap">
         {labelize(value || 'none')}
     </Badge>
+);
+
+const AlertBanner = ({ title, message, tone = 'danger' }) => (
+    <div className={`rounded-lg border p-4 ${tone === 'danger' ? 'border-danger/30 bg-danger/10 text-danger' : 'border-warning/30 bg-warning/10 text-warning'}`}>
+        <div className="flex items-start gap-2">
+            <AlertTriangle size={18} className="mt-0.5 shrink-0" />
+            <div>
+                <p className="text-sm font-semibold">{title}</p>
+                <p className="mt-1 text-sm">{message}</p>
+            </div>
+        </div>
+    </div>
+);
+
+const CopyJsonButton = ({ value, label = 'Copy JSON' }) => {
+    const [copied, setCopied] = useState(false);
+    const copy = async () => {
+        await navigator.clipboard.writeText(typeof value === 'string' ? value : JSON.stringify(value || {}, null, 2));
+        setCopied(true);
+        window.setTimeout(() => setCopied(false), 1200);
+    };
+    return (
+        <button type="button" onClick={copy} className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-primary hover:bg-primary/10">
+            <Clipboard size={13} />
+            {copied ? 'Copied' : label}
+        </button>
+    );
+};
+
+const DebugJson = ({ title, value, maxHeight = 'max-h-72' }) => (
+    <div className="rounded-lg border border-border bg-card">
+        <div className="flex items-center justify-between border-b border-border px-3 py-2">
+            <p className="text-xs font-semibold uppercase text-text-secondary">{title}</p>
+            <CopyJsonButton value={value} />
+        </div>
+        <pre className={`${maxHeight} overflow-auto p-3 text-xs text-text-primary`}>
+            {JSON.stringify(value || {}, null, 2)}
+        </pre>
+    </div>
 );
 
 const CallRouting = () => {
@@ -45,6 +109,8 @@ const CallRouting = () => {
     const [integrationStatus, setIntegrationStatus] = useState(null);
     const [loading, setLoading] = useState(false);
     const [detailLoading, setDetailLoading] = useState(false);
+    const [pageError, setPageError] = useState('');
+    const [detailError, setDetailError] = useState('');
     const [deletingId, setDeletingId] = useState('');
     const [selectedRequest, setSelectedRequest] = useState(null);
     const [page, setPage] = useState(1);
@@ -75,6 +141,7 @@ const CallRouting = () => {
 
     const fetchRequests = useCallback(async () => {
         setLoading(true);
+        setPageError('');
         try {
             const [requestResponse, summaryResponse] = await Promise.all([
                 callRoutingAPI.getRequests(params),
@@ -85,6 +152,7 @@ const CallRouting = () => {
             setSummary(summaryResponse.data || null);
         } catch (error) {
             console.error('Failed to fetch call routing requests', error);
+            setPageError(apiErrorMessage(error, 'Failed to fetch call routing requests.'));
             setRequests([]);
             setTotalCount(0);
         } finally {
@@ -98,6 +166,7 @@ const CallRouting = () => {
             setRules(response.data?.results || response.data || []);
         } catch (error) {
             console.error('Failed to fetch routing rules', error);
+            setPageError(apiErrorMessage(error, 'Failed to fetch routing rules.'));
             setRules([]);
         }
     }, []);
@@ -108,6 +177,7 @@ const CallRouting = () => {
             setIntegrationStatus(response.data || null);
         } catch (error) {
             console.error('Failed to fetch call routing integration status', error);
+            setPageError(apiErrorMessage(error, 'Failed to fetch integration status.'));
             setIntegrationStatus(null);
         }
     }, []);
@@ -152,11 +222,13 @@ const CallRouting = () => {
 
     const openRequest = async (id) => {
         setDetailLoading(true);
+        setDetailError('');
         try {
             const response = await callRoutingAPI.getRequest(id);
             setSelectedRequest(response.data);
         } catch (error) {
             console.error('Failed to fetch routing request detail', error);
+            setDetailError(apiErrorMessage(error, 'Failed to fetch routing request detail.'));
         } finally {
             setDetailLoading(false);
         }
@@ -175,6 +247,7 @@ const CallRouting = () => {
             await fetchRequests();
         } catch (error) {
             console.error('Failed to delete routing request', error);
+            setPageError(apiErrorMessage(error, 'Delete failed. Check permissions and try again.'));
             window.alert('Delete failed. Check permissions and try again.');
         } finally {
             setDeletingId('');
@@ -195,6 +268,8 @@ const CallRouting = () => {
                     Refresh
                 </Button>
             </div>
+
+            {pageError && <AlertBanner title="Call Routing Error" message={pageError} />}
 
             <div className="flex flex-wrap gap-1 rounded-lg border border-border bg-card p-1">
                 {[
@@ -244,7 +319,7 @@ const CallRouting = () => {
             {activeTab === 'analytics' && <AnalyticsPanel summary={summary} />}
 
             {selectedRequest && (
-                <RequestDetailDrawer request={selectedRequest} loading={detailLoading} onClose={() => setSelectedRequest(null)} onDelete={deleteRequest} canDelete={canDelete} deletingId={deletingId} />
+                <RequestDetailDrawer request={selectedRequest} loading={detailLoading} error={detailError} onClose={() => setSelectedRequest(null)} onDelete={deleteRequest} canDelete={canDelete} deletingId={deletingId} />
             )}
         </div>
     );
@@ -284,6 +359,7 @@ const IntegrationStatusPanel = ({ status }) => {
         ['WABA Sender', status?.waba_sender_configured ? 'Configured' : 'Missing'],
         ['Routing', status?.enable_call_routing ? 'Enabled' : 'Disabled'],
         ['WhatsApp Send', status?.enable_call_routing_whatsapp && !status?.call_routing_dry_run ? 'Live' : 'Safe / Dry Run'],
+        ['Recipient Cooldown', `${status?.recipient_cooldown_hours ?? 24} hours`],
     ];
 
     return (
@@ -292,7 +368,7 @@ const IntegrationStatusPanel = ({ status }) => {
                 <AlertTriangle size={16} className={status?.api_key_configured && status?.waba_sender_configured ? 'text-success' : 'text-warning'} />
                 <h2 className="text-sm font-semibold uppercase text-text-secondary">Integration Status</h2>
             </div>
-            <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-8">
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-9">
                 {items.map(([label, value]) => (
                     <div key={label} className="rounded-lg bg-background p-3">
                         <p className="text-xs text-text-secondary">{label}</p>
@@ -451,7 +527,7 @@ const MetricLine = ({ label, value }) => (
     </div>
 );
 
-const RequestDetailDrawer = ({ request, onClose, onDelete, canDelete, deletingId }) => (
+const RequestDetailDrawer = ({ request, loading, error, onClose, onDelete, canDelete, deletingId }) => (
     <div className="fixed inset-0 z-50 flex justify-end bg-black/40">
         <aside className="h-full w-full max-w-5xl overflow-y-auto bg-background shadow-xl">
             <div className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-background px-5 py-4">
@@ -472,6 +548,9 @@ const RequestDetailDrawer = ({ request, onClose, onDelete, canDelete, deletingId
                 </div>
             </div>
             <div className="space-y-4 p-5">
+                {loading && <div className="rounded-lg border border-border bg-card p-3 text-sm text-text-secondary">Refreshing request details...</div>}
+                {error && <AlertBanner title="Detail Load Error" message={error} />}
+                <DebugSummary request={request} />
                 <DetailSection title="Customer & Original Enquiry">
                     <InfoGrid items={[
                         ['Routing Request ID', request.id],
@@ -516,6 +595,35 @@ const RequestDetailDrawer = ({ request, onClose, onDelete, canDelete, deletingId
     </div>
 );
 
+const DebugSummary = ({ request }) => {
+    const failures = [
+        request.status === 'failed' && ['Routing failed', labelize(request.rejection_reason)],
+        request.status === 'skipped' && ['Routing skipped', labelize(request.rejection_reason)],
+        ...(request.whatsapp_messages || [])
+            .filter((message) => ['failed', 'cancelled'].includes(message.status))
+            .map((message) => [`WhatsApp ${labelize(message.status)}`, reasonHelp[message.failure_reason] || labelize(message.failure_reason)]),
+    ].filter(Boolean);
+
+    if (failures.length === 0) return null;
+
+    return (
+        <div className="rounded-lg border border-warning/30 bg-warning/10 p-4 text-warning">
+            <div className="mb-2 flex items-center gap-2">
+                <AlertTriangle size={17} />
+                <p className="text-sm font-semibold">Debug Summary</p>
+            </div>
+            <div className="space-y-2">
+                {failures.map(([title, message]) => (
+                    <div key={`${title}-${message}`} className="rounded-md bg-background/70 p-3">
+                        <p className="text-sm font-semibold">{title}</p>
+                        <p className="text-sm">{message || 'No reason recorded.'}</p>
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+};
+
 const DetailSection = ({ title, children }) => (
     <section className="rounded-lg border border-border bg-card p-4">
         <h3 className="mb-3 text-sm font-semibold uppercase text-text-secondary">{title}</h3>
@@ -557,11 +665,21 @@ const CandidateList = ({ title, candidates }) => (
                         <span>Branch ID: {compactId(candidate.branch?.id)}</span>
                         <span>Phone: {candidate.branch?.phone || 'N/A'}</span>
                     </div>
+                    {candidate.branch?.shared_link && (
+                        <a
+                            href={candidate.branch.shared_link}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="mt-2 inline-flex break-all text-xs font-medium text-primary hover:underline"
+                        >
+                            {candidate.branch.shared_link}
+                        </a>
+                    )}
                     {candidate.rejection_reason && <p className="mt-2 text-xs text-danger">{candidate.rejection_reason}</p>}
                     {candidate.metadata && Object.keys(candidate.metadata).length > 0 && (
-                        <pre className="mt-2 max-h-32 overflow-auto rounded border border-border bg-card p-2 text-xs">
-                            {JSON.stringify(candidate.metadata, null, 2)}
-                        </pre>
+                        <div className="mt-2">
+                            <DebugJson title="Candidate Metadata" value={candidate.metadata} maxHeight="max-h-32" />
+                        </div>
                     )}
                 </div>
             ))}
@@ -579,6 +697,11 @@ const Timeline = ({ events, attempts }) => (
                         <p className="text-sm font-medium capitalize">{labelize(event.event_type)}</p>
                         <p className="text-xs text-text-secondary">{formatDate(event.created_at)}</p>
                         {event.message && <p className="mt-1 text-sm text-text-secondary">{event.message}</p>}
+                        {event.metadata && Object.keys(event.metadata).length > 0 && (
+                            <div className="mt-2">
+                                <DebugJson title="Event Metadata" value={event.metadata} maxHeight="max-h-32" />
+                            </div>
+                        )}
                     </div>
                 ))}
                 {events.length === 0 && <p className="text-sm text-text-secondary">No events recorded.</p>}
@@ -591,6 +714,7 @@ const Timeline = ({ events, attempts }) => (
                             <StatusBadge value={attempt.status} />
                         </div>
                         <p className="text-xs text-text-secondary">{formatDate(attempt.started_at)} to {formatDate(attempt.completed_at)}</p>
+                        {attempt.error_code && <p className="mt-1 text-sm text-danger">Code: {attempt.error_code}</p>}
                         {attempt.error_message && <p className="mt-1 text-sm text-danger">{attempt.error_message}</p>}
                     </div>
                 ))}
@@ -604,6 +728,18 @@ const WhatsAppPanel = ({ messages }) => (
     <DetailSection title="WhatsApp & Template Preview">
         {messages.map((message) => (
             <div key={message.id} className="space-y-3 rounded-lg bg-background p-3">
+                {['failed', 'cancelled'].includes(message.status) && (
+                    <AlertBanner
+                        title={`WhatsApp ${labelize(message.status)}`}
+                        message={reasonHelp[message.failure_reason] || labelize(message.failure_reason) || 'No failure reason recorded.'}
+                        tone={message.status === 'failed' ? 'danger' : 'warning'}
+                    />
+                )}
+                {providerSummary(message.provider_payload) && (
+                    <div className="rounded-lg border border-info/30 bg-info/10 p-3 text-sm text-info">
+                        Provider response: {providerSummary(message.provider_payload)}
+                    </div>
+                )}
                 <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
                     <div>
                         <p className="text-xs font-medium uppercase text-text-secondary">Status</p>
@@ -628,6 +764,10 @@ const WhatsAppPanel = ({ messages }) => (
                     <div>
                         <p className="text-xs font-medium uppercase text-text-secondary">Provider ID</p>
                         <p className="break-all text-sm text-text-primary">{message.provider_message_id || 'N/A'}</p>
+                    </div>
+                    <div>
+                        <p className="text-xs font-medium uppercase text-text-secondary">Failure Reason</p>
+                        <p className="break-words text-sm text-text-primary">{message.failure_reason ? labelize(message.failure_reason) : 'N/A'}</p>
                     </div>
                 </div>
                 <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
@@ -664,10 +804,13 @@ const WhatsAppPanel = ({ messages }) => (
                 </div>
                 {message.template_payload?.template_variables && (
                     <div className="rounded-lg border border-border bg-card p-3">
-                        <p className="mb-2 text-xs font-medium uppercase text-text-secondary">Variables</p>
-                        <ol className="list-decimal space-y-1 pl-5 text-sm">
+                        <div className="mb-2 flex items-center justify-between">
+                            <p className="text-xs font-medium uppercase text-text-secondary">Template Variables</p>
+                            <CopyJsonButton value={message.template_payload.template_variables} />
+                        </div>
+                        <ol className="list-decimal space-y-2 pl-5 text-sm">
                             {message.template_payload.template_variables.map((value, index) => (
-                                <li key={`${message.id}-variable-${index}`} className="whitespace-pre-wrap">{value}</li>
+                                <li key={`${message.id}-variable-${index}`} className="rounded-md bg-background p-2 whitespace-pre-wrap">{value}</li>
                             ))}
                         </ol>
                     </div>
@@ -677,23 +820,28 @@ const WhatsAppPanel = ({ messages }) => (
                         <p className="mb-2 text-xs font-medium uppercase text-text-secondary">Selected Spas</p>
                         <div className="space-y-2">
                             {message.template_payload.recommendations.map((spa, index) => (
-                                <div key={`${message.id}-spa-${index}`} className="text-sm">
+                                <div key={`${message.id}-spa-${index}`} className="rounded-md bg-background p-3 text-sm">
                                     <p className="font-medium">{spa.spa_name}</p>
+                                    <div className="mt-2 grid grid-cols-1 gap-2 text-xs text-text-secondary sm:grid-cols-3">
+                                        <span>Open: {spa.open_until || 'N/A'}</span>
+                                        <span>Phone: {spa.phone || 'N/A'}</span>
+                                        <span>{spa.details_url ? 'Map link added' : 'No map link'}</span>
+                                    </div>
+                                    {spa.details_url && (
+                                        <a href={spa.details_url} target="_blank" rel="noreferrer" className="mt-2 inline-flex break-all text-xs font-medium text-primary hover:underline">
+                                            {spa.details_url}
+                                        </a>
+                                    )}
                                     <p className="text-text-secondary">{[spa.location, spa.open_until && `Open until ${spa.open_until}`, spa.phone].filter(Boolean).join(' • ')}</p>
                                 </div>
                             ))}
                         </div>
                     </div>
                 )}
-                <pre className="max-h-80 overflow-auto rounded-lg border border-border bg-card p-3 text-xs text-text-primary">
-                    {JSON.stringify(message.template_payload || {}, null, 2)}
-                </pre>
+                <DebugJson title="Template Payload" value={message.template_payload || {}} maxHeight="max-h-80" />
                 {message.provider_payload && Object.keys(message.provider_payload).length > 0 && (
-                    <pre className="max-h-60 overflow-auto rounded-lg border border-border bg-card p-3 text-xs text-text-primary">
-                        {JSON.stringify(message.provider_payload, null, 2)}
-                    </pre>
+                    <DebugJson title="Provider Payload" value={message.provider_payload} maxHeight="max-h-60" />
                 )}
-                {message.failure_reason && <p className="text-sm text-danger">Provider error: {message.failure_reason}</p>}
             </div>
         ))}
         {messages.length === 0 && <p className="text-sm text-text-secondary">No WhatsApp preparation record exists for this request.</p>}

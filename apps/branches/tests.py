@@ -44,6 +44,59 @@ class BranchAPITests(APITestCase):
         self.assertEqual(response2.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data, response2.data)
 
+    def test_branch_create_update_exposes_phone_and_shared_link(self):
+        url = reverse("branch-list")
+        payload = {
+            "spa_name": "Map Spa",
+            "code": "MAP-01",
+            "state": "Maharashtra",
+            "city": "Mumbai",
+            "area": "Bandra",
+            "postal_code": 400050,
+            "address": "Map Address",
+            "phone": "+919000000001",
+            "shared_link": "https://maps.app.goo.gl/testbranch",
+        }
+
+        create_response = self.client.post(url, payload, format="json")
+
+        self.assertEqual(create_response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(create_response.data["phone"], payload["phone"])
+        self.assertEqual(create_response.data["shared_link"], payload["shared_link"])
+
+        detail_url = reverse("branch-detail", kwargs={"pk": create_response.data["id"]})
+        update_response = self.client.patch(
+            detail_url,
+            {"shared_link": "https://maps.app.goo.gl/updatedbranch"},
+            format="json",
+        )
+
+        self.assertEqual(update_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(update_response.data["shared_link"], "https://maps.app.goo.gl/updatedbranch")
+
+    def test_open_24_hours_filter_uses_operating_hours(self):
+        branch_24 = Branch.objects.create(
+            spa_name="Always Open Spa",
+            code="OPEN-24",
+            city="Pune",
+            state="Maharashtra",
+            postal_code=411002,
+            address="Always Open Address",
+        )
+        BranchOperatingHours.objects.create(
+            branch=branch_24,
+            weekday=BranchOperatingHours.Weekday.MONDAY,
+            is_24_hours=True,
+            timezone="Asia/Kolkata",
+        )
+
+        response = self.client.get(reverse("branch-list"), {"open_24_hours": "true"})
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        codes = {row["code"] for row in response.data["results"]}
+        self.assertIn("OPEN-24", codes)
+        self.assertNotIn(self.branch.code, codes)
+
     def test_weekly_operating_hours_supports_overnight_closed_and_24_hour(self):
         url = reverse("branch-operating-hours", kwargs={"pk": self.branch.id})
         payload = {

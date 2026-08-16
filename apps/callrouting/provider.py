@@ -38,6 +38,20 @@ class DoubleTickTemplateProvider:
     TEMPLATE_NAME = "night_spa_recommendation"
     LANGUAGE = "en"
 
+    @staticmethod
+    def _message_id(parsed):
+        if not isinstance(parsed, dict):
+            return None
+        message_id = parsed.get("messageId")
+        if message_id:
+            return message_id
+        messages = parsed.get("messages")
+        if isinstance(messages, list) and messages:
+            first = messages[0]
+            if isinstance(first, dict):
+                return first.get("messageId")
+        return None
+
     @classmethod
     def build_payload(cls, to, from_waba, variables):
         recipient = digits_only(to)
@@ -109,9 +123,9 @@ class DoubleTickTemplateProvider:
         except ValueError as exc:
             raise DoubleTickPermanentError("DOUBLETICK_MALFORMED_RESPONSE") from exc
 
-        message_id = parsed.get("messageId")
+        message_id = cls._message_id(parsed)
         if not message_id:
-            raise DoubleTickPermanentError("DOUBLETICK_MESSAGE_ID_MISSING", parsed)
+            raise DoubleTickPermanentError("DOUBLETICK_MESSAGE_ID_MISSING", {"status_code": status_code, "body": parsed})
         return {
             "message_id": str(message_id),
             "provider_payload": {"status_code": status_code, "body": parsed},

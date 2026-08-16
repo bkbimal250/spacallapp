@@ -15,6 +15,7 @@ import {
     PhoneCall,
     ShieldCheck,
     XCircle,
+    ExternalLink,
 } from 'lucide-react';
 import { branchesAPI } from '../api';
 import Button from '../../../shared/components/Button';
@@ -27,6 +28,25 @@ const Field = ({ label, value }) => (
     <div className="space-y-1">
         <div className="text-xs font-medium uppercase tracking-wide text-text-secondary">{label}</div>
         <div className="text-sm font-medium text-text-primary break-words">{value || emptyValue}</div>
+    </div>
+);
+
+const LinkField = ({ label, href }) => (
+    <div className="space-y-1">
+        <div className="text-xs font-medium uppercase tracking-wide text-text-secondary">{label}</div>
+        {href ? (
+            <a
+                href={href}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex max-w-full items-center gap-1.5 text-sm font-medium text-primary hover:underline"
+            >
+                <span className="truncate">{href}</span>
+                <ExternalLink size={14} className="shrink-0" />
+            </a>
+        ) : (
+            <div className="text-sm font-medium text-text-primary">{emptyValue}</div>
+        )}
     </div>
 );
 
@@ -219,6 +239,7 @@ const BranchView = () => {
                         <Field label="Branch Code" value={branch.code} />
                         <Field label="Branch Group" value={branch.branch_group_name} />
                         <Field label="Phone" value={branch.phone} />
+                        <LinkField label="Google Maps Link" href={branch.shared_link} />
                         <Field label="Postal Code" value={branch.postal_code} />
                         <Field label="Status" value={branch.is_active ? 'Active' : 'Inactive'} />
                     </div>

@@ -114,6 +114,7 @@ const BranchList = () => {
         if (filters.city && !String(branch.city || branch.location_city_name || '').toLowerCase().includes(String(filters.city).toLowerCase())) return false;
         if (filters.state && !String(branch.state || branch.location_state_name || '').toLowerCase().includes(String(filters.state).toLowerCase())) return false;
         if (filters.area && !String(branch.area || branch.location_area_name || '').toLowerCase().includes(String(filters.area).toLowerCase())) return false;
+        if (String(filters.open_24_hours) === 'true') return false;
         if (filters.search) {
             const haystack = [
                 branch.spa_name,
@@ -123,6 +124,7 @@ const BranchList = () => {
                 branch.state,
                 branch.address,
                 branch.phone,
+                branch.shared_link,
                 branch.branch_group_name,
             ].filter(Boolean).join(' ').toLowerCase();
             if (!haystack.includes(String(filters.search).toLowerCase())) return false;
@@ -273,6 +275,7 @@ const BranchList = () => {
         { header: 'Branch Code', accessor: 'code' },
         { header: 'City', accessor: 'city' },
         { header: 'Branch Group Name', accessor: 'branch_group_name' },
+        { header: 'Phone', accessor: 'phone' },
 
         {
             header: 'Location',
@@ -328,6 +331,24 @@ const BranchList = () => {
                 >
                     {row.operating_hours_configured ? 'Configured' : 'Not Configured'}
                 </span>
+            )
+        },
+
+        {
+            header: 'Map',
+            render: (row) => row.shared_link ? (
+                <a
+                    href={row.shared_link}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline"
+                    title="Open Google Maps link"
+                >
+                    <MapPin size={14} />
+                    Link
+                </a>
+            ) : (
+                <span className="text-xs text-text-secondary">-</span>
             )
         },
 
@@ -435,7 +456,6 @@ const BranchList = () => {
 
                 <BranchFilter
                     onFilter={handleFilter}
-                    externalFilters={filters}
                 />
 
             </div>

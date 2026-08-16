@@ -29,9 +29,13 @@ class BranchSnapshotSerializer(serializers.Serializer):
     area = serializers.CharField(read_only=True)
     state = serializers.CharField(read_only=True)
     phone = serializers.SerializerMethodField()
+    shared_link = serializers.SerializerMethodField()
 
     def get_phone(self, obj):
         return obj.phone or ""
+
+    def get_shared_link(self, obj):
+        return obj.shared_link or ""
 
 
 class RoutingRuleSerializer(serializers.ModelSerializer):

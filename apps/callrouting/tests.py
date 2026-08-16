@@ -350,6 +350,16 @@ class RoutingEngineTests(TestCase):
             **kwargs,
         )
 
+    def add_24_hours(self, branch, weekday=BranchOperatingHours.Weekday.MONDAY):
+        return BranchOperatingHours.objects.create(
+            branch=branch,
+            weekday=weekday,
+            is_24_hours=True,
+            opens_at=None,
+            closes_at=None,
+            timezone="Asia/Kolkata",
+        )
+
     def call_log(self, phone="9876543210", at_datetime=None, branch=None, call_hash="hash-1"):
         return CallLog.objects.create(
             branch=branch or self.source,
@@ -407,7 +417,7 @@ class RoutingEngineTests(TestCase):
 
     def test_source_missing_hours_is_closed_and_can_route(self):
         candidate = self.branch("Green View Spa", "GV-01", self.area, self.group)
-        self.add_hours(candidate)
+        self.add_24_hours(candidate)
 
         request = RoutingService.process_call_log(self.call_log())
 
@@ -415,17 +425,65 @@ class RoutingEngineTests(TestCase):
         self.assertFalse(request.source_branch_open)
         self.assertEqual(request.candidates.filter(is_selected=True).count(), 1)
 
-    def test_source_closed_candidate_overnight_open_is_selected(self):
+    def test_source_closed_candidate_must_be_24_hours_to_be_selected(self):
         self.prepare_closed_source()
-        candidate = self.branch("Green View Spa", "GV-01", self.area, self.group)
-        self.add_hours(candidate, opens=time(10), closes=time(3))
+        overnight = self.branch("Overnight Spa", "ON-01", self.area, self.group)
+        always_open = self.branch("24 Hour Spa", "AO-01", self.area, self.group)
+        self.add_hours(overnight, opens=time(10), closes=time(3))
+        self.add_24_hours(always_open)
 
         request = RoutingService.process_call_log(self.call_log())
 
         selected = request.candidates.get(is_selected=True)
-        self.assertEqual(selected.branch, candidate)
+        overnight_candidate = request.candidates.get(branch=overnight)
+        self.assertEqual(selected.branch, always_open)
         self.assertTrue(selected.is_open)
         self.assertTrue(selected.is_eligible)
+        self.assertTrue(overnight_candidate.is_open)
+        self.assertFalse(overnight_candidate.is_eligible)
+        self.assertEqual(overnight_candidate.rejection_reason, "not_24_hours")
+
+    def test_area_wise_recommends_only_24_hour_spa_town_vashi(self):
+        vashi_source = self.branch("Customer Spa Vashi", "CSV-01", self.vashi, self.group)
+        vashi_device = Device.objects.create(branch=vashi_source, device_id="routing-device-vashi", is_registered=True)
+        self.add_hours(vashi_source, opens=time(10), closes=time(22))
+
+        normal_spa_names = [
+            "AVANTARA SPA VASHI",
+            "CRYSTAL SPA VASHI",
+            "OCEANIC SPA VASHI",
+            "SPA BERRY VASHI",
+            "THE SPA VASHI",
+            "UNICORN SPA VASHI",
+            "VIVA SPA VASHI",
+        ]
+        for index, name in enumerate(normal_spa_names, start=1):
+            branch = self.branch(name, f"VASHI-{index:02d}", self.vashi, self.group)
+            self.add_hours(branch, opens=time(10), closes=time(22))
+
+        spa_town = self.branch("SPA TOWN VASHI", "VASHI-24", self.vashi, self.group)
+        spa_town.phone = "+91 91164 58453"
+        spa_town.shared_link = "https://maps.app.goo.gl/caUwXA6orHxycRMv6"
+        spa_town.save(update_fields=["phone", "shared_link"])
+        self.add_24_hours(spa_town)
+
+        call_log = CallLog.objects.create(
+            branch=vashi_source,
+            device=vashi_device,
+            phone_number="9876543210",
+            call_type="incoming",
+            duration=30,
+            sim_slot=1,
+            call_time=self.aware(hour=23, minute=30),
+            call_hash="vashi-24-only",
+        )
+
+        request = RoutingService.process_call_log(call_log)
+
+        selected = list(request.candidates.filter(is_selected=True).order_by("rank"))
+        self.assertEqual(request.status, RoutingRequest.Status.ROUTED)
+        self.assertEqual([candidate.branch for candidate in selected], [spa_town])
+        self.assertFalse(request.candidates.exclude(branch=spa_town).filter(is_selected=True).exists())
 
     def test_candidate_closed_is_recorded_and_not_selected(self):
         self.prepare_closed_source()
@@ -444,8 +502,8 @@ class RoutingEngineTests(TestCase):
         self.prepare_closed_source()
         inactive = self.branch("Inactive Spa", "IN-01", self.area, self.group, active=False)
         open_candidate = self.branch("Open Spa", "OP-01", self.area, self.group)
-        self.add_hours(inactive)
-        self.add_hours(open_candidate)
+        self.add_24_hours(inactive)
+        self.add_24_hours(open_candidate)
 
         request = RoutingService.process_call_log(self.call_log())
 
@@ -460,7 +518,7 @@ class RoutingEngineTests(TestCase):
         same_city = self.branch("Same City", "SC-01", self.vashi, None)
         coverage_branch = self.branch("Coverage", "CV-01", self.other_area, None)
         for branch in [same_group, same_city, coverage_branch]:
-            self.add_hours(branch)
+            self.add_24_hours(branch)
 
         branch_ct = ContentType.objects.get_for_model(Branch)
         BranchCoverageArea.objects.create(content_type=branch_ct, object_id=str(self.source.id), area=self.area)
@@ -481,7 +539,7 @@ class RoutingEngineTests(TestCase):
         tie_one = self.branch("Tie One", "A-01", self.vashi, self.group)
         tie_two = self.branch("Tie Two", "A-02", self.vashi, self.group)
         for branch in [same_area, tie_one, tie_two]:
-            self.add_hours(branch)
+            self.add_24_hours(branch)
 
         request = RoutingService.process_call_log(self.call_log())
         selected = list(request.candidates.filter(is_selected=True).order_by("rank"))
@@ -492,7 +550,8 @@ class RoutingEngineTests(TestCase):
     def test_cooldown_blocks_second_call_with_same_canonical_phone(self):
         self.prepare_closed_source()
         candidate = self.branch("Green View Spa", "GV-01", self.area, self.group)
-        self.add_hours(candidate)
+        self.add_24_hours(candidate)
+        self.add_24_hours(candidate, weekday=BranchOperatingHours.Weekday.TUESDAY)
 
         first = RoutingService.process_call_log(self.call_log(phone="9876543210", call_hash="cooldown-1"))
         second = RoutingService.process_call_log(
@@ -510,7 +569,7 @@ class RoutingEngineTests(TestCase):
     def test_same_call_log_processing_is_idempotent(self):
         self.prepare_closed_source()
         candidate = self.branch("Green View Spa", "GV-01", self.area, self.group)
-        self.add_hours(candidate)
+        self.add_24_hours(candidate)
         call_log = self.call_log()
 
         first = RoutingService.process_call_log(call_log)
@@ -524,7 +583,7 @@ class RoutingEngineTests(TestCase):
     def test_existing_non_terminal_request_is_reprocessed_without_duplicate_candidates(self):
         self.prepare_closed_source()
         candidate = self.branch("Green View Spa", "GV-01", self.area, self.group)
-        self.add_hours(candidate)
+        self.add_24_hours(candidate)
         call_log = self.call_log()
         request = RoutingRequest.objects.create(call_log=call_log, status=RoutingRequest.Status.PENDING)
 
@@ -537,7 +596,7 @@ class RoutingEngineTests(TestCase):
     def test_lead_is_attached_when_available_and_missing_lead_is_allowed(self):
         self.prepare_closed_source()
         candidate = self.branch("Green View Spa", "GV-01", self.area, self.group)
-        self.add_hours(candidate)
+        self.add_24_hours(candidate)
         with_lead_log = self.call_log(call_hash="lead-1")
         lead = LeadManagement.objects.create(calllog=with_lead_log, branch=self.source)
         without_lead_log = self.call_log(phone="9876543211", call_hash="lead-2")
@@ -566,7 +625,7 @@ class RoutingEngineTests(TestCase):
     def test_routing_task_fetches_call_log_and_processes(self):
         self.prepare_closed_source()
         candidate = self.branch("Green View Spa", "GV-01", self.area, self.group)
-        self.add_hours(candidate)
+        self.add_24_hours(candidate)
         call_log = self.call_log(call_hash="task-process-1")
 
         result = process_call_log_routing(str(call_log.id))
@@ -578,7 +637,7 @@ class RoutingEngineTests(TestCase):
     def test_routing_task_called_twice_remains_idempotent(self):
         self.prepare_closed_source()
         candidate = self.branch("Green View Spa", "GV-01", self.area, self.group)
-        self.add_hours(candidate)
+        self.add_24_hours(candidate)
         call_log = self.call_log(call_hash="task-idempotent-1")
 
         first = process_call_log_routing(str(call_log.id))
@@ -616,8 +675,9 @@ class RoutingWhatsAppOrchestrationTests(RoutingEngineTests):
             area = self.area if index == 0 else self.vashi
             branch = self.branch(f"Selected Spa {index + 1}", f"SEL-0{index + 1}", area, self.group)
             branch.phone = f"900000000{index + 1}"
-            branch.save(update_fields=["phone"])
-            self.add_hours(branch, opens=time(10), closes=time(3))
+            branch.shared_link = f"https://maps.app.goo.gl/selected{index + 1}"
+            branch.save(update_fields=["phone", "shared_link"])
+            self.add_24_hours(branch)
             candidates.append(branch)
         call_log = self.call_log(call_hash=f"wa-routing-{selected_count}", phone="9876543210")
         request = RoutingService.process_call_log(call_log)
@@ -633,12 +693,24 @@ class RoutingWhatsAppOrchestrationTests(RoutingEngineTests):
         self.assertEqual(len(data["recommendations"]), 2)
         self.assertEqual(data["recommendations"][0]["spa_name"], candidates[0].spa_name)
         self.assertEqual(data["recommendations"][0]["phone"], candidates[0].phone)
-        self.assertEqual(data["recommendations"][0]["open_until"], "3:00 AM")
-        self.assertEqual(data["recommendations"][0]["details_url"], "")
+        self.assertEqual(data["recommendations"][0]["open_until"], "24 by 7 open hr")
+        self.assertEqual(data["recommendations"][0]["details_url"], candidates[0].shared_link)
         self.assertEqual(data["template_variables"][0], "Customer")
         self.assertEqual(data["template_variables"][1], "Royal Oak Spa")
-        self.assertIn("Selected Spa 1", data["template_variables"][2])
-        self.assertNotIn("Details:", data["template_variables"][2])
+        self.assertIn("*Selected Spa 1*", data["template_variables"][2])
+        self.assertIn("Open Status: *24 by 7 open hr*", data["template_variables"][2])
+        self.assertIn("Phone: *9000000001*", data["template_variables"][2])
+        self.assertIn("Map Link: *https://maps.app.goo.gl/selected1*", data["template_variables"][2])
+
+    def test_template_data_does_not_fabricate_details_url_when_link_missing(self):
+        request, candidates = self.routed_request(selected_count=1)
+        candidates[0].shared_link = ""
+        candidates[0].save(update_fields=["shared_link"])
+
+        data = RoutingTemplateDataBuilder.build(request)
+
+        self.assertEqual(data["recommendations"][0]["details_url"], "")
+        self.assertNotIn("Map Link:", data["template_variables"][2])
 
     def test_template_data_uses_only_selected_eligible_candidates(self):
         request, candidates = self.routed_request(selected_count=1)
@@ -679,7 +751,8 @@ class RoutingWhatsAppOrchestrationTests(RoutingEngineTests):
 
         data = RoutingTemplateDataBuilder.build(request)
 
-        self.assertEqual(data["recommendations"][0]["open_until"], "")
+        self.assertEqual(data["recommendations"], [])
+        self.assertEqual(data["formatted_recommendations"], "")
 
     @override_settings(CALL_ROUTING_DRY_RUN=True)
     def test_dry_run_creates_queued_routing_whatsapp_message(self):
@@ -704,6 +777,59 @@ class RoutingWhatsAppOrchestrationTests(RoutingEngineTests):
 
         self.assertEqual(first.id, second.id)
         self.assertEqual(request.whatsapp_messages.count(), 1)
+
+    @override_settings(CALL_ROUTING_DRY_RUN=True, CALL_ROUTING_WHATSAPP_RECIPIENT_COOLDOWN_HOURS=24)
+    def test_same_recipient_is_not_sent_multiple_routing_whatsapps_within_24_hours(self):
+        request, candidates = self.routed_request(selected_count=1)
+        self.add_24_hours(candidates[0], weekday=BranchOperatingHours.Weekday.TUESDAY)
+        first = RoutingWhatsAppService.prepare_for_request(request)
+
+        second_call_log = self.call_log(
+            phone="919876543210",
+            at_datetime=self.aware(day=11, hour=1, minute=30),
+            call_hash="wa-routing-duplicate-recipient",
+        )
+        second_request = RoutingService.process_call_log(second_call_log)
+
+        second = RoutingWhatsAppService.prepare_for_request(second_request)
+
+        self.assertEqual(first.status, RoutingWhatsAppMessage.Status.QUEUED)
+        self.assertEqual(second_request.status, RoutingRequest.Status.ROUTED)
+        self.assertEqual(second.status, RoutingWhatsAppMessage.Status.CANCELLED)
+        self.assertEqual(second.failure_reason, "DUPLICATE_RECIPIENT_24H")
+        self.assertEqual(RoutingWhatsAppMessage.objects.filter(recipient_phone="+919876543210").count(), 2)
+
+    @override_settings(CALL_ROUTING_DRY_RUN=True, CALL_ROUTING_WHATSAPP_RECIPIENT_COOLDOWN_HOURS=24)
+    def test_same_recipient_can_send_again_after_24_hour_whatsapp_window(self):
+        request, candidates = self.routed_request(selected_count=1)
+        first = RoutingWhatsAppService.prepare_for_request(request)
+        RoutingWhatsAppMessage.objects.filter(id=first.id).update(created_at=timezone.now() - timedelta(hours=25))
+        second_call_time = self.aware(day=10, hour=23, minute=45)
+
+        second_request = RoutingRequest.objects.create(
+            call_log=self.call_log(phone="919876543210", at_datetime=second_call_time, call_hash="wa-routing-after-24h"),
+            source_branch=self.source,
+            call_time=second_call_time,
+            routing_type=RoutingRule.RoutingType.NIGHT,
+            routing_rule=self.rule,
+            normalized_phone="+919876543210",
+            status=RoutingRequest.Status.ROUTED,
+        )
+        RoutingCandidate.objects.create(
+            routing_request=second_request,
+            branch=candidates[0],
+            rank=1,
+            relevance_score=100,
+            is_open=True,
+            is_eligible=True,
+            is_selected=True,
+            evaluated_at=timezone.now(),
+        )
+
+        second = RoutingWhatsAppService.prepare_for_request(second_request)
+
+        self.assertEqual(second.status, RoutingWhatsAppMessage.Status.QUEUED)
+        self.assertNotEqual(first.id, second.id)
 
     @override_settings(CALL_ROUTING_DRY_RUN=True)
     def test_invalid_recipient_fails_without_provider_call(self):
@@ -815,6 +941,33 @@ class RoutingWhatsAppOrchestrationTests(RoutingEngineTests):
         self.assertEqual(captured["payload"]["messages"][0]["content"]["language"], "en")
         self.assertEqual(captured["payload"]["messages"][0]["content"]["templateData"]["body"]["placeholders"][0], "Customer")
 
+    def test_provider_parses_nested_message_id_response(self):
+        class Response:
+            status = 200
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+            def read(self):
+                return json.dumps({
+                    "messages": [
+                        {
+                            "status": "ENQUEUED",
+                            "recipient": "919876543210",
+                            "messageId": "dt-nested-123",
+                        }
+                    ]
+                }).encode("utf-8")
+
+        with override_settings(DOUBLETICK_API_KEY="test-key"), patch("urllib.request.urlopen", return_value=Response()):
+            result = DoubleTickTemplateProvider.send("+919876543210", "917506359139", ["Customer", "Royal Oak Spa", "Green View Spa"])
+
+        self.assertEqual(result["message_id"], "dt-nested-123")
+        self.assertEqual(result["provider_payload"]["body"]["messages"][0]["status"], "ENQUEUED")
+
     def test_provider_400_401_and_422_are_permanent(self):
         for status_code in [400, 401, 422]:
             error = urllib.error.HTTPError("url", status_code, "bad", {}, io.BytesIO(b'{"error":"bad"}'))
@@ -857,7 +1010,7 @@ class RoutingWhatsAppOrchestrationTests(RoutingEngineTests):
     def test_task_prepares_dry_run_message_after_routing(self):
         self.prepare_closed_source()
         candidate = self.branch("Green View Spa", "GV-01", self.area, self.group)
-        self.add_hours(candidate)
+        self.add_24_hours(candidate)
         call_log = self.call_log(call_hash="wa-task-1")
 
         process_call_log_routing(str(call_log.id))

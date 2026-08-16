@@ -199,14 +199,25 @@ class CandidateSelectionService:
         evaluations = []
         for branch in cls._base_queryset(source_branch):
             score = cls._score(source_branch, branch, coverage_ids)
-            is_open = BranchOperatingHoursService.is_branch_open(branch, at_datetime)
+            applicable_hours = BranchOperatingHoursService.get_applicable_hours(branch, at_datetime)
+            is_open = applicable_hours is not None
+            is_24_hour_open = bool(applicable_hours and applicable_hours.is_24_hours)
+            is_eligible = is_24_hour_open and score > 0
+            if is_eligible:
+                rejection_reason = ""
+            elif not is_open:
+                rejection_reason = "closed"
+            elif not is_24_hour_open:
+                rejection_reason = "not_24_hours"
+            else:
+                rejection_reason = "location_not_eligible"
             evaluations.append(
                 CandidateEvaluation(
                     branch=branch,
                     relevance_score=score,
                     is_open=is_open,
-                    is_eligible=is_open and score > 0,
-                    rejection_reason="" if is_open and score > 0 else "closed" if not is_open else "location_not_eligible",
+                    is_eligible=is_eligible,
+                    rejection_reason=rejection_reason,
                 )
             )
 

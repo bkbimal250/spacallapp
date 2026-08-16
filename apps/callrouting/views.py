@@ -140,6 +140,7 @@ class RoutingRequestViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mi
                 "enable_call_routing": bool(getattr(settings, "ENABLE_CALL_ROUTING", False)),
                 "call_routing_dry_run": bool(getattr(settings, "CALL_ROUTING_DRY_RUN", True)),
                 "enable_call_routing_whatsapp": bool(getattr(settings, "ENABLE_CALL_ROUTING_WHATSAPP", False)),
+                "recipient_cooldown_hours": int(getattr(settings, "CALL_ROUTING_WHATSAPP_RECIPIENT_COOLDOWN_HOURS", 24) or 0),
             }
         )
 

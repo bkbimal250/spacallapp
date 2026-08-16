@@ -4,13 +4,14 @@ import Button from '../../../shared/components/Button';
 import SearchableSelect from '../../../shared/components/SearchableSelect';
 import { branchesAPI } from '../api';
 
-const BranchFilter = ({ onFilter, externalFilters = {} }) => {
+const BranchFilter = ({ onFilter }) => {
 
     const [search, setSearch] = useState('');
     const [city, setCity] = useState('');
     const [state, setState] = useState('');
     const [area, setArea] = useState('');
     const [status, setStatus] = useState('');
+    const [open24Hours, setOpen24Hours] = useState('');
     const [group, setGroup] = useState('');
     const [groups, setGroups] = useState([]);
 
@@ -31,20 +32,12 @@ const BranchFilter = ({ onFilter, externalFilters = {} }) => {
         fetchGroups();
     }, []);
 
-    // Sync external filters (like from BranchGroupFilter)
-    useEffect(() => {
-        if (externalFilters.group !== undefined) {
-            setGroup(externalFilters.group);
-        }
-    }, [externalFilters.group]);
-
-    const handleGroupChange = useCallback((e) => setGroup(e.target.value), []);
-
     const handleSearchChange = useCallback((e) => setSearch(e.target.value), []);
     const handleCityChange = useCallback((e) => setCity(e.target.value), []);
     const handleStateChange = useCallback((e) => setState(e.target.value), []);
     const handleAreaChange = useCallback((e) => setArea(e.target.value), []);
     const handleStatusChange = useCallback((e) => setStatus(e.target.value), []);
+    const handleOpen24HoursChange = useCallback((e) => setOpen24Hours(e.target.value), []);
 
     const handleFilter = useCallback(() => {
 
@@ -55,10 +48,11 @@ const BranchFilter = ({ onFilter, externalFilters = {} }) => {
         if (state) filters.state = state;
         if (area) filters.area = area;
         if (status !== '') filters.status = status;
+        if (open24Hours !== '') filters.open_24_hours = open24Hours;
         if (group) filters.group = group;
 
         onFilter(filters);
-    }, [search, city, state, area, status, group, onFilter]);
+    }, [search, city, state, area, status, open24Hours, group, onFilter]);
 
     const handleClear = useCallback(() => {
 
@@ -67,6 +61,7 @@ const BranchFilter = ({ onFilter, externalFilters = {} }) => {
         setState('');
         setArea('');
         setStatus('');
+        setOpen24Hours('');
         setGroup('');
 
         onFilter({});
@@ -74,7 +69,7 @@ const BranchFilter = ({ onFilter, externalFilters = {} }) => {
 
     return (
 
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-4 items-end">
+        <div className="grid grid-cols-1 md:grid-cols-6 gap-4 items-end">
 
             {/* SEARCH */}
 
@@ -153,6 +148,23 @@ const BranchFilter = ({ onFilter, externalFilters = {} }) => {
                     <option value="">All Statuses</option>
                     <option value="true">Active</option>
                     <option value="false">Inactive</option>
+                </select>
+            </div>
+
+            <div>
+                <label className="block text-sm font-medium text-text-secondary mb-1">
+                    24 Hour Open
+                </label>
+                <select
+                    className="block w-full px-3 py-2 bg-background border border-border rounded-md
+                               text-text-primary text-sm
+                               focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary"
+                    value={open24Hours}
+                    onChange={handleOpen24HoursChange}
+                >
+                    <option value="">All Hours</option>
+                    <option value="true">24 Hour Open</option>
+                    <option value="false">Not 24 Hour</option>
                 </select>
             </div>
 

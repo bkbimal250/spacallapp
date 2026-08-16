@@ -1,6 +1,7 @@
 import logging
 import re
 from dataclasses import dataclass
+from datetime import timedelta
 
 from django.conf import settings
 from django.db import IntegrityError, transaction
@@ -29,6 +30,7 @@ class RoutingWhatsAppErrorCode:
     TEMPLATE_NOT_CONFIGURED = "TEMPLATE_NOT_CONFIGURED"
     PROVIDER_TEMPLATE_API_NOT_CONFIGURED = "PROVIDER_TEMPLATE_API_NOT_CONFIGURED"
     CALL_ROUTING_WHATSAPP_DISABLED = "CALL_ROUTING_WHATSAPP_DISABLED"
+    DUPLICATE_RECIPIENT_24H = "DUPLICATE_RECIPIENT_24H"
 
 
 def mask_phone(phone):
@@ -59,7 +61,9 @@ class RoutingTemplateDataBuilder:
     @staticmethod
     def _open_until(branch, at_datetime):
         hours = BranchOperatingHoursService.get_applicable_hours(branch, at_datetime)
-        if not hours or hours.is_24_hours or hours.is_closed or not hours.closes_at:
+        if hours and hours.is_24_hours:
+            return "24 by 7 open hr"
+        if not hours or hours.is_closed or not hours.closes_at:
             return ""
         return hours.closes_at.strftime("%I:%M %p").lstrip("0")
 
@@ -71,20 +75,26 @@ class RoutingTemplateDataBuilder:
             location=cls._location(branch),
             open_until=cls._open_until(branch, at_datetime),
             phone=branch.phone or "",
-            details_url="",
+            details_url=branch.shared_link or "",
         )
 
     @staticmethod
     def format_recommendations(recommendations):
+        def bold(value):
+            return f"*{value}*" if value else ""
+
         blocks = []
         for recommendation in recommendations:
-            lines = [recommendation.get("spa_name", "")]
+            lines = [bold(recommendation.get("spa_name", ""))]
             if recommendation.get("location"):
-                lines.append(f"Location: {recommendation['location']}")
+                lines.append(f"Location: {bold(recommendation['location'])}")
             if recommendation.get("open_until"):
-                lines.append(f"Open Until: {recommendation['open_until']}")
+                label = "Open Status" if recommendation["open_until"] == "24 by 7 open hr" else "Open Until"
+                lines.append(f"{label}: {bold(recommendation['open_until'])}")
             if recommendation.get("phone"):
-                lines.append(f"Contact: {recommendation['phone']}")
+                lines.append(f"Phone: {bold(recommendation['phone'])}")
+            if recommendation.get("details_url"):
+                lines.append(f"Map Link: {bold(recommendation['details_url'])}")
             blocks.append("\n".join(line for line in lines if line))
         return "\n\n".join(block for block in blocks if block)
 
@@ -98,6 +108,15 @@ class RoutingTemplateDataBuilder:
             .select_related("branch", "branch__location_city", "branch__location_area")
             .order_by("rank", "-relevance_score", "branch__code", "branch__spa_name")
         )
+        selected_24_hours = []
+        for candidate in selected:
+            hours = BranchOperatingHoursService.get_applicable_hours(
+                candidate.branch,
+                routing_request.call_time or call_log.call_time,
+            )
+            if hours and hours.is_24_hours:
+                selected_24_hours.append(candidate)
+        selected = selected_24_hours
         recommendations = [
             cls._recommendation(candidate, routing_request.call_time or call_log.call_time).__dict__
             for candidate in selected
@@ -143,6 +162,24 @@ class RoutingWhatsAppService:
         encoded = str(payload).encode("ascii", errors="ignore").decode("ascii")
         return encoded == str(payload)
 
+    @staticmethod
+    def _recent_recipient_message(recipient, template_name, routing_request_id):
+        cooldown_hours = max(0, int(getattr(settings, "CALL_ROUTING_WHATSAPP_RECIPIENT_COOLDOWN_HOURS", 24) or 0))
+        if not recipient or not cooldown_hours:
+            return None
+        cutoff = timezone.now() - timedelta(hours=cooldown_hours)
+        return (
+            RoutingWhatsAppMessage.objects.filter(
+                recipient_phone=recipient,
+                template_name=template_name,
+                status__in=ACTIVE_WHATSAPP_STATUSES,
+                created_at__gte=cutoff,
+            )
+            .exclude(routing_request_id=routing_request_id)
+            .order_by("-created_at")
+            .first()
+        )
+
     @classmethod
     def prepare_for_request(cls, routing_request):
         if routing_request.status != RoutingRequest.Status.ROUTED:
@@ -185,6 +222,10 @@ class RoutingWhatsAppService:
             status = RoutingWhatsAppMessage.Status.CANCELLED
             queued_at = None
             failure_reason = RoutingWhatsAppErrorCode.TEMPLATE_NOT_CONFIGURED
+        elif cls._recent_recipient_message(recipient, template_name, routing_request.id):
+            status = RoutingWhatsAppMessage.Status.CANCELLED
+            queued_at = None
+            failure_reason = RoutingWhatsAppErrorCode.DUPLICATE_RECIPIENT_24H
 
         if not cls._has_no_emoji(template_payload):
             status = RoutingWhatsAppMessage.Status.FAILED
