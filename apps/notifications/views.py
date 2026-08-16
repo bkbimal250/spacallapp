@@ -60,6 +60,8 @@ class AdminSendNotificationView(views.APIView):
         # Respect user branch scope
         devices = apply_branch_filter(devices, "branch_id", user)
         users = User.objects.filter(is_active=True).exclude(fcm_token__isnull=True).exclude(fcm_token="")
+        if notif_type == "alert":
+            users = users.filter(role="spa_manager")
         users = apply_branch_filter(users, "branch_id", user)
 
         if target_type == "users":

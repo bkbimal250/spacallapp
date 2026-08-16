@@ -189,14 +189,7 @@ class MonitoringAlertService:
                 branch_id=device.branch_id,
                 role="spa_manager",
             )
-            area_managers = get_user_model().objects.filter(
-                is_active=True,
-                fcm_token__isnull=False,
-                role="area_manager",
-                area_branches__id=device.branch_id,
-            )
             recipients.extend(list(managers))
-            recipients.extend(list(area_managers))
 
         sent_count = 0
         for recipient in recipients:

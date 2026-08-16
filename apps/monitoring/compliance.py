@@ -225,6 +225,7 @@ class DeviceComplianceService:
                 title="Device App Alert",
                 body=body,
                 notification_type="alert",
+                is_sent=True,
             )
             created += 1
 

@@ -2,6 +2,7 @@ from unittest.mock import call, patch
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
+from rest_framework.test import APIClient
 
 from apps.branches.models import Branch
 from apps.devices.models import Device
@@ -55,6 +56,22 @@ class NotificationBroadcastTests(TestCase):
             is_active=True,
         )
         self.other_area_manager.area_branches.add(self.other_branch)
+        self.spa_manager = User.objects.create_user(
+            email="spa-broadcast@example.com",
+            password="pass",
+            full_name="SPA Broadcast",
+            role="spa_manager",
+            branch=self.branch,
+            fcm_token="spa-token",
+            is_active=True,
+        )
+        self.admin = User.objects.create_user(
+            email="admin-broadcast@example.com",
+            password="pass",
+            full_name="Admin Broadcast",
+            role="admin",
+            is_active=True,
+        )
 
     @patch("apps.notifications.services.async_to_sync", side_effect=lambda fn: fn)
     @patch("apps.notifications.services.get_channel_layer")
@@ -101,3 +118,41 @@ class NotificationBroadcastTests(TestCase):
             ],
             any_order=True,
         )
+
+    @patch("apps.notifications.views.NotificationService.send_push", return_value=True)
+    def test_manual_alert_user_targets_only_spa_managers(self, send_push):
+        self.area_manager.fcm_token = "area-token"
+        self.area_manager.save(update_fields=["fcm_token"])
+        client = APIClient()
+        client.force_authenticate(self.admin)
+
+        response = client.post(
+            "/api/v1/notifications/send-manual/",
+            {
+                "target_type": "users",
+                "user_ids": [str(self.spa_manager.id), str(self.area_manager.id)],
+                "title": "Device App Alert",
+                "body": "Alert body",
+                "type": "alert",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["total_count"], 1)
+        self.assertEqual(send_push.call_count, 1)
+        self.assertEqual(send_push.call_args.args[0], self.spa_manager)
+
+    def test_alert_push_service_skips_non_spa_manager_users_without_failed_log(self):
+        self.area_manager.fcm_token = "area-token"
+        self.area_manager.save(update_fields=["fcm_token"])
+
+        sent = NotificationService.send_push(
+            recipient=self.area_manager,
+            title="Device App Alert",
+            body="Alert body",
+            notification_type="alert",
+        )
+
+        self.assertFalse(sent)
+        self.assertFalse(Notification.objects.filter(user=self.area_manager, title="Device App Alert").exists())

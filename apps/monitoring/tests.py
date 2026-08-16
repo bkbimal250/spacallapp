@@ -47,6 +47,14 @@ class MonitoringAlertServiceTests(TestCase):
             branch=self.branch,
             fcm_token="manager-token",
         )
+        self.area_manager = User.objects.create_user(
+            email="area-manager@example.com",
+            password="testpass123",
+            full_name="Area Manager",
+            role="area_manager",
+            fcm_token="area-manager-token",
+        )
+        self.area_manager.area_branches.add(self.branch)
 
     @patch("apps.notifications.services.NotificationService.send_push", return_value=True)
     def test_raise_event_logs_and_notifies_device_and_manager(self, send_push):
@@ -64,6 +72,7 @@ class MonitoringAlertServiceTests(TestCase):
         recipients = {call.kwargs["recipient"] for call in send_push.call_args_list}
         self.assertIn(self.device, recipients)
         self.assertIn(self.manager, recipients)
+        self.assertNotIn(self.area_manager, recipients)
 
     @patch("apps.notifications.services.NotificationService.send_push", return_value=True)
     def test_raise_event_dedupes_active_alert(self, send_push):
@@ -145,6 +154,25 @@ class MonitoringAlertServiceTests(TestCase):
         )
         self.assertIn("Possible reasons", warning.description)
         self.assertIn("app uninstalled", warning.description)
+
+    def test_device_compliance_admin_alert_is_marked_as_crm_delivered(self):
+        admin = User.objects.create_user(
+            email="admin-monitoring@example.com",
+            password="testpass123",
+            full_name="Admin Monitoring",
+            role="admin",
+            is_active=True,
+        )
+
+        created = DeviceComplianceService.create_crm_alert(
+            self.device,
+            DeviceComplianceService.SUSPECTED_UNINSTALLED,
+            "FCM token invalid",
+        )
+
+        self.assertEqual(created, 1)
+        notification = admin.notifications.get(title="Device App Alert")
+        self.assertTrue(notification.is_sent)
 
 
 class DeviceHeartbeatClockSkewTests(TestCase):

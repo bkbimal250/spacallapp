@@ -169,6 +169,12 @@ class NotificationService:
 
         is_device = isinstance(recipient, Device)
         is_user = isinstance(recipient, User)
+        if is_user and notification_type == "alert" and getattr(recipient, "role", None) != "spa_manager":
+            logger.info(
+                "User alert push skipped for non-SPA-manager CRM recipient",
+                extra=NotificationService._recipient_context(recipient),
+            )
+            return False
         
         # Create the local log record (Note: existing Notification model requires Device)
         # For now, if it's a User, we might need to adjust or skip local logging if we don't have a device reference.
