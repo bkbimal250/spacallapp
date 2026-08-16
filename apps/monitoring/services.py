@@ -255,23 +255,24 @@ class MonitoringAlertService:
             "resolved": False,
         }
 
-        with transaction.atomic():
-            events = list(
-                DeviceEvent.objects.select_for_update()
-                .filter(**identity)
-                .order_by("created_at", "id")
-            )
-            if events:
-                return MonitoringAlertService._merge_duplicate_events(events, description=description), False
+        try:
+            with transaction.atomic():
+                events = list(
+                    DeviceEvent.objects.select_for_update()
+                    .filter(**identity)
+                    .order_by("created_at", "id")
+                )
+                if events:
+                    return MonitoringAlertService._merge_duplicate_events(events, description=description), False
 
-            try:
                 return DeviceEvent.objects.create(
                     device=device,
                     event_type=event_type,
                     resolved=False,
                     description=description,
                 ), True
-            except IntegrityError:
+        except IntegrityError:
+            with transaction.atomic():
                 events = list(
                     DeviceEvent.objects.select_for_update()
                     .filter(**identity)
