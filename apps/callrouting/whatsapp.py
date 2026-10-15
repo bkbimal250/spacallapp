@@ -1,5 +1,6 @@
 import logging
 import re
+from apps.common.task_policy import fresh_call, eligible_device
 from dataclasses import dataclass
 from datetime import timedelta
 
@@ -18,6 +19,7 @@ logger = logging.getLogger(__name__)
 ACTIVE_WHATSAPP_STATUSES = {
     RoutingWhatsAppMessage.Status.QUEUED,
     RoutingWhatsAppMessage.Status.SENDING,
+    RoutingWhatsAppMessage.Status.AMBIGUOUS,
     RoutingWhatsAppMessage.Status.SENT,
     RoutingWhatsAppMessage.Status.DELIVERED,
     RoutingWhatsAppMessage.Status.READ,
@@ -194,7 +196,12 @@ class RoutingWhatsAppService:
             "routing_rule",
         ).get(id=routing_request.id)
 
-        existing = routing_request.whatsapp_messages.filter(status__in=ACTIVE_WHATSAPP_STATUSES).first()
+        if not fresh_call(routing_request.call_log, settings.CALL_ROUTING_MAX_AGE_SECONDS) or not eligible_device(routing_request.call_log):
+            return None
+
+        # Terminal/uncertain outcomes require explicit reconciliation, not revival
+        # by a duplicate routing task.
+        existing = routing_request.whatsapp_messages.first()
         if existing:
             return existing
 
@@ -247,24 +254,8 @@ class RoutingWhatsAppService:
                         "failure_reason": failure_reason,
                     },
                 )
-                if not created and message.status not in ACTIVE_WHATSAPP_STATUSES:
-                    message.recipient_phone = recipient or message.recipient_phone
-                    message.template_name = template_name
-                    message.template_language = template_language or "en"
-                    message.template_payload = template_payload
-                    message.status = status
-                    message.queued_at = queued_at
-                    message.failure_reason = failure_reason
-                    message.save(update_fields=[
-                        "recipient_phone",
-                        "template_name",
-                        "template_language",
-                        "template_payload",
-                        "status",
-                        "queued_at",
-                        "failure_reason",
-                        "updated_at",
-                    ])
+                if not created:
+                    return message
         except IntegrityError:
             message = RoutingWhatsAppMessage.objects.get(idempotency_key=idempotency_key)
 
@@ -290,7 +281,8 @@ class RoutingWhatsAppService:
         ):
             from apps.callrouting.tasks import send_routing_whatsapp_message
 
-            transaction.on_commit(lambda: send_routing_whatsapp_message.apply_async(args=(str(message.id),), ignore_result=True))
+            transaction.on_commit(lambda: send_routing_whatsapp_message.apply_async(args=(str(message.id),), ignore_result=True,
+                expires=routing_request.call_log.call_time + timedelta(seconds=settings.CALL_ROUTING_MAX_AGE_SECONDS)))
         return message
 
 

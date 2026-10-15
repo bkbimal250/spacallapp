@@ -221,3 +221,17 @@ class MissedCallFollowUp(BaseModel, TimeStampedModel):
 
     def __str__(self):
         return f"Follow-up for {self.missed_call.phone_number} - {self.sla_status}"
+
+
+class MissedCallReminder(models.Model):
+    """Durable per-step reservation; uncertain sends are never automatically replayed."""
+    followup = models.ForeignKey(MissedCallFollowUp, on_delete=models.CASCADE, related_name="reminders")
+    step = models.PositiveSmallIntegerField()
+    status = models.CharField(max_length=16, default="queued", choices=[
+        (value, value) for value in ("queued", "sending", "sent", "failed", "ambiguous", "skipped")
+    ])
+    lease_until = models.DateTimeField()
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["followup", "step"], name="unique_missed_reminder_step")]

@@ -1,4 +1,7 @@
 import logging
+from datetime import timedelta
+from apps.common.task_policy import fresh_call, eligible_device
+from apps.calllogs.models import CallLog
 
 from django.conf import settings
 from django.db import transaction
@@ -24,8 +27,12 @@ def enqueue_call_log_routing(call_log_ids):
         return 0
 
     def _enqueue():
-        for call_log_id in ids:
-            process_call_log_routing.apply_async(args=(call_log_id,), ignore_result=True)
+        for call in CallLog.objects.filter(id__in=ids).select_related("device"):
+            if fresh_call(call, settings.CALL_ROUTING_MAX_AGE_SECONDS) and eligible_device(call):
+                process_call_log_routing.apply_async(
+                    args=(str(call.id),), ignore_result=True,
+                    expires=call.call_time + timedelta(seconds=settings.CALL_ROUTING_MAX_AGE_SECONDS),
+                )
         logger.info("Queued call routing tasks", extra={"routing_task_count": len(ids)})
 
     transaction.on_commit(_enqueue)

@@ -5,7 +5,7 @@ from datetime import timedelta
 
 from django.conf import settings
 from django.contrib.contenttypes.models import ContentType
-from django.db import transaction
+from django.db import transaction, OperationalError, InterfaceError
 from django.db.models import Max, Q
 from django.utils import timezone
 
@@ -452,6 +452,8 @@ class RoutingService:
                 attempt.completed_at = timezone.now()
                 attempt.save(update_fields=["status", "completed_at"])
                 return routing_request
+        except (OperationalError, InterfaceError):
+            raise
         except Exception as exc:
             logger.exception("Call routing processing failed", extra={"call_log_id": str(getattr(call_log, "id", ""))})
             with transaction.atomic():

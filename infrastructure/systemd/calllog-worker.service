@@ -1,0 +1,23 @@
+[Unit]
+Description=CallLog dedicated Celery worker (no legacy queue, no Beat)
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/spacallapp
+Environment=DJANGO_SETTINGS_MODULE=config.settings.prod
+Environment=CELERY_TASK_DEFAULT_QUEUE=calllog_system
+EnvironmentFile=/etc/calllog/worker.env
+ExecStartPre=/var/www/spacallapp/venv/bin/python -m config.verify_task_config
+ExecStart=/var/www/spacallapp/venv/bin/celery -A config.celery:app worker --hostname=calllog@%%h --queues=${CELERY_TASK_DEFAULT_QUEUE} --concurrency=1 --prefetch-multiplier=1 --loglevel=INFO
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=90
+KillSignal=SIGTERM
+KillMode=mixed
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

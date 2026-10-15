@@ -281,8 +281,8 @@ class MissedCallFollowUpTests(TestCase):
         self.assertEqual(kwargs["data"]["phone_number"], self.phone)
         self.assertEqual(kwargs["data"]["sla_step"], "1")
 
-    @patch("apps.calllogs.tasks.send_missed_call_reminder.delay")
-    def test_due_missed_call_sweep_queues_highest_due_step(self, delay):
+    @patch("apps.calllogs.tasks.send_missed_call_reminder.apply_async")
+    def test_due_missed_call_sweep_queues_highest_due_step(self, publish):
         missed_log = CallLog.objects.create(
             branch=self.branch,
             device=self.device,
@@ -300,10 +300,12 @@ class MissedCallFollowUpTests(TestCase):
             notification_step=1,
         )
 
-        result = send_due_missed_call_reminders()
+        with self.captureOnCommitCallbacks(execute=True):
+            result = send_due_missed_call_reminders()
 
         self.assertIn("Queued 1", result)
-        delay.assert_called_once_with(str(missed_log.id), 2)
+        publish.assert_called_once()
+        self.assertEqual(publish.call_args.kwargs["args"], (str(missed_log.id), 2))
 
 
 class CallLogSimFilterTests(TestCase):

@@ -133,18 +133,20 @@ class FollowUpService:
                     else:
                         # Schedule notification tasks normally
                         from .tasks import schedule_missed_call_notifications
-                        try:
-                            schedule_missed_call_notifications.apply_async(
-                                args=(m_log.id,),
-                                ignore_result=True,
-                                retry=False,
-                            )
-                        except Exception:
-                            import logging
-                            logging.getLogger(__name__).exception(
-                                "Failed to enqueue missed-call notifications",
-                                extra={"call_log_id": str(m_log.id)},
-                            )
+                        from django.db import transaction
+                        from apps.common.task_policy import fresh_call, eligible_device
+                        from django.conf import settings
+                        if fresh_call(m_log, settings.MISSED_CALL_MAX_AGE_SECONDS) and eligible_device(m_log):
+                            def enqueue(call_id=str(m_log.id)):
+                                try:
+                                    schedule_missed_call_notifications.apply_async(
+                                        args=(call_id,), ignore_result=True, retry=False,
+                                        expires=settings.MISSED_CALL_MAX_AGE_SECONDS,
+                                    )
+                                except Exception:
+                                    import logging
+                                    logging.getLogger(__name__).exception("Failed to enqueue missed-call notifications")
+                            transaction.on_commit(enqueue)
 
         # 2. Handle Outgoing and Incoming Calls (Resolve pending follow-ups)
         resolving_logs = [log for log in call_logs if log.call_type in ["outgoing", "incoming"]]

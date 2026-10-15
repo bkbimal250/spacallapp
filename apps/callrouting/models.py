@@ -292,6 +292,7 @@ class RoutingWhatsAppMessage(BaseModel, TimeStampedModel):
         PENDING = "pending", "Pending"
         QUEUED = "queued", "Queued"
         SENDING = "sending", "Sending"
+        AMBIGUOUS = "ambiguous", "Requires reconciliation"
         SENT = "sent", "Sent"
         DELIVERED = "delivered", "Delivered"
         READ = "read", "Read"

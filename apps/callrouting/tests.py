@@ -299,6 +299,7 @@ class CallRoutingAPITests(TestCase):
         self.assertEqual(response.data["count"], 0)
 
 
+@override_settings(CALL_ROUTING_MAX_AGE_SECONDS=10_000_000)
 class RoutingEngineTests(TestCase):
     def setUp(self):
         self.tz = ZoneInfo("Asia/Kolkata")
@@ -989,7 +990,7 @@ class RoutingWhatsAppOrchestrationTests(RoutingEngineTests):
             with self.assertRaises(DoubleTickTransientError):
                 DoubleTickTemplateProvider.send("+919876543210", "917506359139", ["Customer", "Royal Oak Spa", "Green View Spa"])
 
-    def test_provider_missing_message_id_is_permanent(self):
+    def test_provider_missing_message_id_is_ambiguous(self):
         class Response:
             status = 200
 
@@ -1003,7 +1004,7 @@ class RoutingWhatsAppOrchestrationTests(RoutingEngineTests):
                 return json.dumps({"ok": True}).encode("utf-8")
 
         with override_settings(DOUBLETICK_API_KEY="test-key"), patch("urllib.request.urlopen", return_value=Response()):
-            with self.assertRaises(DoubleTickPermanentError):
+            with self.assertRaises(DoubleTickTransientError):
                 DoubleTickTemplateProvider.send("+919876543210", "917506359139", ["Customer", "Royal Oak Spa", "Green View Spa"])
 
     @override_settings(CALL_ROUTING_DRY_RUN=True)

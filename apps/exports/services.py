@@ -8,12 +8,13 @@ from django.utils import timezone
 
 from .models import ExportJob
 from .utils import ExportUtils
-from .s3 import S3Service
 
 
 class ExportService:
     @staticmethod
     def export_call_logs(data, format="csv"):
+        # Optional legacy integration must not prevent Celery autodiscovery.
+        from .s3 import S3Service
         headers = ["call_time", "phone_number", "duration", "call_type"]
         
         filename = f"export.{format}"

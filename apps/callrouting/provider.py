@@ -121,11 +121,11 @@ class DoubleTickTemplateProvider:
         except (urllib.error.URLError, TimeoutError) as exc:
             raise DoubleTickTransientError("DOUBLETICK_TRANSIENT_SEND_FAILURE", {"error": str(exc)}) from exc
         except ValueError as exc:
-            raise DoubleTickPermanentError("DOUBLETICK_MALFORMED_RESPONSE") from exc
+            raise DoubleTickTransientError("DOUBLETICK_MALFORMED_RESPONSE") from exc
 
         message_id = cls._message_id(parsed)
         if not message_id:
-            raise DoubleTickPermanentError("DOUBLETICK_MESSAGE_ID_MISSING", {"status_code": status_code, "body": parsed})
+            raise DoubleTickTransientError("DOUBLETICK_MESSAGE_ID_MISSING", {"status_code": status_code, "body": parsed})
         return {
             "message_id": str(message_id),
             "provider_payload": {"status_code": status_code, "body": parsed},

@@ -291,6 +291,29 @@ PHONE_OTP_SENDER = env("PHONE_OTP_SENDER", default="apps.accounts.services.sms_s
 CELERY_BROKER_URL = env("CELERY_BROKER_URL", default="redis://localhost:6379/0")
 CELERY_RESULT_BACKEND = env("CELERY_RESULT_BACKEND", default="redis://localhost:6379/1")
 CELERY_TASK_DEFAULT_QUEUE = env("CELERY_TASK_DEFAULT_QUEUE", default="calllog_system")
+import re
+if not re.fullmatch(r"[A-Za-z0-9_-]+", CELERY_TASK_DEFAULT_QUEUE) or CELERY_TASK_DEFAULT_QUEUE == "celery":
+    raise ValueError("CallLog requires a non-legacy, application-owned Celery queue")
+CELERY_TASK_ROUTES = ("config.task_routes.route_project_task",)
+CELERY_TASK_CREATE_MISSING_QUEUES = False
+from kombu import Queue
+CELERY_TASK_QUEUES = (Queue(CELERY_TASK_DEFAULT_QUEUE),)
+CELERY_WORKER_CONCURRENCY = 1
+CELERY_WORKER_PREFETCH_MULTIPLIER = 1
+CELERY_WORKER_ETA_TASK_LIMIT = 100  # Celery >= 5.6; bound countdown tasks in memory.
+CELERY_TASK_IGNORE_RESULT = True
+CELERY_RESULT_EXPIRES = 3600
+# Original-call age, not queue age. 90 minutes allows the 60-minute reminder
+# a 30-minute recovery window. Future/invalid timestamps are rejected.
+MISSED_CALL_MAX_AGE_SECONDS = env.int("MISSED_CALL_MAX_AGE_SECONDS", default=5400)
+MISSED_CALL_SWEEP_BATCH_SIZE = env.int("MISSED_CALL_SWEEP_BATCH_SIZE", default=200)
+MISSED_CALL_QUEUE_LEASE_SECONDS = env.int("MISSED_CALL_QUEUE_LEASE_SECONDS", default=300)
+CALL_ROUTING_MAX_AGE_SECONDS = env.int("CALL_ROUTING_MAX_AGE_SECONDS", default=5400)
+SEND_CLAIM_TIMEOUT_SECONDS = env.int("SEND_CLAIM_TIMEOUT_SECONDS", default=300)
+if MISSED_CALL_MAX_AGE_SECONDS <= 3600 or CALL_ROUTING_MAX_AGE_SECONDS <= 0:
+    raise ValueError("Reminder freshness must exceed 60 minutes; routing freshness must be positive")
+if min(MISSED_CALL_SWEEP_BATCH_SIZE, MISSED_CALL_QUEUE_LEASE_SECONDS, SEND_CLAIM_TIMEOUT_SECONDS) <= 0:
+    raise ValueError("Task batch and lease settings must be positive")
 CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_SERIALIZER = "json"
 CELERY_RESULT_SERIALIZER = "json"
