@@ -22,7 +22,7 @@ class StateMiniSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = State
-        fields = ["id", "value", "label", "name", "is_active"]
+        fields = ["id", "value", "label", "country", "name", "is_active"]
 
 
 class CityMiniSerializer(serializers.ModelSerializer):
@@ -93,6 +93,7 @@ class StateSerializer(serializers.ModelSerializer):
         model = State
         fields = [
             "id",
+            "country",
             "name",
             "normalized_name",
             "slug",
@@ -151,6 +152,7 @@ class StateListSerializer(StateSerializer):
     class Meta(StateSerializer.Meta):
         fields = [
             "id",
+            "country",
             "name",
             "code",
             "is_active",

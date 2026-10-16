@@ -53,6 +53,7 @@ class LocationBaseModel(BaseModel, TimeStampedModel, SoftDeleteModel):
 
 
 class State(LocationBaseModel):
+    country = models.CharField(max_length=120, default="India")
     name = models.CharField(max_length=120)
     normalized_name = models.CharField(max_length=140, editable=False, db_index=True)
     slug = models.SlugField(max_length=160, allow_unicode=True, blank=True, db_index=True)

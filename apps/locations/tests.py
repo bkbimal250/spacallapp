@@ -28,6 +28,42 @@ class LocationGroupAreaSyncTests(APITestCase):
     def sync_url(self):
         return f"/api/v1/locations/groups/{self.group.id}/sync-areas/"
 
+    def test_state_country_defaults_and_is_exposed_in_location_apis(self):
+        response = self.client.post(
+            "/api/v1/locations/states/", {"name": "Gujarat"}, format="json"
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data["country"], "India")
+        self.assertEqual(State.objects.get(pk=response.data["id"]).country, "India")
+
+        for params in ({"all": "true"}, {"all": "true", "compact": "true"}):
+            response = self.client.get("/api/v1/locations/states/", params)
+            self.assertEqual(response.status_code, status.HTTP_200_OK)
+            self.assertTrue(all(row["country"] == "India" for row in response.data))
+        response = self.client.get("/api/v1/locations/states/options/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(all(row["country"] == "India" for row in response.data))
+        response = self.client.get(f"/api/v1/locations/cities/{self.city.id}/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["state_detail"]["country"], "India")
+
+    def test_state_country_can_be_created_and_updated_but_not_blank(self):
+        response = self.client.post(
+            "/api/v1/locations/states/",
+            {"name": "Dubai", "country": "United Arab Emirates"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data["country"], "United Arab Emirates")
+        url = f"/api/v1/locations/states/{response.data['id']}/"
+        response = self.client.patch(url, {"country": "Sri Lanka"}, format="json")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(self.client.get(url).data["country"], "Sri Lanka")
+        for value in ("", "   ", None):
+            response = self.client.patch(url, {"country": value}, format="json")
+            self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+            self.assertIn("country", response.data)
+
     def test_sync_areas_creates_mappings_and_ignores_duplicate_ids(self):
         response = self.client.post(
             self.sync_url(),

@@ -147,7 +147,7 @@ class StateViewSet(SoftDeleteModelViewSet):
 
     @action(detail=False, methods=["get"])
     def options(self, request):
-        qs = self.filter_queryset(self.get_queryset().filter(is_active=True)).only("id", "name", "is_active")
+        qs = self.filter_queryset(self.get_queryset().filter(is_active=True)).only("id", "country", "name", "is_active")
         return Response(StateMiniSerializer(qs, many=True).data)
 
 
