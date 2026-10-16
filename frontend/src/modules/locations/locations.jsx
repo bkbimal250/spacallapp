@@ -24,6 +24,7 @@ import BulkAddBox from './components/BulkAddBox';
 import LocationDataTable from './components/LocationDataTable';
 import LocationSection from './components/LocationSection';
 import LocationSelectors from './components/LocationSelectors';
+import EditForm from './components/EditForm';
 import QuickCreateForm from './components/QuickCreateForm';
 import { locationsAPI } from './api';
 import { formatLocation, getRecordId, toOptions, unpackList } from './utils';
@@ -189,6 +190,9 @@ const Locations = () => {
     const [activeTab, setActiveTab] = useState('states');
     const [loading, setLoading] = useState(false);
     const [saving, setSaving] = useState(false);
+    const [stateCountry, setStateCountry] = useState('India');
+    const [editingLocation, setEditingLocation] = useState(null);
+    const [editError, setEditError] = useState('');
     const [states, setStates] = useState([]);
     const [cities, setCities] = useState([]);
     const [areas, setAreas] = useState([]);
@@ -393,21 +397,6 @@ const Locations = () => {
         setGroupFormError('');
     };
 
-    const startEditGroup = (group) => {
-        const city = cities.find((item) => item.id === group.city);
-        setGroupForm({
-            id: group.id,
-            state: city?.state || group.city_detail?.state || '',
-            city: group.city || '',
-            name: group.name || '',
-            description: group.description || '',
-            is_active: true,
-            priority: group.priority ?? 0,
-        });
-        setViewingGroupId(group.id);
-        setGroupFormError('');
-    };
-
     const startAssignAreas = (group) => {
         const city = cities.find((item) => item.id === group.city);
         setGroupAreaForm({
@@ -435,6 +424,77 @@ const Locations = () => {
         if (Array.isArray(firstValue)) return firstValue[0];
         if (typeof firstValue === 'string') return firstValue;
         return 'Request failed.';
+    };
+
+    const saveLocationEdit = async (payload) => {
+        if (!editingLocation) return;
+
+        const { row, type } = editingLocation;
+        const id = getRecordId(row);
+        if (!id) {
+            setEditError('The record ID is missing. Close this form and refresh the list.');
+            return;
+        }
+
+        setSaving(true);
+        setEditError('');
+        setNotice(null);
+        try {
+            if (type === 'state') {
+                await locationsAPI.updateState(id, payload);
+            } else if (type === 'city') {
+                await locationsAPI.updateCity(id, payload);
+            } else if (type === 'area') {
+                await locationsAPI.updateArea(id, payload);
+            } else if (type === 'group') {
+                await locationsAPI.updateGroup(id, payload);
+            } else {
+                throw new Error(`Unsupported location type: ${type}`);
+            }
+
+            await refresh();
+
+            if (type === 'city') {
+                setSelected((current) => ({
+                    ...current,
+                    state: payload.state,
+                    city: id,
+                    group: '',
+                    area: '',
+                }));
+            } else if (type === 'area') {
+                const parentCity = cities.find((city) => String(city.id) === String(payload.city));
+                setSelected((current) => ({
+                    ...current,
+                    state: parentCity?.state || current.state,
+                    city: payload.city,
+                    group: '',
+                    area: id,
+                }));
+            } else if (type === 'group') {
+                const parentCity = cities.find((city) => String(city.id) === String(payload.city));
+                setSelected((current) => ({
+                    ...current,
+                    state: parentCity?.state || current.state,
+                    city: payload.city,
+                    group: id,
+                    area: '',
+                }));
+                setViewingGroupId(id);
+            }
+
+            setEditingLocation(null);
+            setNotice({
+                type: 'success',
+                title: `${type === 'group' ? 'Location group' : type} updated`,
+                message: `${payload.name} has been updated successfully.`,
+            });
+        } catch (error) {
+            console.error(`Edit ${type} failed`, error);
+            setEditError(getApiErrorMessage(error));
+        } finally {
+            setSaving(false);
+        }
     };
 
     const createMany = async (items, buildPayload, createFn, successLabel) => {
@@ -518,17 +578,15 @@ const Locations = () => {
                 is_active: true,
                 priority: Number(groupForm.priority || 0),
             };
-            const response = groupForm.id
-                ? await locationsAPI.updateGroup(groupForm.id, payload)
-                : await locationsAPI.createGroup(payload);
+            const response = await locationsAPI.createGroup(payload);
             const savedGroup = response.data;
-            const savedGroupId = savedGroup.id || groupForm.id;
+            const savedGroupId = savedGroup.id;
             await refresh();
             setViewingGroupId(savedGroupId);
             setSelected((current) => ({ ...current, city: groupForm.city, group: savedGroupId }));
             setNotice({
                 type: 'success',
-                title: groupForm.id ? 'Group updated' : 'Group created',
+                title: 'Group created',
                 message: `${payload.name} saved as an active group. Use Group Areas to assign existing areas.`,
             });
             setGroupForm({ ...emptyGroupForm, state: groupForm.state, city: groupForm.city });
@@ -621,75 +679,9 @@ const Locations = () => {
         }
     };
 
-    const handleEdit = async (row, type) => {
-        const id = getRecordId(row);
-        if (!id) {
-            window.alert('Edit failed. Record ID is missing.');
-            return;
-        }
-
-        if (type === 'state') {
-            const name = window.prompt('Edit state name', row.name || '');
-            if (name === null) return;
-            const code = window.prompt('Edit state code', row.code || '');
-            const payload = {
-                name: name.trim(),
-                code: code?.trim() || null,
-            };
-            const data = {};
-            if (payload.name && payload.name !== row.name) data.name = payload.name;
-            if (payload.code !== (row.code || null)) data.code = payload.code;
-            if (!Object.keys(data).length) return;
-
-            setSaving(true);
-            try {
-                await locationsAPI.updateState(id, data);
-                await refresh();
-            } catch (error) {
-                console.error('Edit state failed', error);
-                window.alert(getApiErrorMessage(error));
-            } finally {
-                setSaving(false);
-            }
-            return;
-        }
-
-        if (type === 'city') {
-            const name = window.prompt('Edit city name', row.name || '');
-            if (name === null) return;
-            const trimmed = name.trim();
-            if (!trimmed || trimmed === row.name) return;
-
-            setSaving(true);
-            try {
-                await locationsAPI.updateCity(id, { name: trimmed });
-                await refresh();
-            } catch (error) {
-                console.error('Edit city failed', error);
-                window.alert(getApiErrorMessage(error));
-            } finally {
-                setSaving(false);
-            }
-            return;
-        }
-
-        if (type === 'area') {
-            const name = window.prompt('Edit area name', row.name || '');
-            if (name === null) return;
-            const trimmed = name.trim();
-            if (!trimmed || trimmed === row.name) return;
-
-            setSaving(true);
-            try {
-                await locationsAPI.updateArea(id, { name: trimmed });
-                await refresh();
-            } catch (error) {
-                console.error('Edit area failed', error);
-                window.alert(getApiErrorMessage(error));
-            } finally {
-                setSaving(false);
-            }
-        }
+    const handleEdit = (row, type) => {
+        setEditError('');
+        setEditingLocation({ row, type });
     };
 
     const bulkDeleteRows = async (rows, deleteFn, label) => {
@@ -820,29 +812,43 @@ const Locations = () => {
                 <LocationSection icon={Map} title="States" subtitle="Add one state or paste multiple state names, one per line.">
                     <div className="grid gap-5 2xl:grid-cols-[minmax(520px,0.9fr)_minmax(620px,1.1fr)]">
                         <div className="space-y-5">
+                            <Input
+                                label="Country"
+                                name="country"
+                                value={stateCountry}
+                                onChange={(event) => setStateCountry(event.target.value)}
+                                placeholder="India"
+                                required
+                                disabled={saving}
+                            />
                             <QuickCreateForm
                                 fields={[
                                     { name: 'name', label: 'State Name', placeholder: 'Maharashtra', required: true },
                                     { name: 'code', label: 'Code', placeholder: 'MH' },
                                 ]}
+                                disabled={!stateCountry.trim()}
                                 loading={saving}
                                 submitLabel="Add State"
-                                onSubmit={(form) => createMany([form.name], () => ({ name: form.name, code: form.code, is_active: true }), locationsAPI.createState, 'state')}
+                                onSubmit={(form) => createMany([form.name], () => ({ name: form.name, code: form.code, country: stateCountry.trim(), is_active: true }), locationsAPI.createState, 'state')}
                             />
                             <BulkAddBox
                                 label="Multiple States"
                                 placeholder={'Maharashtra\nGujarat\nRajasthan'}
+                                disabled={!stateCountry.trim()}
                                 loading={saving}
-                                onSubmit={(names) => createMany(names, (name) => ({ name, is_active: true }), locationsAPI.createState, 'states')}
+                                onSubmit={(names) => createMany(names, (name) => ({ name, country: stateCountry.trim(), is_active: true }), locationsAPI.createState, 'states')}
                             />
                         </div>
                         <LocationDataTable
                             rows={states}
-                            loading={saving}                            onEdit={(row) => handleEdit(row, 'state')}                            onDelete={(row) => deleteRow(row, locationsAPI.deleteState, 'state')}
+                            loading={saving}
+                            onEdit={(row) => handleEdit(row, 'state')}
+                            onDelete={(row) => deleteRow(row, locationsAPI.deleteState, 'state')}
                             onBulkDelete={(rows, label) => bulkDeleteRows(rows, locationsAPI.deleteState, label)}
                             bulkLabel="states"
                             columns={[
                                 { header: 'State', accessor: 'name' },
+                                { header: 'Country', accessor: 'country' },
                                 { header: 'Code', render: (row) => row.code || '-' },
                                 { header: 'Cities', render: (row) => row.city_count ?? '-' },
                             ]}
@@ -967,9 +973,7 @@ const Locations = () => {
                         <form onSubmit={saveGroup} className="space-y-5 rounded-lg border border-border bg-background p-4">
                             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                                 <div>
-                                    <p className="text-sm font-semibold text-text-primary">
-                                        {groupForm.id ? 'Edit Location Group' : 'Create Location Group'}
-                                    </p>
+                                    <p className="text-sm font-semibold text-text-primary">Create Location Group</p>
                                     <p className="text-xs text-text-secondary">Groups are saved active. Use Group Areas to assign multiple existing areas.</p>
                                 </div>
                                 <Button type="button" variant="secondary" size="sm" onClick={startCreateGroup}>
@@ -1031,11 +1035,6 @@ const Locations = () => {
                             )}
 
                             <div className="flex flex-wrap justify-end gap-2">
-                                {groupForm.id && (
-                                    <Button type="button" variant="ghost" onClick={startCreateGroup}>
-                                        Cancel edit
-                                    </Button>
-                                )}
                                 <Button type="submit" loading={saving} className="gap-2">
                                     <Save size={16} />
                                     Save Group
@@ -1057,7 +1056,7 @@ const Locations = () => {
                                 <LocationDataTable
                                     rows={selected.city ? selectedCityGroups : groups}
                                     loading={saving}
-                                    onEdit={startEditGroup}
+                                        onEdit={(row) => handleEdit(row, 'group')}
                                     onDelete={(row) => deleteRow(row, locationsAPI.deleteGroup, 'group')}
                                     onBulkDelete={(rows, label) => bulkDeleteRows(rows, locationsAPI.deleteGroup, label)}
                                     bulkLabel="groups"
@@ -1332,6 +1331,23 @@ const Locations = () => {
                         </pre>
                     )}
                 </LocationSection>
+            )}
+
+            {editingLocation && (
+                <EditForm
+                    record={editingLocation.row}
+                    type={editingLocation.type}
+                    states={states}
+                    cities={cities}
+                    saving={saving}
+                    error={editError}
+                    onClose={() => {
+                        if (saving) return;
+                        setEditingLocation(null);
+                        setEditError('');
+                    }}
+                    onSubmit={saveLocationEdit}
+                />
             )}
         </div>
     );
